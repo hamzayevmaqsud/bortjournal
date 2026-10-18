@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#EFE4D2">
+<title>Бортжурнал</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@700;800;900&family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="app">
+  <a class="brand" href="#today"><i>✦</i>Бортжурнал</a>
+  <nav class="tabs" id="tabs" aria-label="Разделы">
+    <a href="#today"    data-page="today"    class="tab" style="--c:var(--paper);--cf:var(--paper-f)"><span class="tab-ico" data-ico="today"></span><span class="tab-label">Сегодня</span></a>
+    <a href="#food"     data-page="food"     class="tab" style="--c:var(--food);--cf:var(--food-f)"><span class="tab-ico" data-ico="food"></span><span class="tab-label">Еда</span></a>
+    <a href="#study"    data-page="study"    class="tab" style="--c:var(--study);--cf:var(--study-f)"><span class="tab-ico" data-ico="study"></span><span class="tab-label">Учёба</span></a>
+    <a href="#quiz"     data-page="quiz"     class="tab" style="--c:var(--quiz);--cf:var(--quiz-f)"><span class="tab-ico" data-ico="quiz"></span><span class="tab-label">Вопросы</span><span class="tab-badge" id="quiz-badge" hidden></span></a>
+    <a href="#gym"      data-page="gym"      class="tab" style="--c:var(--gym);--cf:var(--gym-f)"><span class="tab-ico" data-ico="gym"></span><span class="tab-label">Зал</span></a>
+    <a href="#steps"    data-page="steps"    class="tab" style="--c:var(--steps);--cf:var(--steps-f)"><span class="tab-ico" data-ico="steps"></span><span class="tab-label">Шаги</span></a>
+    <a href="#stats"    data-page="stats"    class="tab" style="--c:var(--paper);--cf:var(--paper-f)"><span class="tab-ico" data-ico="stats"></span><span class="tab-label">Статистика</span></a>
+    <a href="#settings" data-page="settings" class="tab tab-settings" style="--c:var(--paper-2);--cf:var(--paper-f)"><span class="tab-ico" data-ico="settings"></span><span class="tab-label">Настройки</span></a>
+  </nav>
+  <main id="main" class="main"></main>
+</div>
+<div id="modal-root"></div>
+<div id="toast-root" aria-live="polite"></div>
+<script src="app.js"></script>
+</body>
+</html>

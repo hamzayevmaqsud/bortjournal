@@ -1,0 +1,1038 @@
+/* ============================================================
+   Бортжурнал — логика
+   Данные живут в localStorage этого браузера.
+   ============================================================ */
+'use strict';
+
+/* ---------- хранилище ---------- */
+const KEY = 'bortjournal.v1';
+const DEF = {
+  settings: { kcal: 2200, protein: 140, steps: 10000, study: 60, apiKey: '', aiAuto: false, name: '' },
+  meals: [], study: [], workouts: [], days: {}, srs: {}, quizzes: {}, foods: {}
+};
+let S = load();
+
+function load() {
+  try {
+    const raw = localStorage.getItem(KEY);
+    if (!raw) return structuredClone(DEF);
+    const d = JSON.parse(raw);
+    const out = Object.assign(structuredClone(DEF), d);
+    out.settings = Object.assign({}, DEF.settings, d.settings || {});
+    return out;
+  } catch (e) { console.warn('load failed', e); return structuredClone(DEF); }
+}
+function save() { localStorage.setItem(KEY, JSON.stringify(S)); updateBadge(); }
+
+/* ---------- утилиты ---------- */
+const uid = () => Math.random().toString(36).slice(2, 8) + Date.now().toString(36).slice(-4);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const z = n => String(n).padStart(2, '0');
+const num = v => { const n = parseFloat(String(v ?? '').replace(',', '.')); return isFinite(n) ? n : 0; };
+const fmtN = n => Math.round(n).toLocaleString('ru-RU');
+const fmt1 = n => (Math.round(n * 10) / 10).toLocaleString('ru-RU');
+const plural = (n, a, b, c) => { n = Math.abs(n) % 100; const n1 = n % 10; if (n > 10 && n < 20) return c; if (n1 > 1 && n1 < 5) return b; if (n1 === 1) return a; return c; };
+const $ = s => document.querySelector(s);
+const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+function fmtMin(m) {
+  m = Math.round(m);
+  if (m < 60) return `${m} мин`;
+  const h = Math.floor(m / 60), r = m % 60;
+  return r ? `${h} ч ${r} мин` : `${h} ч`;
+}
+function hoursStr(m) { return fmt1(m / 60); }
+
+/* ---------- даты ---------- */
+function ymd(d = new Date()) { return `${d.getFullYear()}-${z(d.getMonth() + 1)}-${z(d.getDate())}`; }
+function parseYmd(s) { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d); }
+function addDays(s, n) { const d = parseYmd(s); d.setDate(d.getDate() + n); return ymd(d); }
+function diffDays(a, b) { return Math.round((parseYmd(b) - parseYmd(a)) / 864e5); }
+const WD = ['вс', 'пн', 'вт', 'ср', 'чт', 'пт', 'сб'];
+const WDF = ['воскресенье', 'понедельник', 'вторник', 'среда', 'четверг', 'пятница', 'суббота'];
+const MON = ['янв', 'фев', 'мар', 'апр', 'мая', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
+const MONG = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
+function human(s) { const d = parseYmd(s); return `${d.getDate()} ${MON[d.getMonth()]}`; }
+function humanLong(s) { const d = parseYmd(s); return `${d.getDate()} ${MONG[d.getMonth()]} ${d.getFullYear()}`; }
+function relDay(s) {
+  const t = ymd();
+  if (s === t) return 'сегодня';
+  if (s === addDays(t, -1)) return 'вчера';
+  if (s === addDays(t, 1)) return 'завтра';
+  return WDF[parseYmd(s).getDay()];
+}
+function nowHM() { const d = new Date(); return `${z(d.getHours())}:${z(d.getMinutes())}`; }
+function hmToMin(hm) { if (!hm) return null; const [h, m] = hm.split(':').map(Number); return h * 60 + (m || 0); }
+function rangeDays(n, end = ymd()) { const out = []; for (let i = n - 1; i >= 0; i--) out.push(addDays(end, -i)); return out; }
+
+/* ---------- выборки ---------- */
+const mealsOn = d => S.meals.filter(m => m.date === d).sort((a, b) => (a.time || '').localeCompare(b.time || ''));
+const studyOn = d => S.study.filter(s => s.date === d).sort((a, b) => (a.time || '').localeCompare(b.time || ''));
+const gymOn = d => S.workouts.filter(w => w.date === d).sort((a, b) => (a.time || '').localeCompare(b.time || ''));
+const dayRec = d => S.days[d] || {};
+function sumMeals(ms) { return ms.reduce((a, m) => ({ kcal: a.kcal + num(m.kcal), p: a.p + num(m.p), f: a.f + num(m.f), c: a.c + num(m.c) }), { kcal: 0, p: 0, f: 0, c: 0 }); }
+const studyMin = d => studyOn(d).reduce((a, s) => a + num(s.minutes), 0);
+function hasAny(d) { return !!(mealsOn(d).length || studyOn(d).length || gymOn(d).length || num(dayRec(d).steps)); }
+function streak() {
+  let d = ymd();
+  if (!hasAny(d)) d = addDays(d, -1);
+  let n = 0;
+  while (hasAny(d) && n < 3650) { n++; d = addDays(d, -1); }
+  return n;
+}
+function isEmptyStore() { return !S.meals.length && !S.study.length && !S.workouts.length && !Object.keys(S.days).length; }
+
+/* ---------- иконки ---------- */
+const I = {
+  today: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>',
+  food: '<svg viewBox="0 0 24 24"><path d="M4 12h16a8 8 0 0 1-16 0z"/><path d="M8 11.5V8m4 3.5V6m4 5.5V9"/></svg>',
+  study: '<svg viewBox="0 0 24 24"><path d="M4 5h6.5a2 2 0 0 1 2 2v12a2 2 0 0 0-2-2H4z"/><path d="M20 5h-6.5a2 2 0 0 0-2 2v12a2 2 0 0 1 2-2H20z"/></svg>',
+  quiz: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.8 2.1c-.8.5-1.3 1-1.3 1.9"/><path d="M12 16.6v.2"/></svg>',
+  gym: '<svg viewBox="0 0 24 24"><path d="M3 10v4M6 8v8M18 8v8M21 10v4M6 12h12"/></svg>',
+  steps: '<svg viewBox="0 0 24 24"><path d="M7.5 3.5c1.8 0 2.8 2 2.8 4.5s-1 4.5-2.8 4.5S4.7 10.5 4.7 8s1-4.5 2.8-4.5z"/><path d="M6.4 14h2.4v2.6a1.2 1.2 0 0 1-2.4 0z"/><path d="M16.5 7.5c1.8 0 2.8 2 2.8 4.5s-1 4.5-2.8 4.5-2.8-2-2.8-4.5 1-4.5 2.8-4.5z"/><path d="M15.4 18h2.4v1.6a1.2 1.2 0 0 1-2.4 0z"/></svg>',
+  stats: '<svg viewBox="0 0 24 24"><path d="M4 20v-9m5.3 9V4m5.4 16v-7m5.3 7V8"/></svg>',
+  settings: '<svg viewBox="0 0 24 24"><path d="M4 7h9m5 0h2M4 17h5m5 0h6"/><circle cx="15.5" cy="7" r="2.2"/><circle cx="11.5" cy="17" r="2.2"/></svg>',
+  plus: '<svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>',
+  edit: '<svg viewBox="0 0 24 24"><path d="M4 20h4l10.5-10.5a2 2 0 0 0 0-2.8l-1.2-1.2a2 2 0 0 0-2.8 0L4 16z"/><path d="M13 7l4 4"/></svg>',
+  trash: '<svg viewBox="0 0 24 24"><path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12"/></svg>',
+  x: '<svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>',
+  chevL: '<svg viewBox="0 0 24 24"><path d="M14.5 6l-6 6 6 6"/></svg>',
+  chevR: '<svg viewBox="0 0 24 24"><path d="M9.5 6l6 6-6 6"/></svg>',
+  flame: '<svg viewBox="0 0 24 24"><path d="M12 3c1 3 4 4.5 4 9a4 4 0 0 1-8 0c0-1.5.5-2.5 1-3 0 1.5 1 2 1.5 2C11 8 10 6 12 3z"/></svg>',
+  spark: '<svg viewBox="0 0 24 24"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/></svg>',
+  check: '<svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7"/></svg>',
+  eye: '<svg viewBox="0 0 24 24"><path d="M3 12s3.5-6 9-6 9 6 9 6-3.5 6-9 6-9-6-9-6z"/><circle cx="12" cy="12" r="2.5"/></svg>',
+  download: '<svg viewBox="0 0 24 24"><path d="M12 4v11m-4-4l4 4 4-4M5 20h14"/></svg>',
+  upload: '<svg viewBox="0 0 24 24"><path d="M12 15V4m-4 4l4-4 4 4M5 20h14"/></svg>'
+};
+document.querySelectorAll('[data-ico]').forEach(el => { el.innerHTML = I[el.dataset.ico] || ''; });
+
+/* ---------- состояние представления ---------- */
+const view = { page: 'today', date: ymd(), range: 30, lastPage: null };
+const PAGES = ['today', 'food', 'study', 'quiz', 'gym', 'steps', 'stats', 'settings'];
+
+function route() {
+  const h = location.hash.replace('#', '') || 'today';
+  view.page = PAGES.includes(h) ? h : 'today';
+  render();
+}
+window.addEventListener('hashchange', route);
+
+/* ============================================================
+   РЕНДЕР
+   ============================================================ */
+function render() {
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.page === view.page));
+  const pages = { today: pageToday, food: pageFood, study: pageStudy, quiz: pageQuiz, gym: pageGym, steps: pageSteps, stats: pageStats, settings: pageSettings };
+  const y = window.scrollY;
+  $('#main').innerHTML = pages[view.page]();
+  afterRender();
+  if (view.lastPage !== view.page) window.scrollTo({ top: 0, behavior: 'instant' });
+  else window.scrollTo({ top: y, behavior: 'instant' });
+  view.lastPage = view.page;
+  updateBadge();
+}
+function afterRender() {
+  requestAnimationFrame(() => {
+    document.querySelectorAll('.ring-fg[data-offset]').forEach(el => { el.style.strokeDashoffset = el.dataset.offset; });
+    document.querySelectorAll('[data-w]').forEach(el => { el.style.width = el.dataset.w + '%'; });
+    document.querySelectorAll('[data-count]').forEach(countUp);
+  });
+}
+function countUp(el) {
+  const to = num(el.dataset.count), fixed = el.dataset.fixed === '1';
+  const out = v => fixed ? fmt1(v) : fmtN(v);
+  if (reduceMotion || to === 0) { el.textContent = out(to); return; }
+  const t0 = performance.now(), dur = 750;
+  (function f(t) {
+    const k = Math.min(1, (t - t0) / dur), e = 1 - Math.pow(1 - k, 3);
+    el.textContent = out(to * e);
+    if (k < 1) requestAnimationFrame(f);
+  })(t0);
+}
+function updateBadge() {
+  const b = $('#quiz-badge'); if (!b) return;
+  const q = S.quizzes[ymd()];
+  let n = q ? q.items.filter(i => !i.result).length : dueCards(ymd()).length;
+  n = Math.min(n, 9);
+  b.hidden = !n; b.textContent = n;
+}
+
+/* ---------- общие компоненты ---------- */
+function topbar(title, sub, { date = true, actions = '' } = {}) {
+  return `<div class="topbar">
+    ${title ? `<h1 class="topbar-title">${title}${sub ? `<small>${sub}</small>` : ''}</h1>` : '<span></span>'}
+    <div class="topbar-actions">${actions}${date ? dateNav() : ''}</div>
+  </div>`;
+}
+function dateNav() {
+  const d = view.date, t = ymd();
+  return `<div class="datenav">
+    <button class="icon-btn" data-action="date" data-n="-1" aria-label="Предыдущий день">${I.chevL}</button>
+    <button class="datenav-cur ${d === t ? '' : 'not-today'}" data-action="date-today" title="Вернуться к сегодня">${relDay(d)} · ${human(d)}</button>
+    <button class="icon-btn" data-action="date" data-n="1" aria-label="Следующий день">${I.chevR}</button>
+  </div>`;
+}
+function card({ domain, title, span = 4, i = 0, body, action = '', cls = '' }) {
+  return `<section class="card ${cls}" style="--c:var(--${domain});--cf:var(--${domain}-f);--span:${span};--i:${i}">
+    <header class="card-head"><h2 class="card-title">${title}</h2>${action}</header>${body}</section>`;
+}
+function addBtn(action, label, extra = '') {
+  return `<button class="btn btn-accent btn-sm" data-action="${action}" ${extra}>${I.plus}${label}</button>`;
+}
+function ring(val, max, color, size = 104) {
+  const r = (size - 10) / 2, C = 2 * Math.PI * r, p = Math.min(1, max ? val / max : 0);
+  return `<div class="ring-wrap"><svg class="ring" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
+    <circle class="ring-bg" cx="${size / 2}" cy="${size / 2}" r="${r}"/>
+    <circle class="ring-fg" cx="${size / 2}" cy="${size / 2}" r="${r}" stroke="${color}" stroke-dasharray="${C}" stroke-dashoffset="${C}" data-offset="${C * (1 - p)}"/>
+  </svg><span class="ring-pct">${Math.round(p * 100)}%</span></div>`;
+}
+function bar(val, max) { return `<div class="bar"><i data-w="${Math.min(100, max ? val / max * 100 : 0)}"></i></div>`; }
+function empty(text) { return `<p class="empty">${text}</p>`; }
+function itemActions(kind, id) {
+  return `<div class="item-actions">
+    <button class="icon-btn" data-action="edit-${kind}" data-id="${id}" aria-label="Изменить">${I.edit}</button>
+    <button class="icon-btn danger" data-action="del-${kind}" data-id="${id}" aria-label="Удалить">${I.trash}</button>
+  </div>`;
+}
+function field(label, inner) { return `<div class="field"><label>${label}</label>${inner}</div>`; }
+function datalist(id, values) { return `<datalist id="${id}">${[...new Set(values.filter(Boolean))].map(v => `<option value="${esc(v)}">`).join('')}</datalist>`; }
+
+/* ============================================================
+   СЕГОДНЯ
+   ============================================================ */
+function pageToday() {
+  const d = view.date, set = S.settings;
+  const ms = mealsOn(d), tot = sumMeals(ms), st = studyOn(d), stMin = studyMin(d), gw = gymOn(d), day = dayRec(d);
+  const dd = parseYmd(d);
+  const quiz = S.quizzes[d], due = quiz ? quiz.items.filter(i => !i.result).length : dueCards(d).length;
+  const sk = streak();
+  const greet = set.name ? `Привет, ${esc(set.name)}.` : '';
+  const hour = new Date().getHours();
+  const tod = hour < 5 ? 'Поздняя ночь' : hour < 12 ? 'Доброе утро' : hour < 18 ? 'Добрый день' : 'Добрый вечер';
+  let i = 0;
+
+  const onboard = isEmptyStore() ? `<section class="onboard">
+      <h2>Это твой бортжурнал</h2>
+      <p>Записывай еду, занятия, тренировки и шаги. Из тезисов занятий каждый день будут собираться вопросы на повторение, а статистика накопится сама. Начни с любого раздела.</p>
+      <div class="btns">
+        <button class="btn btn-accent" style="--c:var(--food)" data-action="add-meal">${I.plus}Приём пищи</button>
+        <button class="btn btn-accent" style="--c:var(--study)" data-action="add-study">${I.plus}Занятие</button>
+        <button class="btn btn-accent" style="--c:var(--gym)" data-action="add-gym">${I.plus}Тренировка</button>
+        <button class="btn btn-accent" style="--c:var(--steps)" data-action="add-steps">${I.plus}Шаги</button>
+      </div></section>` : '';
+
+  const foodBody = `<div class="ring-row">${ring(tot.kcal, set.kcal, 'var(--food)')}
+    <div class="ring-meta">
+      <div class="big"><b data-count="${Math.round(tot.kcal)}">0</b><small>/ ${fmtN(set.kcal)} ккал</small></div>
+      <div class="macros"><span class="macro"><em>Б</em>${fmtN(tot.p)}<i>/${set.protein}</i></span><span class="macro"><em>Ж</em>${fmtN(tot.f)}</span><span class="macro"><em>У</em>${fmtN(tot.c)}</span></div>
+    </div></div>
+    ${ms.length ? `<div class="mini-list">${ms.slice(-4).map(m => `<div class="mini"><span class="mini-time">${esc(m.time || '')}</span><span class="mini-name">${esc(m.name)}</span><span class="mini-val">${fmtN(m.kcal)}</span></div>`).join('')}${ms.length > 4 ? `<a class="more" href="#food">и ещё ${ms.length - 4}</a>` : ''}</div>` : empty('Ещё ничего не ел')}`;
+
+  const studyBody = `<div class="ring-row">${ring(stMin, set.study, 'var(--study)')}
+    <div class="ring-meta">
+      <div class="big"><b data-count="${stMin}">0</b><small>/ ${set.study} мин</small></div>
+      <div class="chips">${st.slice(0, 4).map(s => `<span class="chip"><b>${esc(s.topic)}</b>${s.minutes ? `· ${s.minutes} мин` : ''}</span>`).join('') || '<span class="hint">Ни одного занятия</span>'}</div>
+    </div></div>`;
+
+  const steps = num(day.steps);
+  const stepsBody = `<div class="big big-xl"><b data-count="${steps}">0</b><small>/ ${fmtN(set.steps)}</small></div>
+    <div style="margin-top:12px">${bar(steps, set.steps)}</div>
+    <p class="hint">${steps ? (steps >= set.steps ? 'Цель закрыта.' : `Осталось ${fmtN(set.steps - steps)}`) : 'Шаги за день ещё не записаны'}${day.weight ? ` · вес ${fmt1(day.weight)} кг` : ''}</p>`;
+
+  const gymBody = gw.length
+    ? `<div class="list">${gw.map(w => `<div class="item"><span class="item-time">${esc(w.time || '')}</span><div class="item-main"><div class="item-title">${esc(w.type)}</div><div class="item-sub">${w.exercises.map(e => esc(e.name)).join(', ') || esc(w.note || '')}</div></div><span class="item-val">${w.minutes ? fmtMin(w.minutes) : ''}</span></div>`).join('')}</div>`
+    : `<p class="empty">${d === ymd() ? 'Сегодня зал ещё впереди' : 'Без тренировки'}</p>`;
+
+  const quizBody = quiz
+    ? `<div class="big"><b>${quiz.items.filter(i => i.result).length}</b><small>/ ${quiz.items.length} отвечено</small></div>
+       <div class="quiz-progress" style="margin-top:12px">${quiz.items.map(it => `<i class="${it.result || ''}"></i>`).join('')}</div>
+       <p class="hint">${due ? `Осталось ${due} ${plural(due, 'вопрос', 'вопроса', 'вопросов')}` : 'Все вопросы дня разобраны'}</p>`
+    : due
+      ? `<div class="big"><b>${due}</b><small>${plural(due, 'карточка ждёт', 'карточки ждут', 'карточек ждут')}</small></div><p class="hint">Вопросы соберутся, когда откроешь раздел</p>`
+      : `<p class="empty">${S.study.length ? 'На этот день повторять нечего' : 'Запиши занятие с тезисами, и вопросы появятся на следующий день'}</p>`;
+
+  const noteBody = `<textarea class="note-area" data-note="${d}" placeholder="Как прошёл день? Пара строк для себя…">${esc(day.note || '')}</textarea>
+    <div class="moods">${['Тяжело', 'Так себе', 'Норм', 'Хорошо', 'Огонь'].map((m, k) => `<button class="mood ${day.mood === k + 1 ? 'on' : ''}" data-action="mood" data-v="${k + 1}">${m}</button>`).join('')}</div>`;
+
+  return `<section class="page page-today">
+    ${topbar('', '', { actions: '' })}
+    <header class="hero">
+      <div class="hero-date">
+        <div class="hero-wd">${relDay(d)}${d === ymd() ? ` · ${WDF[dd.getDay()]}` : ''}</div>
+        <h1 class="hero-day">${dd.getDate()}<span class="hero-mon">${MONG[dd.getMonth()]}</span></h1>
+      </div>
+      <div class="hero-side">
+        ${greet || d === ymd() ? `<div class="hero-greet">${greet || tod + '.'}</div>` : ''}
+        <span class="chip chip-flame">${I.flame}${sk ? `${sk} ${plural(sk, 'день', 'дня', 'дней')} подряд` : 'серия начнётся с первой записи'}</span>
+      </div>
+    </header>
+    ${ruler(d)}
+    <div class="grid">
+      ${onboard}
+      ${card({ domain: 'food', title: 'Еда', i: i++, body: foodBody, action: addBtn('add-meal', 'Приём') })}
+      ${card({ domain: 'study', title: 'Учёба', i: i++, body: studyBody, action: addBtn('add-study', 'Занятие') })}
+      ${card({ domain: 'steps', title: 'Шаги', i: i++, body: stepsBody, action: addBtn('add-steps', 'Записать') })}
+      ${card({ domain: 'quiz', title: 'Вопросы дня', span: 7, i: i++, body: quizBody, cls: 'sticky sticky-violet', action: `<a class="btn btn-accent btn-sm" href="#quiz">Открыть</a>` })}
+      ${card({ domain: 'gym', title: 'Зал', span: 5, i: i++, body: gymBody, action: addBtn('add-gym', 'Тренировка') })}
+      ${card({ domain: 'paper', title: 'Заметка дня', span: 12, i: i++, body: noteBody, cls: 'sticky' })}
+    </div>
+  </section>`;
+}
+
+function ruler(d) {
+  const start = 360, span = 1080;
+  const pos = m => Math.max(0, Math.min(100, (m - start) / span * 100));
+  const width = m => Math.max(0.6, Math.min(100, m / span * 100));
+  const hours = [6, 9, 12, 15, 18, 21, 24];
+  const ms = mealsOn(d).filter(m => m.time), st = studyOn(d).filter(s => s.time), gw = gymOn(d).filter(w => w.time);
+  const n = new Date();
+  const now = d === ymd() ? pos(n.getHours() * 60 + n.getMinutes()) : null;
+  const bars = (arr, label) => arr.map(x => {
+    const l = pos(hmToMin(x.time)), w = Math.min(width(num(x.minutes) || 30), 100 - l);
+    return `<i class="mark bar" style="left:${l}%;width:${w}%" title="${esc(x.time)} · ${esc(label(x))}"></i>`;
+  }).join('');
+  return `<div class="ruler" aria-label="Лента дня">
+    <div class="ruler-hours">${hours.map(h => `<span style="left:${pos(h * 60)}%">${h === 24 ? '00' : z(h)}</span>`).join('')}</div>
+    <div class="ruler-lane lane-food">${ms.map(m => `<i class="mark dot" style="left:${pos(hmToMin(m.time))}%" title="${esc(m.time)} · ${esc(m.name)} · ${fmtN(m.kcal)} ккал"></i>`).join('')}</div>
+    <div class="ruler-lane lane-study">${bars(st, s => `${s.topic} · ${fmtMin(s.minutes)}`)}</div>
+    <div class="ruler-lane lane-gym">${bars(gw, w => `${w.type} · ${fmtMin(w.minutes)}`)}</div>
+    ${now !== null ? `<i class="ruler-now" style="--x:${now.toFixed(2)}"></i>` : ''}
+    <div class="ruler-legend"><span><i class="d"></i>еда</span><span><i class="s"></i>учёба</span><span><i class="g"></i>зал</span></div>
+  </div>`;
+}
+
+/* ============================================================
+   ЕДА
+   ============================================================ */
+function pageFood() {
+  const d = view.date, set = S.settings, ms = mealsOn(d), tot = sumMeals(ms);
+  const week = rangeDays(7, d).map(x => ({ label: WD[parseYmd(x).getDay()], v: sumMeals(mealsOn(x)).kcal, hint: `${human(x)}: ${fmtN(sumMeals(mealsOn(x)).kcal)} ккал` }));
+  const freq = topFoods(8);
+  let i = 0;
+  return `<section class="page" style="--c:var(--food)">
+    ${topbar('Еда', humanLong(d), { actions: `<button class="btn btn-primary" style="--c:var(--food)" data-action="add-meal">${I.plus}Приём пищи</button>` })}
+    <div class="kpis">
+      ${kpi('Калории', `${fmtN(tot.kcal)}<small>/ ${fmtN(set.kcal)}</small>`, 'food', i++, tot.kcal > set.kcal ? `Перебор ${fmtN(tot.kcal - set.kcal)}` : `Осталось ${fmtN(set.kcal - tot.kcal)}`)}
+      ${kpi('Белки', `${fmtN(tot.p)}<small>/ ${set.protein} г</small>`, 'food', i++, tot.p >= set.protein ? 'Норма закрыта' : `Ещё ${fmtN(set.protein - tot.p)} г`)}
+      ${kpi('Жиры', `${fmtN(tot.f)}<small>г</small>`, 'paper', i++)}
+      ${kpi('Углеводы', `${fmtN(tot.c)}<small>г</small>`, 'paper', i++)}
+    </div>
+    <div class="grid">
+      ${card({ domain: 'food', title: 'Записи за день', span: 7, i: i++, body: ms.length ? `<div class="list">${ms.map(mealItem).join('')}</div>` : empty('За этот день записей нет. Добавь первую — название и калории, остальное по желанию.') })}
+      ${card({ domain: 'food', title: 'Неделя', span: 5, i: i++, body: barChart(week, { color: 'var(--food)', target: set.kcal, unit: 'ккал' }) })}
+      ${freq.length ? card({ domain: 'food', title: 'Частое', span: 12, i: i++, body: `<div class="chips">${freq.map(f => `<button class="chip chip-btn" data-action="quick-meal" data-name="${esc(f.name)}"><b>${esc(f.name)}</b>${fmtN(f.kcal)} ккал</button>`).join('')}</div><p class="hint">Нажми, чтобы записать на выбранный день прямо сейчас.</p>` }) : ''}
+    </div>
+  </section>`;
+}
+function mealItem(m) {
+  return `<div class="item">
+    <span class="item-time">${esc(m.time || '—')}</span>
+    <div class="item-main"><div class="item-title">${esc(m.name)}</div><div class="item-sub">Б ${fmtN(m.p)} · Ж ${fmtN(m.f)} · У ${fmtN(m.c)}</div></div>
+    <span class="item-val">${fmtN(m.kcal)}<small>ккал</small></span>
+    ${itemActions('meal', m.id)}
+  </div>`;
+}
+function topFoods(n) {
+  return Object.values(S.foods).sort((a, b) => b.count - a.count || b.last.localeCompare(a.last)).slice(0, n);
+}
+function rememberFood(m) {
+  const k = m.name.trim().toLowerCase(); if (!k) return;
+  const f = S.foods[k] || { name: m.name.trim(), count: 0 };
+  Object.assign(f, { kcal: num(m.kcal), p: num(m.p), f: num(m.f), c: num(m.c), count: f.count + 1, last: ymd() });
+  S.foods[k] = f;
+}
+function mealForm(m) {
+  const foods = Object.values(S.foods);
+  const chips = topFoods(6);
+  openModal({
+    title: m ? 'Изменить запись' : 'Приём пищи', accent: 'var(--food)', form: 'meal',
+    body: `<input type="hidden" name="id" value="${m ? m.id : ''}">
+      ${chips.length && !m ? `<div class="chips">${chips.map(f => `<button type="button" class="chip chip-btn" data-action="fill-food" data-name="${esc(f.name)}"><b>${esc(f.name)}</b>${fmtN(f.kcal)}</button>`).join('')}</div>` : ''}
+      ${field('Что ел', `<input name="name" list="foods" required autocomplete="off" placeholder="Овсянка с бананом" value="${esc(m?.name || '')}">${datalist('foods', foods.map(f => f.name))}`)}
+      <div class="row">
+        ${field('Ккал', `<input name="kcal" type="number" min="0" step="1" inputmode="numeric" required placeholder="0" value="${m ? m.kcal : ''}">`)}
+        ${field('Белки, г', `<input name="p" type="number" min="0" step="0.1" inputmode="decimal" placeholder="0" value="${m?.p ?? ''}">`)}
+        ${field('Жиры, г', `<input name="f" type="number" min="0" step="0.1" inputmode="decimal" placeholder="0" value="${m?.f ?? ''}">`)}
+        ${field('Углев., г', `<input name="c" type="number" min="0" step="0.1" inputmode="decimal" placeholder="0" value="${m?.c ?? ''}">`)}
+      </div>
+      <div class="row row-2">
+        ${field('Время', `<input name="time" type="time" value="${m ? m.time : (view.date === ymd() ? nowHM() : '12:00')}">`)}
+        ${field('Дата', `<input name="date" type="date" value="${m ? m.date : view.date}">`)}
+      </div>`,
+    submit: m ? 'Сохранить' : 'Записать'
+  });
+}
+
+/* ============================================================
+   УЧЁБА
+   ============================================================ */
+const CATS = ['C#', 'Unity', 'Алгоритмы', 'Архитектура', 'Web', 'Git', 'Математика', 'Английский'];
+function usedCats() { return [...new Set([...S.study.map(s => s.category), ...CATS])].filter(Boolean); }
+
+function pageStudy() {
+  const total = S.study.reduce((a, s) => a + num(s.minutes), 0);
+  const week = rangeDays(7).reduce((a, d) => a + studyMin(d), 0);
+  const topics = new Set(S.study.map(s => s.topic.trim().toLowerCase())).size;
+  const cards = allCards().length;
+  const byCat = {};
+  S.study.forEach(s => { byCat[s.category || 'Без категории'] = (byCat[s.category || 'Без категории'] || 0) + num(s.minutes); });
+  const cats = Object.entries(byCat).sort((a, b) => b[1] - a[1]);
+  const maxCat = cats[0]?.[1] || 1;
+  const days30 = rangeDays(30).map(d => ({ label: parseYmd(d).getDate(), v: studyMin(d), hint: `${human(d)}: ${fmtMin(studyMin(d))}` }));
+  const recent = [...S.study].sort((a, b) => b.date.localeCompare(a.date) || (b.time || '').localeCompare(a.time || '')).slice(0, 60);
+  const grouped = groupBy(recent, s => s.date);
+  let i = 0;
+  return `<section class="page" style="--c:var(--study)">
+    ${topbar('Учёба', `${S.study.length} ${plural(S.study.length, 'занятие', 'занятия', 'занятий')}`, { date: false, actions: `<button class="btn btn-primary" style="--c:var(--study)" data-action="add-study">${I.plus}Занятие</button>` })}
+    <div class="kpis">
+      ${kpi('Всего часов', `${hoursStr(total)}<small>ч</small>`, 'study', i++)}
+      ${kpi('За 7 дней', `${hoursStr(week)}<small>ч</small>`, 'study', i++, `цель ${fmtMin(S.settings.study)} в день`)}
+      ${kpi('Тем', `${topics}`, 'paper', i++)}
+      ${kpi('Карточек', `${cards}`, 'quiz', i++, 'для повторения')}
+    </div>
+    <div class="grid">
+      ${card({ domain: 'study', title: '30 дней, минуты', span: 7, i: i++, body: barChart(days30, { color: 'var(--study)', target: S.settings.study, unit: 'мин', labelEvery: 5 }) })}
+      ${card({ domain: 'study', title: 'По направлениям', span: 5, i: i++, body: cats.length ? `<div class="hbars">${cats.map(([c, m]) => `<div class="hbar"><span class="hbar-label">${esc(c)}</span><span class="hbar-track"><i data-w="${m / maxCat * 100}"></i></span><span class="hbar-val">${fmtMin(m)}</span></div>`).join('')}</div>` : empty('Укажи направление в занятии, и здесь появится разбивка.') })}
+      ${card({ domain: 'study', title: 'Журнал занятий', span: 12, i: i++, body: recent.length ? grouped.map(([d, arr]) => `<div class="group-date"><span>${relDay(d)} · ${human(d)}</span><span>${fmtMin(arr.reduce((a, s) => a + num(s.minutes), 0))}</span></div><div class="list">${arr.map(studyItem).join('')}</div>`).join('') : `<p class="empty">Пока пусто. Запиши занятие: тему, сколько минут и 2–5 тезисов. Из тезисов соберутся завтрашние вопросы.</p>` })}
+    </div>
+  </section>`;
+}
+function studyItem(s) {
+  return `<div class="item" style="align-items:flex-start">
+    <span class="item-time">${esc(s.time || '—')}</span>
+    <div class="item-main">
+      <div class="item-title">${esc(s.topic)} ${s.category ? `<span class="chip chip-pill">${esc(s.category)}</span>` : ''}</div>
+      ${s.notes.length ? `<details class="theses"><summary>${s.notes.length} ${plural(s.notes.length, 'тезис', 'тезиса', 'тезисов')}${s.qa.length ? ` · ${s.qa.length} Q&A` : ''}</summary><ul>${s.notes.map(n => `<li>${esc(n)}</li>`).join('')}</ul>${s.qa.map(q => `<div class="qa-line"><b>${esc(q.q)}</b> — ${esc(q.a)}</div>`).join('')}</details>` : (s.qa.length ? `<details class="theses"><summary>${s.qa.length} Q&A</summary>${s.qa.map(q => `<div class="qa-line"><b>${esc(q.q)}</b> — ${esc(q.a)}</div>`).join('')}</details>` : '')}
+    </div>
+    <span class="item-val">${s.minutes ? fmtMin(s.minutes) : ''}</span>
+    ${itemActions('study', s.id)}
+  </div>`;
+}
+function studyForm(s) {
+  openModal({
+    title: s ? 'Изменить занятие' : 'Занятие', accent: 'var(--study)', form: 'study',
+    body: `<input type="hidden" name="id" value="${s ? s.id : ''}">
+      ${field('Тема', `<input name="topic" required autocomplete="off" placeholder="Делегаты и события в C#" value="${esc(s?.topic || '')}">`)}
+      <div class="row">
+        ${field('Направление', `<input name="category" list="cats" autocomplete="off" placeholder="C#" value="${esc(s?.category || '')}">${datalist('cats', usedCats())}`)}
+        ${field('Минут', `<input name="minutes" type="number" min="0" step="5" inputmode="numeric" placeholder="45" value="${s?.minutes ?? ''}">`)}
+        ${field('Время', `<input name="time" type="time" value="${s ? s.time : (view.date === ymd() ? nowHM() : '19:00')}">`)}
+        ${field('Дата', `<input name="date" type="date" value="${s ? s.date : view.date}">`)}
+      </div>
+      ${field('Тезисы — что понял', `<textarea name="notes" placeholder="Каждая строка — отдельная мысль. Например:&#10;Делегат — это тип, описывающий сигнатуру метода&#10;event запрещает вызывать делегат извне класса">${esc(s ? s.notes.join('\n') : '')}</textarea>`)}
+      <p class="hint">Из тезисов соберутся вопросы на повторение: пропуски в тексте и «расскажи, что помнишь по теме». Повторы придут через 1, 3, 7… дней.</p>
+      ${field('Вопрос → ответ (необязательно)', `<textarea name="qa" style="min-height:70px" placeholder="Чем Action отличается от Func? => Func возвращает значение, Action — нет">${esc(s ? s.qa.map(q => `${q.q} => ${q.a}`).join('\n') : '')}</textarea>`)}`,
+    submit: s ? 'Сохранить' : 'Записать'
+  });
+}
+function parseLines(t) { return String(t || '').split('\n').map(x => x.trim()).filter(Boolean); }
+function parseQA(t) {
+  return parseLines(t).map(l => { const m = l.split(/\s*(?:=>|->|—>|::)\s*/); return m.length >= 2 ? { q: m[0], a: m.slice(1).join(' ') } : null; }).filter(Boolean);
+}
+
+/* ============================================================
+   ВОПРОСЫ — интервальное повторение
+   ============================================================ */
+const STOP = new Set(['через', 'потому', 'чтобы', 'когда', 'можно', 'нужно', 'этого', 'этому', 'очень', 'также', 'только', 'после', 'перед', 'между', 'своей', 'своих', 'которые', 'который', 'которая', 'например', 'будет', 'может', 'всегда', 'иначе', 'нельзя', 'должен', 'должна', 'these', 'those', 'which', 'where', 'there', 'their', 'about', 'should', 'would', 'could', 'because']);
+
+function allCards() {
+  const cards = [];
+  for (const s of S.study) {
+    s.notes.forEach((t, i) => cards.push({ id: `${s.id}:n${i}`, type: 'thesis', session: s, text: t }));
+    s.qa.forEach((p, i) => cards.push({ id: `${s.id}:q${i}`, type: 'qa', session: s, q: p.q, a: p.a }));
+    if (s.notes.length >= 2) cards.push({ id: `${s.id}:sum`, type: 'summary', session: s });
+  }
+  return cards;
+}
+function cardState(c) { return S.srs[c.id] || { interval: 0, ease: 2.5, reps: 0, due: addDays(c.session.date, 1) }; }
+function withState() { return allCards().map(c => ({ ...c, st: cardState(c) })); }
+function dueCards(date) { return withState().filter(c => c.st.due <= date).sort((a, b) => a.st.due.localeCompare(b.st.due)); }
+function soonestCards(n, date) { return withState().filter(c => c.st.due > date).sort((a, b) => a.st.due.localeCompare(b.st.due)).slice(0, n); }
+
+function hash(s) { let h = 2166136261; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; }
+function rng(seed) { let x = seed || 1; return () => { x ^= x << 13; x >>>= 0; x ^= x >>> 17; x ^= x << 5; x >>>= 0; return x / 4294967296; }; }
+function shuffle(arr, r) { const a = [...arr]; for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(r() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
+
+function makeQuestion(c, r) {
+  const s = c.session, when = `${s.topic} · ${human(s.date)}`;
+  if (c.type === 'qa') return { q: esc(c.q), a: esc(c.a), kind: 'Вопрос из конспекта', meta: when };
+  if (c.type === 'summary') return { q: `Что ты изучал по теме «${esc(s.topic)}»? Назови главное своими словами.`, a: `<ul>${s.notes.map(n => `<li>${esc(n)}</li>`).join('')}</ul>`, kind: 'Вспомни тему', meta: when, html: true };
+  const words = c.text.split(/\s+/);
+  const cand = words.map((w, i) => ({ w, i, clean: w.replace(/[^\p{L}\p{N}#+.]/gu, '') })).filter(x => x.clean.length >= 5 && !STOP.has(x.clean.toLowerCase()));
+  if (words.length >= 4 && cand.length) {
+    cand.sort((a, b) => b.clean.length - a.clean.length);
+    const pick = cand[Math.floor(r() * Math.min(3, cand.length))];
+    const q = words.map((w, i) => i === pick.i ? `<mark class="blank">${'_'.repeat(Math.min(10, Math.max(4, pick.clean.length)))}</mark>${esc(w.slice(w.indexOf(pick.clean) + pick.clean.length))}` : esc(w)).join(' ');
+    const a = words.map((w, i) => i === pick.i ? `<mark class="hl">${esc(w)}</mark>` : esc(w)).join(' ');
+    return { q, a, kind: 'Заполни пропуск', meta: when, html: true };
+  }
+  const head = words.slice(0, Math.max(1, Math.min(3, Math.ceil(words.length / 2) - (words.length <= 3 ? 1 : 0)))).join(' ');
+  return { q: `Раскрой тезис по теме «${esc(s.topic)}»: «${esc(head)}…»`, a: esc(c.text), kind: 'Раскрой мысль', meta: when };
+}
+function buildQuiz(date, pool) {
+  const r = rng(hash(date));
+  const picked = shuffle(pool, r).slice(0, 6);
+  return { items: picked.map(c => { const q = makeQuestion(c, r); return { cardId: c.id, kind: q.kind, meta: q.meta, q: q.q, a: q.a, result: null, revealed: false }; }), source: 'local', created: Date.now() };
+}
+function ensureQuiz(date) {
+  if (S.quizzes[date]) return S.quizzes[date];
+  const due = dueCards(date);
+  if (!due.length) return null;
+  const q = buildQuiz(date, due);
+  S.quizzes[date] = q; save();
+  return q;
+}
+function gradeCard(cardId, g) {
+  const c = allCards().find(x => x.id === cardId); if (!c) return;
+  let { interval, ease, reps } = cardState(c);
+  if (g === 'again') { interval = 1; ease = Math.max(1.3, ease - 0.2); reps = 0; }
+  else if (g === 'hard') { interval = Math.max(1, Math.round(interval * 1.2) || 1); ease = Math.max(1.3, ease - 0.05); reps++; }
+  else { interval = reps === 0 ? 2 : reps === 1 ? 5 : Math.round(interval * ease); ease = Math.min(3, ease + 0.05); reps++; }
+  S.srs[cardId] = { interval, ease, reps, due: addDays(ymd(), interval), last: ymd() };
+}
+
+function pageQuiz() {
+  const d = ymd();
+  const quiz = ensureQuiz(d);
+  const hasKey = !!S.settings.apiKey;
+  const dueN = dueCards(d).length, total = allCards().length;
+  const aiBtn = hasKey ? `<button class="btn btn-accent" style="--c:var(--quiz)" data-action="ai-quiz" id="ai-btn">${I.spark}Переформулировать через Claude</button>` : '';
+  const hist = quizHistory(14);
+
+  if (!quiz) {
+    const soon = soonestCards(1, d)[0];
+    let msg;
+    if (!total) msg = `Вопросы собираются из <b>тезисов</b> твоих занятий. Запиши первое занятие в разделе «Учёба» с парой тезисов — и завтра здесь появится первый вопрос.`;
+    else if (soon) msg = `На сегодня повторять нечего. Ближайшая карточка — <b>${esc(soon.session.topic)}</b>, ${relDay(soon.st.due)}${soon.st.due !== addDays(d, 1) ? ` (${human(soon.st.due)})` : ''}.`;
+    else msg = `Все карточки повторены.`;
+    return `<section class="page" style="--c:var(--quiz)">
+      ${topbar('Вопросы дня', humanLong(d), { date: false })}
+      <div class="quiz-empty">${msg}
+        <div class="btns">
+          ${total && soon ? `<button class="btn btn-accent" style="--c:var(--quiz)" data-action="quiz-early">${I.spark}Повторить досрочно</button>` : ''}
+          <a class="btn" href="#study">${I.plus}Записать занятие</a>
+        </div>
+      </div>
+      ${hist ? `<div style="margin-top:14px">${card({ domain: 'quiz', title: 'Точность за 14 дней', body: hist, span: 12 })}</div>` : ''}
+    </section>`;
+  }
+
+  const answered = quiz.items.filter(i => i.result).length;
+  const curIdx = quiz.items.findIndex(i => !i.result);
+  const good = quiz.items.filter(i => i.result === 'good').length;
+  const doneAll = curIdx === -1;
+  return `<section class="page" style="--c:var(--quiz)">
+    ${topbar('Вопросы дня', `${humanLong(d)} · ${quiz.source === 'ai' ? 'сформулировал Claude' : 'из твоих конспектов'}`, { date: false, actions: aiBtn })}
+    <div class="quiz-head">
+      <div class="quiz-progress">${quiz.items.map((it, k) => `<i class="${it.result || (k === curIdx ? 'cur' : '')}"></i>`).join('')}</div>
+      <span class="muted mono" style="font-size:12px">${answered} / ${quiz.items.length}</span>
+    </div>
+    ${doneAll ? `<div class="quiz-done"><div class="big"><b>${good}</b><small>/ ${quiz.items.length} уверенно</small></div><p class="muted" style="margin:10px 0 0">${good === quiz.items.length ? 'Чисто. Завтра будет новая порция.' : 'Что не вспомнил — вернётся завтра.'}</p>${dueN ? `<button class="btn btn-accent" style="--c:var(--quiz);margin-top:14px" data-action="quiz-more">${I.plus}Ещё ${Math.min(6, dueN)} ${plural(Math.min(6, dueN), 'карточка', 'карточки', 'карточек')} ждут</button>` : ''}</div>` : ''}
+    <div class="qlist">${quiz.items.map((it, k) => quizItem(it, k, curIdx)).join('')}</div>
+    ${hist ? `<div style="margin-top:14px">${card({ domain: 'quiz', title: 'Точность за 14 дней', body: hist, span: 12 })}</div>` : ''}
+  </section>`;
+}
+function quizItem(it, k, curIdx) {
+  const state = it.result ? 'done' : k === curIdx ? 'current' : 'locked';
+  const resName = { good: 'помню', hard: 'частично', again: 'не помню' };
+  return `<article class="q ${state}" style="--i:${k}">
+    <div class="q-meta"><span>${k + 1} · ${esc(it.kind)}</span><span>${esc(it.meta)}</span></div>
+    <p class="q-text">${it.q}</p>
+    ${state === 'current' && !it.revealed ? `<div class="q-actions"><button class="btn btn-primary" style="--c:var(--quiz)" data-action="reveal" data-k="${k}">${I.eye}Показать ответ</button></div>` : ''}
+    ${(it.revealed || it.result) ? `<div class="q-answer">${it.a}</div>` : ''}
+    ${state === 'current' && it.revealed ? `<div class="q-actions">
+        <button class="btn btn-accent grade-again" data-action="grade" data-k="${k}" data-g="again">Не помню</button>
+        <button class="btn btn-accent grade-hard" data-action="grade" data-k="${k}" data-g="hard">Частично</button>
+        <button class="btn btn-accent grade-good" data-action="grade" data-k="${k}" data-g="good">${I.check}Помню</button>
+      </div>` : ''}
+    ${it.result ? `<div class="q-actions"><span class="q-result ${it.result}">${resName[it.result]}</span></div>` : ''}
+  </article>`;
+}
+function quizHistory(n) {
+  const days = rangeDays(n).map(d => { const q = S.quizzes[d]; const items = q ? q.items.filter(i => i.result) : []; const good = items.filter(i => i.result === 'good').length; return { label: parseYmd(d).getDate(), v: items.length ? good / items.length * 100 : 0, hint: items.length ? `${human(d)}: ${good}/${items.length}` : `${human(d)}: нет ответов`, empty: !items.length }; });
+  if (!days.some(x => !x.empty)) return '';
+  return barChart(days, { color: 'var(--quiz)', max: 100, unit: '%', labelEvery: 2 });
+}
+
+/* ---------- Claude ---------- */
+async function aiQuiz() {
+  const key = S.settings.apiKey;
+  if (!key) { toast('Сначала вставь API-ключ в настройках', true); return; }
+  const d = ymd();
+  const existing = S.quizzes[d];
+  const pool = existing
+    ? existing.items.filter(i => !i.result).map(i => withState().find(c => c.id === i.cardId)).filter(Boolean)
+    : dueCards(d).slice(0, 6);
+  if (!pool.length) { toast('Нет карточек для вопросов', true); return; }
+  const payload = pool.map(c => ({
+    id: c.id, topic: c.session.topic, category: c.session.category, date: c.session.date,
+    content: c.type === 'qa' ? `Вопрос: ${c.q}\nОтвет: ${c.a}` : c.type === 'summary' ? c.session.notes.join('\n') : c.text
+  }));
+  const system = 'Ты наставник по IT и помогаешь ученику повторять материал по его собственным конспектам. Для каждой карточки составь один проверочный вопрос на русском: он должен требовать вспомнить или применить суть записи, но не должен содержать ответ. Если карточка — список тезисов по теме, задай вопрос на пересказ или применение темы целиком. Ответ — краткий эталон, 1–3 предложения, опираясь на текст карточки. Верни строго JSON-массив без пояснений и без markdown: [{"id":"...","q":"...","a":"..."}]. Сохраняй id без изменений, по одному объекту на карточку.';
+  const user = `Карточки ученика:\n${JSON.stringify(payload, null, 1)}`;
+  const btn = $('#ai-btn'); btn && btn.classList.add('busy');
+  const headers = { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' };
+  const body = { model: 'claude-opus-5-5', max_tokens: 8000, system, messages: [{ role: 'user', content: user }] };
+  try {
+    let res = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { ...headers, 'anthropic-beta': 'server-side-fallback-2026-07-01' }, body: JSON.stringify({ ...body, fallbacks: 'default' }) });
+    if (res.status === 400) res = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers, body: JSON.stringify(body) });
+    if (!res.ok) { const t = await res.text(); throw new Error(`${res.status} — ${t.slice(0, 180)}`); }
+    const data = await res.json();
+    if (data.stop_reason === 'refusal') throw new Error('модель отклонила запрос');
+    const text = (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('');
+    const arr = JSON.parse(text.slice(text.indexOf('['), text.lastIndexOf(']') + 1));
+    const byId = Object.fromEntries(arr.map(x => [x.id, x]));
+    const items = pool.filter(c => byId[c.id]).map(c => ({ cardId: c.id, kind: 'Вопрос от Claude', meta: `${c.session.topic} · ${human(c.session.date)}`, q: esc(byId[c.id].q), a: esc(byId[c.id].a), result: null, revealed: false }));
+    if (!items.length) throw new Error('пустой ответ');
+    const kept = existing ? existing.items.filter(i => i.result) : [];
+    S.quizzes[d] = { items: [...kept, ...items], source: 'ai', created: Date.now() };
+    save(); render(); toast('Вопросы переформулированы');
+  } catch (err) {
+    console.error(err);
+    toast(`Не получилось: ${err.message}`, true);
+    btn && btn.classList.remove('busy');
+  }
+}
+
+/* ============================================================
+   ЗАЛ
+   ============================================================ */
+const GYM_TYPES = ['Силовая', 'Кардио', 'Верх тела', 'Низ тела', 'Full body', 'Растяжка', 'Бокс', 'Плавание', 'Бег'];
+function parseExercises(t) {
+  return parseLines(t).map(line => {
+    const m = line.match(/^(.+?)\s+(\d+\s*[x×х]\s*\d+.*)$/i);
+    if (!m) return { name: line, sets: [] };
+    const name = m[1].trim(), sets = [];
+    const re = /(\d+)\s*[x×х]\s*(\d+)(?:\s*(?:@|по|\*)?\s*(\d+(?:[.,]\d+)?)\s*(?:кг|kg)?)?/gi;
+    let g;
+    while ((g = re.exec(m[2]))) { const n = +g[1], reps = +g[2], kg = g[3] ? num(g[3]) : 0; for (let i = 0; i < Math.min(n, 20); i++) sets.push({ reps, kg }); }
+    return { name, sets };
+  });
+}
+function setsStr(e) {
+  if (!e.sets.length) return '';
+  const groups = [];
+  for (const s of e.sets) { const last = groups[groups.length - 1]; if (last && last.reps === s.reps && last.kg === s.kg) last.n++; else groups.push({ ...s, n: 1 }); }
+  return groups.map(g => `<b>${g.n}×${g.reps}</b>${g.kg ? ` ${fmt1(g.kg)} кг` : ''}`).join(', ');
+}
+function volume(w) { return w.exercises.reduce((a, e) => a + e.sets.reduce((b, s) => b + s.reps * (s.kg || 0), 0), 0); }
+function prs() {
+  const map = {};
+  for (const w of S.workouts) for (const e of w.exercises) for (const s of e.sets) {
+    if (!s.kg) continue;
+    const k = e.name.trim().toLowerCase();
+    const cur = map[k];
+    if (!cur || s.kg > cur.kg || (s.kg === cur.kg && s.reps > cur.reps)) map[k] = { name: e.name.trim(), kg: s.kg, reps: s.reps, date: w.date };
+  }
+  return Object.values(map).sort((a, b) => b.kg - a.kg);
+}
+function pageGym() {
+  const week = rangeDays(7).reduce((a, d) => a + gymOn(d).length, 0);
+  const month = rangeDays(30).reduce((a, d) => a + gymOn(d).length, 0);
+  const minutes = S.workouts.reduce((a, w) => a + num(w.minutes), 0);
+  const recent = [...S.workouts].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 40);
+  const weeks = weeklyCounts(12, d => gymOn(d).length);
+  const pr = prs();
+  let i = 0;
+  return `<section class="page" style="--c:var(--gym)">
+    ${topbar('Зал', `${S.workouts.length} ${plural(S.workouts.length, 'тренировка', 'тренировки', 'тренировок')}`, { date: false, actions: `<button class="btn btn-primary" style="--c:var(--gym)" data-action="add-gym">${I.plus}Тренировка</button>` })}
+    <div class="kpis">
+      ${kpi('За 7 дней', `${week}`, 'gym', i++, plural(week, 'тренировка', 'тренировки', 'тренировок'))}
+      ${kpi('За 30 дней', `${month}`, 'gym', i++)}
+      ${kpi('Часов в зале', `${hoursStr(minutes)}<small>ч</small>`, 'paper', i++, 'за всё время')}
+      ${kpi('Рекордов', `${pr.length}`, 'paper', i++, 'упражнений с весом')}
+    </div>
+    <div class="grid">
+      ${card({ domain: 'gym', title: 'Тренировок в неделю, 12 недель', span: 7, i: i++, body: barChart(weeks, { color: 'var(--gym)', unit: 'тр.', max: 7, labelEvery: 1 }) })}
+      ${card({ domain: 'gym', title: 'Личные рекорды', span: 5, i: i++, body: pr.length ? `<table class="table"><thead><tr><th>Упражнение</th><th class="num">Вес</th><th class="num">Повт.</th></tr></thead><tbody>${pr.slice(0, 8).map(p => `<tr><td>${esc(p.name)}</td><td class="num">${fmt1(p.kg)} кг</td><td class="num">${p.reps}</td></tr>`).join('')}</tbody></table>` : empty('Запиши подходы с весом в формате «Жим лёжа 3x8 60», и рекорды посчитаются сами.') })}
+      ${card({ domain: 'gym', title: 'Журнал тренировок', span: 12, i: i++, body: recent.length ? groupBy(recent, w => w.date).map(([d, arr]) => `<div class="group-date"><span>${relDay(d)} · ${human(d)}</span></div><div class="list">${arr.map(gymItem).join('')}</div>`).join('') : empty('Пока без тренировок.') })}
+    </div>
+  </section>`;
+}
+function gymItem(w) {
+  const vol = volume(w);
+  return `<div class="item" style="align-items:flex-start">
+    <span class="item-time">${esc(w.time || '—')}</span>
+    <div class="item-main">
+      <div class="item-title">${esc(w.type)}</div>
+      ${w.exercises.length ? `<div class="item-sub" style="display:flex;flex-direction:column;gap:3px;margin-top:6px">${w.exercises.map(e => `<span class="sets">${esc(e.name)}${e.sets.length ? ' — ' + setsStr(e) : ''}</span>`).join('')}</div>` : ''}
+      ${w.note ? `<div class="item-sub">${esc(w.note)}</div>` : ''}
+    </div>
+    <span class="item-val">${w.minutes ? fmtMin(w.minutes) : ''}${vol ? `<small>${fmtN(vol)} кг объём</small>` : ''}</span>
+    ${itemActions('gym', w.id)}
+  </div>`;
+}
+function gymForm(w) {
+  const text = w ? w.exercises.map(e => e.name + (e.sets.length ? ' ' + exToText(e) : '')).join('\n') : '';
+  openModal({
+    title: w ? 'Изменить тренировку' : 'Тренировка', accent: 'var(--gym)', form: 'gym',
+    body: `<input type="hidden" name="id" value="${w ? w.id : ''}">
+      <div class="row">
+        ${field('Тип', `<input name="type" list="gymtypes" required autocomplete="off" placeholder="Силовая" value="${esc(w?.type || '')}">${datalist('gymtypes', [...GYM_TYPES, ...S.workouts.map(x => x.type)])}`)}
+        ${field('Минут', `<input name="minutes" type="number" min="0" step="5" inputmode="numeric" placeholder="60" value="${w?.minutes ?? ''}">`)}
+        ${field('Время', `<input name="time" type="time" value="${w ? w.time : (view.date === ymd() ? nowHM() : '18:00')}">`)}
+        ${field('Дата', `<input name="date" type="date" value="${w ? w.date : view.date}">`)}
+      </div>
+      ${field('Упражнения', `<textarea name="exercises" data-live="exercises" placeholder="Жим лёжа 3x8 60&#10;Присед 4x6 80, 1x4 90&#10;Подтягивания 3x10&#10;Бег 20 мин">${esc(text)}</textarea>`)}
+      <div class="preview" id="ex-preview">${exPreview(text)}</div>
+      <p class="hint">Формат: название, затем подходы×повторы и вес. «3x8 60» — три подхода по 8 на 60 кг. Несколько групп через запятую. Без цифр — просто название.</p>
+      ${field('Заметка', `<input name="note" placeholder="Самочувствие, что улучшить" value="${esc(w?.note || '')}">`)}`,
+    submit: w ? 'Сохранить' : 'Записать'
+  });
+}
+function exToText(e) {
+  const groups = [];
+  for (const s of e.sets) { const last = groups[groups.length - 1]; if (last && last.reps === s.reps && last.kg === s.kg) last.n++; else groups.push({ ...s, n: 1 }); }
+  return groups.map(g => `${g.n}x${g.reps}${g.kg ? ' ' + g.kg : ''}`).join(', ');
+}
+function exPreview(text) {
+  const ex = parseExercises(text);
+  if (!ex.length) return '';
+  return ex.map(e => `${esc(e.name)}${e.sets.length ? ` — ${e.sets.length} ${plural(e.sets.length, 'подход', 'подхода', 'подходов')}, ${setsStr(e)}` : ''}`).join('\n');
+}
+
+/* ============================================================
+   ШАГИ И ТЕЛО
+   ============================================================ */
+function pageSteps() {
+  const d = view.date, set = S.settings, day = dayRec(d);
+  const days30 = rangeDays(30, d);
+  const vals = days30.map(x => num(dayRec(x).steps));
+  const withData = vals.filter(Boolean);
+  const avg = withData.length ? withData.reduce((a, b) => a + b, 0) / withData.length : 0;
+  const best = Math.max(0, ...vals);
+  const hit = vals.filter(v => v >= set.steps).length;
+  const weights = rangeDays(90, d).map(x => ({ d: x, v: num(dayRec(x).weight) })).filter(x => x.v);
+  let i = 0;
+  return `<section class="page" style="--c:var(--steps)">
+    ${topbar('Шаги', humanLong(d))}
+    <div class="grid">
+      ${card({ domain: 'steps', title: 'Шагов за день', span: 4, i: i++, body: `<form data-form="steps" class="form-stack">
+          <input class="big-input" name="steps" type="number" min="0" step="100" inputmode="numeric" placeholder="сколько шагов" value="${day.steps || ''}">
+          <div style="margin-top:-4px">${bar(num(day.steps), set.steps)}</div>
+          <div class="row row-2">
+            ${field('Вес, кг', `<input name="weight" type="number" min="0" step="0.1" inputmode="decimal" placeholder="—" value="${day.weight || ''}">`)}
+            <div class="field"><label>&nbsp;</label><button class="btn btn-primary" style="--c:var(--steps)" type="submit">Сохранить</button></div>
+          </div></form>` })}
+      ${card({ domain: 'steps', title: '30 дней', span: 8, i: i++, body: barChart(days30.map((x, k) => ({ label: parseYmd(x).getDate(), v: vals[k], hint: `${human(x)}: ${fmtN(vals[k])}` })), { color: 'var(--steps)', target: set.steps, unit: '', labelEvery: 5 }) })}
+    </div>
+    <div class="kpis" style="margin-top:14px">
+      ${kpi('Среднее', `${fmtN(avg)}`, 'steps', i++, `за дни с записью (${withData.length})`)}
+      ${kpi('Лучший день', `${fmtN(best)}`, 'steps', i++)}
+      ${kpi('Цель достигнута', `${hit}<small>из 30</small>`, 'paper', i++, `цель ${fmtN(set.steps)}`)}
+      ${kpi('Вес', weights.length ? `${fmt1(weights[weights.length - 1].v)}<small>кг</small>` : '—', 'paper', i++, weights.length > 1 ? `${weights[weights.length - 1].v - weights[0].v > 0 ? '+' : ''}${fmt1(weights[weights.length - 1].v - weights[0].v)} кг за ${diffDays(weights[0].d, weights[weights.length - 1].d)} дн.` : 'запиши вес, чтобы следить за динамикой')}
+    </div>
+    ${weights.length > 1 ? `<div class="grid" style="margin-top:14px">${card({ domain: 'paper', title: 'Вес, 90 дней', span: 12, i: i++, body: lineChart(weights.map(w => ({ label: human(w.d), v: w.v })), { color: 'var(--paper)', unit: 'кг' }) })}</div>` : ''}
+  </section>`;
+}
+
+/* ============================================================
+   СТАТИСТИКА
+   ============================================================ */
+function pageStats() {
+  const n = view.range, set = S.settings;
+  const days = rangeDays(n);
+  const rows = days.map(d => { const t = sumMeals(mealsOn(d)); return { d, kcal: t.kcal, p: t.p, study: studyMin(d), steps: num(dayRec(d).steps), gym: gymOn(d).length, active: hasAny(d) }; });
+  const avg = (arr) => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
+  const kcalDays = rows.filter(r => r.kcal), stepDays = rows.filter(r => r.steps);
+  const studyTot = rows.reduce((a, r) => a + r.study, 0), gymTot = rows.reduce((a, r) => a + r.gym, 0), active = rows.filter(r => r.active).length;
+  const qItems = days.flatMap(d => (S.quizzes[d]?.items || []).filter(i => i.result));
+  const acc = qItems.length ? qItems.filter(i => i.result === 'good').length / qItems.length * 100 : null;
+  const lab = d => n <= 7 ? WD[parseYmd(d).getDay()] : parseYmd(d).getDate();
+  const every = n <= 7 ? 1 : n <= 30 ? 5 : 15;
+  const byCat = {};
+  S.study.filter(s => days.includes(s.date)).forEach(s => { byCat[s.category || 'Без категории'] = (byCat[s.category || 'Без категории'] || 0) + num(s.minutes); });
+  const cats = Object.entries(byCat).sort((a, b) => b[1] - a[1]); const maxCat = cats[0]?.[1] || 1;
+  let i = 0;
+  const seg = `<div class="seg">${[7, 30, 90].map(r => `<button class="${r === n ? 'on' : ''}" data-action="range" data-n="${r}">${r} дн</button>`).join('')}</div>`;
+  return `<section class="page">
+    ${topbar('Статистика', `последние ${n} дней`, { date: false, actions: seg })}
+    <div class="kpis">
+      ${kpi('Ккал в день', kcalDays.length ? `${fmtN(avg(kcalDays.map(r => r.kcal)))}` : '—', 'food', i++, kcalDays.length ? `цель ${fmtN(set.kcal)} · записано ${kcalDays.length} дн.` : 'нет записей')}
+      ${kpi('Белка в день', kcalDays.length ? `${fmtN(avg(kcalDays.map(r => r.p)))}<small>г</small>` : '—', 'food', i++, `цель ${set.protein} г`)}
+      ${kpi('Учёба', `${hoursStr(studyTot)}<small>ч</small>`, 'study', i++, `${fmtMin(studyTot / n)} в день`)}
+      ${kpi('Точность ответов', acc === null ? '—' : `${Math.round(acc)}<small>%</small>`, 'quiz', i++, qItems.length ? `${qItems.length} ${plural(qItems.length, 'ответ', 'ответа', 'ответов')}` : 'ещё нет ответов')}
+      ${kpi('Тренировок', `${gymTot}`, 'gym', i++, `${fmt1(gymTot / n * 7)} в неделю`)}
+      ${kpi('Шагов в день', stepDays.length ? `${fmtN(avg(stepDays.map(r => r.steps)))}` : '—', 'steps', i++, `цель ${fmtN(set.steps)}`)}
+      ${kpi('Активных дней', `${active}<small>из ${n}</small>`, 'paper', i++, `серия ${streak()}`)}
+    </div>
+    <div class="grid">
+      ${card({ domain: 'paper', title: 'Карта активности · 16 недель', span: 12, i: i++, body: heatmap(16) })}
+      ${card({ domain: 'food', title: 'Калории', span: 6, i: i++, body: barChart(rows.map(r => ({ label: lab(r.d), v: r.kcal, hint: `${human(r.d)}: ${fmtN(r.kcal)} ккал` })), { color: 'var(--food)', target: set.kcal, unit: 'ккал', labelEvery: every }) })}
+      ${card({ domain: 'steps', title: 'Шаги', span: 6, i: i++, body: barChart(rows.map(r => ({ label: lab(r.d), v: r.steps, hint: `${human(r.d)}: ${fmtN(r.steps)}` })), { color: 'var(--steps)', target: set.steps, unit: '', labelEvery: every }) })}
+      ${card({ domain: 'study', title: 'Учёба, минуты', span: 6, i: i++, body: barChart(rows.map(r => ({ label: lab(r.d), v: r.study, hint: `${human(r.d)}: ${fmtMin(r.study)}` })), { color: 'var(--study)', target: set.study, unit: 'мин', labelEvery: every }) })}
+      ${card({ domain: 'study', title: 'Направления за период', span: 6, i: i++, body: cats.length ? `<div class="hbars">${cats.map(([c, m]) => `<div class="hbar"><span class="hbar-label">${esc(c)}</span><span class="hbar-track"><i data-w="${m / maxCat * 100}"></i></span><span class="hbar-val">${fmtMin(m)}</span></div>`).join('')}</div>` : empty('Нет занятий за период.') })}
+      ${card({ domain: 'gym', title: 'Тренировки по неделям', span: 6, i: i++, body: barChart(weeklyCounts(Math.max(4, Math.ceil(n / 7)), d => gymOn(d).length), { color: 'var(--gym)', unit: 'тр.', max: 7, labelEvery: 1 }) })}
+      ${card({ domain: 'quiz', title: 'Точность по дням', span: 6, i: i++, body: quizHistory(n) || empty('Отвечай на вопросы дня, и здесь появится график.') })}
+    </div>
+  </section>`;
+}
+function kpi(label, val, domain, i, sub) {
+  return `<div class="kpi" style="--c:var(--${domain});--cf:var(--${domain}-f);--i:${i}"><div class="kpi-label">${label}</div><div class="kpi-val">${val}</div>${sub ? `<div class="kpi-sub">${sub}</div>` : ''}</div>`;
+}
+function weeklyCounts(weeks, fn) {
+  const today = ymd(), dow = (parseYmd(today).getDay() + 6) % 7;
+  const monday = addDays(today, -dow);
+  const out = [];
+  for (let w = weeks - 1; w >= 0; w--) {
+    const start = addDays(monday, -7 * w);
+    let v = 0; for (let k = 0; k < 7; k++) v += fn(addDays(start, k));
+    out.push({ label: `${parseYmd(start).getDate()}.${z(parseYmd(start).getMonth() + 1)}`, v, hint: `Неделя с ${human(start)}: ${v}` });
+  }
+  return out;
+}
+function groupBy(arr, fn) {
+  const m = new Map();
+  for (const x of arr) { const k = fn(x); if (!m.has(k)) m.set(k, []); m.get(k).push(x); }
+  return [...m.entries()];
+}
+
+/* ---------- графики ---------- */
+function barChart(rows, { color, target, max, unit = '', labelEvery } = {}) {
+  const n = rows.length; if (!n) return empty('Нет данных');
+  const W = 600, H = 150, pt = 12, pb = 22;
+  const mx = Math.max(max || 0, target || 0, ...rows.map(r => r.v)) || 1;
+  const ih = H - pt - pb, bw = W / n;
+  const y = v => pt + ih * (1 - v / mx);
+  const step = labelEvery || Math.ceil(n / 8);
+  const bars = rows.map((r, i) => {
+    const w = Math.max(2, bw * 0.68), x = i * bw + (bw - w) / 2;
+    const h = r.v ? Math.max(2, ih * r.v / mx) : 2;
+    const yy = r.v ? y(r.v) : pt + ih - 2;
+    return `<rect x="${x.toFixed(1)}" y="${yy.toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}" rx="${Math.min(3, w / 2)}" fill="${color}" opacity="${r.v ? (r.empty ? .35 : .85) : .12}"><title>${esc(r.hint || `${r.label}: ${fmtN(r.v)} ${unit}`)}</title></rect>`;
+  }).join('');
+  const labels = rows.map((r, i) => (i % step === 0 || (step > 1 && i === n - 1 && (n - 1) % step !== 0 && n > 3 && (n - 1 - i) < 0)) ? `<text x="${(i * bw + bw / 2).toFixed(1)}" y="${H - 6}" text-anchor="middle">${esc(r.label)}</text>` : '').join('');
+  const tgt = target && target <= mx ? `<line class="target" x1="0" x2="${W}" y1="${y(target).toFixed(1)}" y2="${y(target).toFixed(1)}"/><text class="target-label" x="${W}" y="${(y(target) - 4).toFixed(1)}" text-anchor="end">${fmtN(target)} ${unit}</text>` : '';
+  return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img">${tgt}${bars}${labels}</svg>`;
+}
+function lineChart(pts, { color, unit = '' }) {
+  const n = pts.length; if (n < 2) return empty('Мало данных');
+  const W = 600, H = 150, pt = 14, pb = 22, pl = 6, pr = 6;
+  const vals = pts.map(p => p.v), lo = Math.min(...vals), hi = Math.max(...vals), span = (hi - lo) || 1;
+  const x = i => pl + (W - pl - pr) * i / (n - 1), y = v => pt + (H - pt - pb) * (1 - (v - lo) / span);
+  const d = pts.map((p, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(p.v).toFixed(1)}`).join(' ');
+  const dots = pts.map((p, i) => `<circle cx="${x(i).toFixed(1)}" cy="${y(p.v).toFixed(1)}" r="3" fill="${color}"><title>${esc(p.label)}: ${fmt1(p.v)} ${unit}</title></circle>`).join('');
+  return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img">
+    <path d="${d}" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>${dots}
+    <text x="${pl}" y="${H - 6}">${esc(pts[0].label)}</text><text x="${W - pr}" y="${H - 6}" text-anchor="end">${esc(pts[n - 1].label)}</text>
+    ${[[hi, vals.indexOf(hi)], [lo, vals.indexOf(lo)]].map(([v, i]) => `<text x="${Math.min(W - 30, Math.max(30, x(i))).toFixed(1)}" y="${(y(v) - 9).toFixed(1)}" text-anchor="middle" fill="${color}">${fmt1(v)}</text>`).join('')}
+  </svg>`;
+}
+function heatmap(weeks) {
+  const today = ymd(), dow = (parseYmd(today).getDay() + 6) % 7;
+  const monday = addDays(today, -dow);
+  const cell = 14, pad = 1.5, q = (cell - pad * 3) / 2;
+  const cols = [];
+  const colors = ['var(--food)', 'var(--study)', 'var(--gym)', 'var(--steps)'];
+  for (let w = weeks - 1; w >= 0; w--) {
+    const start = addDays(monday, -7 * w);
+    for (let k = 0; k < 7; k++) {
+      const d = addDays(start, k); if (d > today) continue;
+      const flags = [mealsOn(d).length > 0, studyOn(d).length > 0, gymOn(d).length > 0, num(dayRec(d).steps) > 0];
+      const X = (weeks - 1 - w) * cell + 18, Y = k * cell;
+      const names = ['еда', 'учёба', 'зал', 'шаги'].filter((_, j) => flags[j]);
+      cols.push(`<g><title>${human(d)}: ${names.join(', ') || 'пусто'}</title>${flags.map((f, j) => `<rect x="${X + pad + (j % 2) * (q + pad)}" y="${Y + pad + Math.floor(j / 2) * (q + pad)}" width="${q}" height="${q}" rx="1.2" fill="${f ? colors[j] : 'rgba(92,64,38,.10)'}"/>`).join('')}</g>`);
+    }
+  }
+  const wd = ['пн', '', 'ср', '', 'пт', '', 'вс'].map((t, k) => t ? `<text x="0" y="${k * cell + cell / 2 + 3.5}">${t}</text>` : '').join('');
+  return `<svg class="heat" viewBox="0 0 ${weeks * cell + 18} ${7 * cell}" role="img" style="max-width:${weeks * cell * 2.2 + 40}px">${wd}${cols.join('')}</svg>
+    <div class="heat-legend"><span><i style="background:var(--food)"></i>еда</span><span><i style="background:var(--study)"></i>учёба</span><span><i style="background:var(--gym)"></i>зал</span><span><i style="background:var(--steps)"></i>шаги</span></div>`;
+}
+
+/* ============================================================
+   НАСТРОЙКИ
+   ============================================================ */
+function pageSettings() {
+  const s = S.settings;
+  const size = new Blob([localStorage.getItem(KEY) || '']).size;
+  return `<section class="page">
+    ${topbar('Настройки', 'цели, Claude, данные', { date: false })}
+    <div class="grid">
+      ${card({ domain: 'paper', title: 'Цели на день', span: 6, body: `<form data-form="settings" class="form-stack">
+        ${field('Как к тебе обращаться', `<input name="name" placeholder="Имя (необязательно)" value="${esc(s.name)}">`)}
+        <div class="row">
+          ${field('Ккал', `<input name="kcal" type="number" min="500" step="50" value="${s.kcal}" style="--c:var(--food)">`)}
+          ${field('Белок, г', `<input name="protein" type="number" min="0" step="5" value="${s.protein}" style="--c:var(--food)">`)}
+          ${field('Шагов', `<input name="steps" type="number" min="0" step="500" value="${s.steps}" style="--c:var(--steps)">`)}
+          ${field('Учёба, мин', `<input name="study" type="number" min="0" step="5" value="${s.study}" style="--c:var(--study)">`)}
+        </div>
+        <div><button class="btn btn-primary" type="submit">Сохранить цели</button></div></form>` })}
+      ${card({ domain: 'quiz', title: 'Вопросы через Claude', span: 6, body: `<form data-form="ai" class="form-stack">
+        <p class="hint" style="margin:0">Без ключа вопросы собираются локально из твоих тезисов. С ключом Claude переформулирует их в живые вопросы на понимание. Ключ хранится только в этом браузере и уходит напрямую в Anthropic API.</p>
+        ${field('API-ключ Anthropic', `<input name="apiKey" type="password" autocomplete="off" placeholder="sk-ant-…" value="${esc(s.apiKey)}">`)}
+        <label class="switch" style="--c:var(--quiz)"><input type="checkbox" name="aiAuto" ${s.aiAuto ? 'checked' : ''}><span>Автоматически переформулировать вопросы дня при открытии</span></label>
+        <div><button class="btn btn-primary" style="--c:var(--quiz)" type="submit">Сохранить</button></div></form>` })}
+      ${card({ domain: 'paper', title: 'Данные', span: 12, body: `
+        <p class="hint" style="margin:0 0 12px">Всё хранится в localStorage этого браузера (${(size / 1024).toFixed(1)} КБ). Делай экспорт время от времени, чтобы не потерять записи при чистке браузера.</p>
+        <div class="chips" style="gap:8px">
+          <button class="btn" data-action="export">${I.download}Экспорт JSON</button>
+          <label class="btn" style="cursor:pointer">${I.upload}Импорт JSON<input type="file" accept="application/json" data-import hidden></label>
+          <button class="btn btn-danger" data-action="wipe">${I.trash}Стереть всё</button>
+        </div>` })}
+    </div>
+  </section>`;
+}
+
+/* ============================================================
+   МОДАЛКА И ТОСТ
+   ============================================================ */
+function openModal({ title, accent, body, submit = 'Сохранить', form }) {
+  const root = $('#modal-root');
+  root.innerHTML = `<div class="overlay" data-action="close-modal"><div class="sheet" style="--c:${accent}" role="dialog" aria-modal="true" aria-label="${esc(title)}">
+    <header class="sheet-head"><h2>${title}</h2><button type="button" class="icon-btn" data-action="close-modal" aria-label="Закрыть">${I.x}</button></header>
+    <form data-form="${form}" class="sheet-form">${body}<footer class="sheet-foot"><button type="button" class="btn btn-ghost" data-action="close-modal">Отмена</button><button class="btn btn-primary" type="submit">${submit}</button></footer></form>
+  </div></div>`;
+  requestAnimationFrame(() => root.classList.add('open'));
+  const first = root.querySelector('input:not([type=hidden]),textarea');
+  setTimeout(() => first && first.focus(), 60);
+}
+function closeModal() {
+  const root = $('#modal-root'); if (!root.innerHTML) return;
+  root.classList.remove('open');
+  setTimeout(() => { root.innerHTML = ''; }, reduceMotion ? 0 : 220);
+}
+function toast(msg, err = false) {
+  const el = document.createElement('div'); el.className = 'toast' + (err ? ' err' : ''); el.textContent = msg;
+  $('#toast-root').appendChild(el); setTimeout(() => el.remove(), 3300);
+}
+
+/* ============================================================
+   ДЕЙСТВИЯ
+   ============================================================ */
+const ACTIONS = {
+  'date': el => { view.date = addDays(view.date, +el.dataset.n); render(); },
+  'date-today': () => { view.date = ymd(); render(); },
+  'range': el => { view.range = +el.dataset.n; render(); },
+  'close-modal': (el, e) => { if (el.classList.contains('overlay') && e.target !== el) return; closeModal(); },
+  'add-meal': () => mealForm(),
+  'add-study': () => studyForm(),
+  'add-gym': () => gymForm(),
+  'add-steps': () => openModal({
+    title: 'Шаги и вес', accent: 'var(--steps)', form: 'steps',
+    body: `<input class="big-input" name="steps" type="number" min="0" step="100" inputmode="numeric" placeholder="сколько шагов" value="${dayRec(view.date).steps || ''}">
+      ${field('Вес, кг (необязательно)', `<input name="weight" type="number" min="0" step="0.1" inputmode="decimal" placeholder="—" value="${dayRec(view.date).weight || ''}">`)}`
+  }),
+  'edit-meal': el => mealForm(S.meals.find(m => m.id === el.dataset.id)),
+  'edit-study': el => studyForm(S.study.find(s => s.id === el.dataset.id)),
+  'edit-gym': el => gymForm(S.workouts.find(w => w.id === el.dataset.id)),
+  'del-meal': el => { if (!confirm('Удалить запись?')) return; S.meals = S.meals.filter(m => m.id !== el.dataset.id); save(); render(); toast('Удалено'); },
+  'del-study': el => { if (!confirm('Удалить занятие вместе с его карточками?')) return; const id = el.dataset.id; S.study = S.study.filter(s => s.id !== id); Object.keys(S.srs).forEach(k => { if (k.startsWith(id + ':')) delete S.srs[k]; }); save(); render(); toast('Удалено'); },
+  'del-gym': el => { if (!confirm('Удалить тренировку?')) return; S.workouts = S.workouts.filter(w => w.id !== el.dataset.id); save(); render(); toast('Удалено'); },
+  'quick-meal': el => {
+    const f = S.foods[el.dataset.name.toLowerCase()]; if (!f) return;
+    const m = { id: uid(), date: view.date, time: view.date === ymd() ? nowHM() : '12:00', name: f.name, kcal: f.kcal, p: f.p, f: f.f, c: f.c };
+    S.meals.push(m); rememberFood(m); save(); render(); toast(`${f.name} — записано`);
+  },
+  'fill-food': el => {
+    const f = S.foods[el.dataset.name.toLowerCase()]; if (!f) return;
+    const form = el.closest('form');
+    form.name.value = f.name; form.kcal.value = f.kcal; form.p.value = f.p || ''; form.f.value = f.f || ''; form.c.value = f.c || '';
+    form.kcal.focus();
+  },
+  'mood': el => { const d = view.date; S.days[d] = { ...dayRec(d), mood: dayRec(d).mood === +el.dataset.v ? 0 : +el.dataset.v }; save(); document.querySelectorAll('.mood').forEach(m => m.classList.toggle('on', +m.dataset.v === S.days[d].mood)); },
+  'reveal': el => { const q = S.quizzes[ymd()]; q.items[+el.dataset.k].revealed = true; save(); render(); },
+  'grade': el => {
+    const q = S.quizzes[ymd()], it = q.items[+el.dataset.k];
+    it.result = el.dataset.g; gradeCard(it.cardId, el.dataset.g); save(); render();
+  },
+  'quiz-early': () => { const d = ymd(); const pool = soonestCards(5, d); if (!pool.length) return; S.quizzes[d] = buildQuiz(d, pool); save(); render(); },
+  'quiz-more': () => { const d = ymd(), q = S.quizzes[d]; const have = new Set(q.items.map(i => i.cardId)); const pool = dueCards(d).filter(c => !have.has(c.id)); const extra = buildQuiz(d + ':' + q.items.length, pool); q.items.push(...extra.items); save(); render(); },
+  'ai-quiz': () => aiQuiz(),
+  'export': () => {
+    const blob = new Blob([JSON.stringify(S, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `bortjournal-${ymd()}.json`; a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000); toast('Файл сохранён');
+  },
+  'wipe': () => { if (!confirm('Стереть все записи без возможности восстановления?')) return; if (!confirm('Точно? Экспорт сделан?')) return; localStorage.removeItem(KEY); S = load(); render(); toast('Чисто'); }
+};
+
+const FORMS = {
+  meal(fd) {
+    const id = fd.get('id') || uid();
+    const m = { id, date: fd.get('date') || view.date, time: fd.get('time') || '', name: String(fd.get('name')).trim(), kcal: num(fd.get('kcal')), p: num(fd.get('p')), f: num(fd.get('f')), c: num(fd.get('c')) };
+    if (!m.name) return;
+    const idx = S.meals.findIndex(x => x.id === id);
+    if (idx >= 0) S.meals[idx] = m; else { S.meals.push(m); rememberFood(m); }
+    save(); closeModal(); render(); toast(idx >= 0 ? 'Сохранено' : `${m.name} — ${fmtN(m.kcal)} ккал`);
+  },
+  study(fd) {
+    const id = fd.get('id') || uid();
+    const s = { id, date: fd.get('date') || view.date, time: fd.get('time') || '', topic: String(fd.get('topic')).trim(), category: String(fd.get('category') || '').trim(), minutes: num(fd.get('minutes')), notes: parseLines(fd.get('notes')), qa: parseQA(fd.get('qa')) };
+    if (!s.topic) return;
+    const idx = S.study.findIndex(x => x.id === id);
+    if (idx >= 0) S.study[idx] = s; else S.study.push(s);
+    save(); closeModal(); render();
+    const n = s.notes.length + s.qa.length + (s.notes.length >= 2 ? 1 : 0);
+    toast(idx >= 0 ? 'Сохранено' : n ? `Записано. ${n} ${plural(n, 'карточка', 'карточки', 'карточек')} придут завтра` : 'Записано');
+  },
+  gym(fd) {
+    const id = fd.get('id') || uid();
+    const w = { id, date: fd.get('date') || view.date, time: fd.get('time') || '', type: String(fd.get('type')).trim(), minutes: num(fd.get('minutes')), exercises: parseExercises(fd.get('exercises')), note: String(fd.get('note') || '').trim() };
+    if (!w.type) return;
+    const idx = S.workouts.findIndex(x => x.id === id);
+    if (idx >= 0) S.workouts[idx] = w; else S.workouts.push(w);
+    save(); closeModal(); render(); toast(idx >= 0 ? 'Сохранено' : 'Тренировка записана');
+  },
+  steps(fd) {
+    const d = view.date;
+    S.days[d] = { ...dayRec(d), steps: num(fd.get('steps')), weight: num(fd.get('weight')) || undefined };
+    save(); closeModal(); render(); toast('Сохранено');
+  },
+  settings(fd) {
+    Object.assign(S.settings, { name: String(fd.get('name') || '').trim(), kcal: num(fd.get('kcal')) || 2200, protein: num(fd.get('protein')), steps: num(fd.get('steps')) || 10000, study: num(fd.get('study')) || 60 });
+    save(); render(); toast('Цели обновлены');
+  },
+  ai(fd) {
+    S.settings.apiKey = String(fd.get('apiKey') || '').trim();
+    S.settings.aiAuto = fd.get('aiAuto') === 'on';
+    save(); toast(S.settings.apiKey ? 'Ключ сохранён' : 'Ключ удалён');
+  }
+};
+
+document.addEventListener('click', e => {
+  const el = e.target.closest('[data-action]'); if (!el) return;
+  const fn = ACTIONS[el.dataset.action]; if (fn) fn(el, e);
+});
+document.addEventListener('submit', e => {
+  const f = e.target; if (!f.dataset.form) return;
+  e.preventDefault(); FORMS[f.dataset.form]?.(new FormData(f), f);
+});
+let noteTimer;
+document.addEventListener('input', e => {
+  const t = e.target;
+  if (t.dataset.live === 'exercises') { const p = $('#ex-preview'); if (p) p.textContent = exPreview(t.value); }
+  if (t.dataset.note !== undefined) {
+    clearTimeout(noteTimer);
+    noteTimer = setTimeout(() => { const d = t.dataset.note; S.days[d] = { ...dayRec(d), note: t.value }; save(); }, 400);
+  }
+});
+document.addEventListener('change', e => {
+  const t = e.target;
+  if (t.dataset.import !== undefined && t.files[0]) {
+    const r = new FileReader();
+    r.onload = () => {
+      try {
+        const d = JSON.parse(r.result);
+        if (!d || !Array.isArray(d.meals) || !Array.isArray(d.study)) throw new Error('не похоже на экспорт Бортжурнала');
+        if (!confirm('Заменить текущие данные импортированными?')) return;
+        localStorage.setItem(KEY, JSON.stringify(d)); S = load(); render(); toast('Импортировано');
+      } catch (err) { toast(`Импорт не удался: ${err.message}`, true); }
+    };
+    r.readAsText(t.files[0]); t.value = '';
+  }
+});
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') closeModal();
+  if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { const f = $('#modal-root form'); if (f) f.requestSubmit(); }
+});
+
+// Автоподстановка через Claude при открытии вопросов, если включено
+window.addEventListener('hashchange', () => {
+  if (view.page === 'quiz' && S.settings.aiAuto && S.settings.apiKey) {
+    const q = S.quizzes[ymd()];
+    if (q && q.source !== 'ai' && q.items.every(i => !i.result)) aiQuiz();
+  }
+});
+
+route();
