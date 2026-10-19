@@ -1968,3 +1968,30 @@ div.feed-i{cursor:default}
 .remind-i span{display:flex;flex-direction:column;min-width:0}
 .remind-i b{font-size:14px}
 .remind-i small{font-size:12px;color:var(--paper-2)}
+
+/* ---------- повторы и планы ---------- */
+.task-rep{display:inline-flex;margin-left:6px;color:var(--paper-3);vertical-align:-2px}
+.task-rep svg{width:13px;height:13px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+.comp-lbl svg{width:13px;height:13px;fill:none;stroke:currentColor;stroke-width:2.2;vertical-align:-2px;margin-right:3px}
+.comp-days{display:inline-flex;gap:4px;flex-wrap:wrap}
+.rep{display:flex;flex-direction:column;gap:8px}
+.rep-k,.rep-d{cursor:pointer}
+.gp-plans{display:flex;flex-direction:column;gap:8px}
+.gp-plan{display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:16px;background:var(--ink-2);border:1.5px solid transparent}
+.gp-plan.today{border-color:var(--gym);background:var(--gym-f)}
+.gp-plan-ics{display:flex;gap:3px;flex:none}
+.gp-plan-m{flex:1;min-width:0;display:flex;flex-direction:column}
+.gp-plan-m b{font:800 16px var(--display)}
+.gp-plan-m span{font-size:12px;color:var(--paper-2)}
+.gp-plan-m em{font-style:normal;font-weight:700;color:var(--gym)}
+.gp-plan-list{display:flex;flex-direction:column;gap:6px}
+.gp-plan-list span{display:flex;align-items:center;gap:8px;font-size:14px;font-weight:600}
+.gp-plan-list small{margin-left:auto;color:var(--paper-2);font-weight:500}
+.gym-start-alt{background:var(--ink-1);color:var(--gym);border:1.5px solid var(--line-2)}
+.gym-start-alt b{font-size:18px}
+@media (max-width:860px){ .gp-plan-ics{display:none} }
+.rep-days[hidden]{display:none}
+.gym-hero{display:flex;flex-wrap:wrap}
+.gym-hero .gym-start{flex:1 1 260px}
+.gym-hero .gym-repeat{flex:2 1 420px}
+@media (max-width:860px){ .gym-start-alt{padding:12px 16px} .gym-start-alt .gi{width:34px;height:34px} .gym-start-alt small{display:none} }

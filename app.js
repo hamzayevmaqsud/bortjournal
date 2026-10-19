@@ -10,7 +10,7 @@ const DEF = {
   settings: { kcal: 2200, protein: 140, steps: 10000, study: 60, name: '', booksGoal: 12 },
   meals: [], study: [], workouts: [], days: {}, srs: {}, quizzes: {}, foods: {},
   profile: null, activity: {}, drinks: [], sets: [], studyTime: {},
-  tasks: [], goals: [], money: [], budget: {}, books: [], readLog: [], achieved: {}, exercises: [], gymLive: null, gymPlans: [], remindHints: {}
+  tasks: [], goals: [], money: [], budget: {}, books: [], readLog: [], achieved: {}, exercises: [], gymLive: null, gymPlans: [], remindHints: {}, series: []
 };
 let S = structuredClone(DEF);
 let me = null, rev = 0, photoOn = false;
@@ -129,6 +129,7 @@ function checkDay() {
   if (view.date === old) view.date = t;
   if (view.planDay === old) view.planDay = t;
   if (view.planDate === old) view.planDate = t;
+  if (me && syncSeries()) save();
   if (me && !view.wizard && !typingNow() && !$('#modal-root .overlay')) { render(); maybeWeekly(); }
 }
 setInterval(checkDay, 60e3);
@@ -570,7 +571,7 @@ function shiftDate(kind, d, n) {
 }
 const goalsOf = (kind, key) => S.goals.filter(g => g.period === kind && g.key === key);
 const tasksOn = d => S.tasks.filter(t => t.date === d).sort((a, b) => (a.done - b.done) || (a.time || '99').localeCompare(b.time || '99') || (b.prio ? 1 : 0) - (a.prio ? 1 : 0));
-const overdueTasks = () => { const t = ymd(); return S.tasks.filter(x => x.date && x.date < t && !x.done).sort((a, b) => a.date.localeCompare(b.date)); };
+const overdueTasks = () => { const t = ymd(); return S.tasks.filter(x => x.date && x.date < t && !x.done && !x.seriesId).sort((a, b) => a.date.localeCompare(b.date)); };
 /* Прогресс цели: по её задачам и подцелям; если их нет — отметка вручную */
 function goalProgress(g, depth = 0) {
   const tasks = S.tasks.filter(t => t.goalId === g.id), kids = depth < 4 ? S.goals.filter(x => x.parentId === g.id) : [];
@@ -601,12 +602,63 @@ function taskRow(t, opts = {}) {
   return `<div class="task ${t.done ? 'done' : ''} ${t.prio ? 'prio' : ''}" draggable="true" data-task="${t.id}">
     <button class="cbx ${t.done ? 'on' : ''}" data-action="task-toggle" data-id="${t.id}" aria-label="${t.done ? 'Вернуть' : 'Выполнено'}">${t.done ? I.check : ''}</button>
     <div class="task-main" data-action="task-edit" data-id="${t.id}">
-      <span class="task-title">${t.prio ? '<b class="task-prio">!</b>' : ''}${esc(t.title)}</span>
+      <span class="task-title">${t.prio ? '<b class="task-prio">!</b>' : ''}${esc(t.title)}${t.seriesId ? `<i class="task-rep" title="Повторяется">${I.repeat}</i>` : ''}</span>
       ${(() => { const meta = [opts.showDate && t.date ? relDay(t.date) : '', t.time && !opts.noTime ? esc(t.time) : '', g ? `◎ ${esc(g.title)}` : ''].filter(Boolean).join(' · '); return meta ? `<span class="task-meta">${meta}</span>` : ''; })()}
     </div>
   </div>`;
 }
 /* Строка создания задачи со всеми опциями сразу. scope — где она стоит (план недели, главная) */
+
+/* ============================================================
+   ПОВТОРЯЮЩИЕСЯ ЗАДАЧИ
+   Серия хранит правило; задачи по нему создаются на 2 недели вперёд.
+   id задачи — «серия:дата», поэтому два устройства не наплодят дублей.
+   ============================================================ */
+const REPEAT = { daily: 'Каждый день', weekdays: 'По будням', days: 'По дням недели', weekly: 'Каждую неделю', monthly: 'Каждый месяц' };
+const WD_ORDER = [1, 2, 3, 4, 5, 6, 0];
+function repeatHits(sr, d) {
+  if (d < sr.start || (sr.end && d > sr.end) || (sr.skip || []).includes(d)) return false;
+  const wd = parseYmd(d).getDay(), r = sr.rule || {};
+  if (r.kind === 'daily') return true;
+  if (r.kind === 'weekdays') return wd >= 1 && wd <= 5;
+  if (r.kind === 'days') return (r.days || []).includes(wd);
+  if (r.kind === 'weekly') return wd === parseYmd(sr.start).getDay();
+  if (r.kind === 'monthly') { const dom = parseYmd(sr.start).getDate(), dd = parseYmd(d), last = new Date(dd.getFullYear(), dd.getMonth() + 1, 0).getDate(); return dd.getDate() === Math.min(dom, last); }
+  return false;
+}
+function repeatText(sr) {
+  const r = sr.rule || {};
+  if (r.kind === 'days') return (r.days || []).slice().sort((a, b) => WD_ORDER.indexOf(a) - WD_ORDER.indexOf(b)).map(x => WD[x]).join(', ');
+  if (r.kind === 'weekly') return `каждый ${['вс', 'пн', 'вт', 'ср', 'чт', 'пт', 'сб'][parseYmd(sr.start).getDay()]}`;
+  if (r.kind === 'monthly') return `${parseYmd(sr.start).getDate()}-го числа`;
+  return (REPEAT[r.kind] || '').toLowerCase();
+}
+// создаём недостающие задачи серий с сегодняшнего дня на 14 дней вперёд
+function syncSeries() {
+  let changed = false;
+  const t = ymd(), have = new Set(S.tasks.map(x => x.id));
+  for (const sr of S.series) {
+    for (let k = 0; k < 14; k++) {
+      const d = addDays(t, k), id = `${sr.id}:${d}`;
+      if (have.has(id) || !repeatHits(sr, d)) continue;
+      S.tasks.push({ id, seriesId: sr.id, title: sr.title, date: d, time: sr.time || '', done: false, prio: !!sr.prio, goalId: sr.goalId || null, note: sr.note || '', created: t });
+      have.add(id); changed = true;
+    }
+  }
+  return changed;
+}
+function newSeries(o) {
+  const sr = { id: 'r' + uid(), title: o.title, time: o.time || '', prio: !!o.prio, goalId: o.goalId || null, note: o.note || '', rule: { kind: o.kind, days: o.days || [] }, start: o.start || ymd(), end: null, skip: [] };
+  S.series.push(sr); syncSeries(); return sr;
+}
+// повтор в формах: выбор правила и дней недели
+function repeatPicker(name, kind = '', days = []) {
+  return `<div class="rep" data-rep="${name}">
+    <div class="chips">${[['', 'Не повторять'], ...Object.entries(REPEAT)].map(([k, n]) => `<label class="chip chip-btn rep-k ${kind === k ? 'on' : ''}"><input type="radio" name="${name}" value="${k}" ${kind === k ? 'checked' : ''} hidden>${n}</label>`).join('')}</div>
+    <div class="chips rep-days" ${kind === 'days' ? '' : 'hidden'}>${WD_ORDER.map(w => `<label class="chip chip-btn rep-d ${days.includes(w) ? 'on' : ''}"><input type="checkbox" name="${name}Days" value="${w}" ${days.includes(w) ? 'checked' : ''} hidden>${WD[w]}</label>`).join('')}</div>
+  </div>`;
+}
+
 function compState(scope, date) {
   view.comp = view.comp || {};
   const c = view.comp[scope] = view.comp[scope] || { title: '', time: '', prio: false, goalId: '', note: '', noteOpen: false };
@@ -620,7 +672,7 @@ function composerHtml(scope, date) {
   const goals = [...goalsOf('week', periodKey('week', ref)), ...goalsOf('month', periodKey('month', ref)), ...goalsOf('quarter', periodKey('quarter', ref)), ...goalsOf('year', periodKey('year', ref))];
   const dayChip = (d, label) => `<button type="button" class="opt-chip ${c.date === d ? 'on' : ''}" data-action="comp-date" data-scope="${scope}" data-d="${d}">${label}</button>`;
   const other = c.date && c.date !== t && c.date !== tm && !week.includes(c.date);
-  const set = c.time || c.prio || c.goalId || c.note || c.noteOpen || c.date !== c.ctx;
+  const set = c.time || c.prio || c.goalId || c.note || c.noteOpen || c.rep || c.date !== c.ctx;
   // на главной опции свёрнуты под «⋯», в планах — раскрываются при вводе
   const open = scope === 'today' ? (c.optsOpen || set) : (c.open || c.title || set);
   return `<div class="composer ${open ? 'open' : ''} ${scope === 'today' ? 'compact' : ''}" data-scope="${scope}">
@@ -642,6 +694,10 @@ function composerHtml(scope, date) {
         ${goals.length ? `<label class="opt-chip opt-goal ${c.goalId ? 'on' : ''}">◎<select data-comp="${scope}" data-f="goalId" aria-label="Цель"><option value="">Цель</option>${goals.map(g => `<option value="${g.id}" ${c.goalId === g.id ? 'selected' : ''}>${PERIODS[g.period]}: ${esc(g.title)}</option>`).join('')}</select></label>` : ''}
         <button type="button" class="opt-chip ${c.noteOpen || c.note ? 'on' : ''}" data-action="comp-note" data-scope="${scope}">${I.edit}Заметка</button>
       </div>
+      <div class="comp-group"><span class="comp-lbl">${I.repeat}Повтор</span>
+        ${[['', 'Нет'], ...Object.entries(REPEAT)].map(([k, n]) => `<button type="button" class="opt-chip ${(c.rep || '') === k ? 'on' : ''}" data-action="comp-rep" data-scope="${scope}" data-k="${k}">${n}</button>`).join('')}
+        ${c.rep === 'days' ? `<span class="comp-days">${WD_ORDER.map(w => `<button type="button" class="opt-chip ${(c.repDays || []).includes(w) ? 'on' : ''}" data-action="comp-repday" data-scope="${scope}" data-w="${w}">${WD[w]}</button>`).join('')}</span>` : ''}
+      </div>
       ${c.noteOpen ? `<textarea class="comp-note" data-comp="${scope}" data-f="note" rows="2" placeholder="Детали, ссылки, что подготовить">${esc(c.note)}</textarea>` : ''}
     </div>
   </div>`;
@@ -649,6 +705,12 @@ function composerHtml(scope, date) {
 function compAdd(scope) {
   const c = view.comp?.[scope]; if (!c) return;
   const title = c.title.trim(); if (!title) { $(`[data-comp="${scope}"][data-f=title]`)?.focus(); return; }
+  if (c.rep) {
+    if (c.rep === 'days' && !(c.repDays || []).length) { toast('Выбери дни недели для повтора', true); return; }
+    const sr = newSeries({ title, time: c.time, prio: c.prio, goalId: c.goalId, note: c.note.trim(), kind: c.rep, days: c.repDays, start: c.date || ymd() });
+    Object.assign(c, { title: '', time: '', prio: false, note: '', noteOpen: false, goalId: '', date: c.ctx, open: false, optsOpen: false, rep: '', repDays: [] });
+    save(); render(); toast(`Повторяется: ${repeatText(sr)}`); return;
+  }
   const t = { id: uid(), title, date: c.date || null, time: c.time || '', done: false, prio: c.prio, goalId: c.goalId || null, note: c.note.trim(), created: ymd() };
   S.tasks.push(t);
   Object.assign(c, { title: '', time: '', prio: false, note: '', noteOpen: false, goalId: '', date: c.ctx, open: false, optsOpen: false });
@@ -786,7 +848,9 @@ function taskForm(t, date) {
       ${goals.length ? field('Цель', `<select name="goalId"><option value="">— без цели —</option>${goals.map(x => `<option value="${x.id}" ${t?.goalId === x.id ? 'selected' : ''}>${PERIODS[x.period]}: ${esc(x.title)}</option>`).join('')}</select>`) : ''}
       <label class="switch" style="--c:var(--orange)"><input type="checkbox" name="prio" ${t?.prio ? 'checked' : ''}><span>Важная</span></label>
       ${field('Заметка', `<textarea name="note" rows="2">${esc(t?.note || '')}</textarea>`)}
-      ${t ? `<button type="button" class="btn btn-danger btn-sm" data-action="task-del" data-id="${t.id}">${I.trash}Удалить задачу</button>` : ''}`
+      ${(() => { const sr = t?.seriesId && S.series.find(x => x.id === t.seriesId); return field(sr ? `Повтор · сейчас ${repeatText(sr)}` : 'Повтор', repeatPicker('rep', sr ? sr.rule.kind : '', sr ? sr.rule.days || [] : [])) + (sr ? '<p class="hint" style="margin:0">Название, время и важность поменяются и в будущих повторах.</p>' : ''); })()}
+      ${t ? (t.seriesId ? `<div class="chips"><button type="button" class="btn btn-danger btn-sm" data-action="task-del" data-id="${t.id}">${I.trash}Удалить только эту</button><button type="button" class="btn btn-danger btn-sm" data-action="series-del" data-id="${t.seriesId}">${I.trash}Удалить все повторы</button></div>`
+        : `<button type="button" class="btn btn-danger btn-sm" data-action="task-del" data-id="${t.id}">${I.trash}Удалить задачу</button>`) : ''}`
   });
 }
 function todayTasksCard(d) {
@@ -2275,6 +2339,30 @@ function exSheet(key) {
     ${S.gymLive && !S.gymLive.ex.some(x => (x.ex || exKey(x)) === key) && c.id ? `<button class="btn btn-primary" style="--c:var(--gym)" data-action="gx-add-one" data-id="${c.id}">${I.plus}Добавить в тренировку</button>` : ''}` });
 }
 
+
+/* планы тренировок: «Грудь — пн, чт в 19:00» с набором упражнений */
+const plansToday = (d = ymd()) => S.gymPlans.filter(p => (p.days || []).includes(parseYmd(d).getDay()));
+function planDaysText(p) { return (p.days || []).slice().sort((a, b) => WD_ORDER.indexOf(a) - WD_ORDER.indexOf(b)).map(x => WD[x]).join(', ') || 'дни не выбраны'; }
+function planCard() {
+  if (!S.gymPlans.length) return `<p class="hint" style="margin:0">План — тренировка по расписанию: «Грудь — пн, чт в 19:00». В свой день он встанет первым на «Сегодня», а напоминание придёт в назначенное время. Создай его из любой тренировки в журнале — кнопка «В план».</p>`;
+  return `<div class="gp-plans">${S.gymPlans.map(p => `<div class="gp-plan ${plansToday().includes(p) ? 'today' : ''}">
+      <div class="gp-plan-ics">${(p.ex || []).slice(0, 5).map(e => exIcon(exOf(e), 'sm')).join('')}</div>
+      <div class="gp-plan-m"><b>${esc(p.name)}</b><span>${planDaysText(p)}${p.time ? ` · ${esc(p.time)}` : ''} · ${(p.ex || []).length} упр.${plansToday().includes(p) ? ' · <em>сегодня</em>' : ''}</span></div>
+      <button class="btn btn-primary btn-sm" style="--c:var(--gym)" data-action="plan-start" data-id="${p.id}">Начать</button>
+      <button class="icon-btn" data-action="plan-edit" data-id="${p.id}" aria-label="Изменить план">${I.edit}</button>
+    </div>`).join('')}</div>`;
+}
+function planForm(p, fromWorkout) {
+  const src = fromWorkout ? fromWorkout.exercises : p?.ex || [];
+  openModal({ title: p ? 'План тренировки' : 'Новый план', accent: 'var(--gym)', form: 'gym-plan', submit: p ? 'Сохранить' : 'Создать план', body: `
+    <input type="hidden" name="id" value="${p?.id || ''}"><input type="hidden" name="from" value="${fromWorkout?.id || ''}">
+    ${field('Название', `<input name="name" required maxlength="40" value="${esc(p?.name || fromWorkout?.type || '')}" placeholder="Грудь и трицепс">`)}
+    <div class="field"><label>Дни</label><div class="chips">${WD_ORDER.map(w => `<label class="chip chip-btn rep-d ${(p?.days || []).includes(w) ? 'on' : ''}"><input type="checkbox" name="days" value="${w}" ${(p?.days || []).includes(w) ? 'checked' : ''} hidden>${WD[w]}</label>`).join('')}</div></div>
+    ${field('Время', `<input type="time" name="time" value="${esc(p?.time || '19:00')}">`)}
+    <div class="field"><label>Упражнения · ${src.length}</label><div class="gp-plan-list">${src.map(e => `<span>${exIcon(exOf(e), 'sm')}${esc(exOf(e).name)}<small>${(e.sets || []).length || e.n || ''} подх.</small></span>`).join('')}</div></div>
+    ${p ? `<button type="button" class="btn btn-danger btn-sm" data-action="plan-del" data-id="${p.id}">${I.trash}Удалить план</button>` : ''}` });
+}
+
 /* страница зала */
 function pageGym() {
   if (S.gymLive) return pageGymLive();
@@ -2296,7 +2384,8 @@ function pageGym() {
   return `<section class="page" style="--c:var(--gym)">
     ${topbar('Зал', S.workouts.length ? `${S.workouts.length} ${plural(S.workouts.length, 'тренировка', 'тренировки', 'тренировок')}` : 'тренировки по подходам', { date: false, actions: `<button class="btn btn-ghost" data-action="gym-past">${I.plus}Записать прошедшую</button>` })}
     <div class="gym-hero">
-      <button class="gym-start" data-action="gym-start">${GI.dumbbell ? gymIcon('dumbbell') : ''}<span><b>Начать тренировку</b><small>подходы, вес и отдых — по ходу</small></span></button>
+      ${(() => { const p = plansToday().find(() => !gymOn(ymd()).length); return p ? `<button class="gym-start" data-action="plan-start" data-id="${p.id}">${gymIcon('dumbbell')}<span><b>Сегодня: ${esc(p.name)}</b><small>по плану${p.time ? ` в ${esc(p.time)}` : ''} · ${(p.ex || []).length} упр. — начать</small></span></button>` : ''; })()}
+      <button class="gym-start ${plansToday().length && !gymOn(ymd()).length ? 'gym-start-alt' : ''}" data-action="gym-start">${GI.dumbbell ? gymIcon('dumbbell') : ''}<span><b>Начать тренировку</b><small>подходы, вес и отдых — по ходу</small></span></button>
       ${repeat.length ? `<div class="gym-repeat"><span class="bud-k">Повторить</span>${repeat.map(w => `<button class="gym-rep" data-action="gym-repeat" data-id="${w.id}"><span class="gym-rep-ics">${(w.exercises || []).slice(0, 4).map(e => exIcon(exOf(e), 'sm')).join('')}</span><b>${esc(w.type || workoutTitle(w.exercises))}</b><small>${human(w.date)} · ${(w.exercises || []).length} упр.</small></button>`).join('')}</div>` : ''}
     </div>
     ${!S.workouts.length ? emptyHero({ color: 'var(--gym)', title: 'Как это работает', text: 'Тренировка записывается по ходу — не нужно ничего вспоминать вечером.',
@@ -2310,6 +2399,7 @@ function pageGym() {
     <div class="grid">
       ${card({ domain: 'gym', title: 'Тренировок в неделю', span: 7, i: i++, body: barChart(weeklyCounts(12, d => gymOn(d).length), { color: 'var(--gym)', unit: 'тр.', max: 7, labelEvery: 1, values: true }) })}
       ${card({ domain: 'gym', title: 'Мышцы за 30 дней · подходы', span: 5, i: i++, body: gl.length ? `<div class="hbars">${gl.map(([g, n]) => `<div class="hbar" style="--c:${GYM_GROUPS[g][1]}"><span class="hbar-label">${GYM_GROUPS[g][0]}</span><span class="hbar-track"><i data-w="${n / gmax * 100}"></i></span><span class="hbar-val">${n}</span></div>`).join('')}</div>${Object.keys(GYM_GROUPS).filter(g => g !== 'cardio' && g !== 'full' && !groups[g]).length ? `<p class="hint">Не было: ${Object.keys(GYM_GROUPS).filter(g => g !== 'cardio' && g !== 'full' && !groups[g]).map(g => GYM_GROUPS[g][0].toLowerCase()).join(', ')}.</p>` : ''}` : empty('Тренировок за месяц не было.') })}
+      ${card({ domain: 'gym', title: 'План тренировок', span: 12, i: i++, body: planCard() })}
       ${card({ domain: 'gym', title: 'Мои упражнения', span: 12, i: i++, body: myEx.length ? `<div class="gym-ex">${myEx.slice(0, 24).map(m => { const b = exBest(m.key), h = exHistory(m.key); return `<button class="gym-ex-i" data-action="ex-open" data-k="${esc(m.key)}">${exIcon(m.c)}<span><b>${esc(m.c.name)}</b><small>${m.c.kind === 'w' && b.kg ? `рекорд ${fmtKg(b.kg)} кг` : m.c.kind === 'bw' && b.reps ? `до ${b.reps} повт.` : m.c.kind === 'c' && b.km ? `до ${fmt1(b.km)} км` : ''}${h.length ? ` · ${h.length}×` : ''} · ${human(m.date)}</small></span></button>`; }).join('')}</div>` : empty('Начни тренировку — здесь появятся твои упражнения с рекордами и прогрессом.') })}
       ${card({ domain: 'gym', title: 'Журнал', span: 12, i: i++, body: recent.map(gymItem).join('') })}
     </div>`}
@@ -2319,7 +2409,7 @@ function gymItem(w) {
   const vol = volume(w);
   return `<article class="gw">
     <header class="gw-head"><div><b>${esc(w.type || workoutTitle(w.exercises || []))}</b><span>${relDay(w.date)} · ${human(w.date)}${w.time ? ` · ${esc(w.time)}` : ''}${w.minutes ? ` · ${fmtMin(w.minutes)}` : ''}${vol ? ` · ${fmtN(vol)} кг` : ''}</span></div>
-      <div class="gw-act"><button class="btn btn-ghost btn-sm" data-action="gym-repeat" data-id="${w.id}">${I.repeat}Повторить</button><button class="icon-btn" data-action="edit-gym" data-id="${w.id}" aria-label="Изменить">${I.edit}</button><button class="icon-btn" data-action="del-gym" data-id="${w.id}" aria-label="Удалить">${I.trash}</button></div></header>
+      <div class="gw-act"><button class="btn btn-ghost btn-sm" data-action="gym-repeat" data-id="${w.id}">${I.repeat}Повторить</button><button class="btn btn-ghost btn-sm" data-action="plan-from" data-id="${w.id}">${I.plans}В план</button><button class="icon-btn" data-action="edit-gym" data-id="${w.id}" aria-label="Изменить">${I.edit}</button><button class="icon-btn" data-action="del-gym" data-id="${w.id}" aria-label="Удалить">${I.trash}</button></div></header>
     ${(w.exercises || []).length ? `<ul class="gw-ex">${w.exercises.map(e => { const c = exOf(e); return `<li><button type="button" data-action="ex-open" data-k="${esc(exKey(e))}">${exIcon(c, 'sm')}<span>${esc(c.name)}</span></button><em>${setsStr(e) || '—'}</em></li>`; }).join('')}</ul>` : ''}
     ${w.note ? `<p class="hint">${esc(w.note)}</p>` : ''}
   </article>`;
@@ -3203,7 +3293,8 @@ function pageTodayMobile(c) {
     d === t && due && ['#quiz', I.quiz, 'var(--quiz)', `Вопросы дня`, quiz ? `осталось ${due} из ${quiz.items.length}` : `${Math.min(due, QUIZ_SIZE)} ждут ответа`],
     B && ['#budget', I.budget, 'var(--money)', B.leftToday >= 0 ? `Можно потратить ${fmtM(B.leftToday)}` : `Перерасход ${fmtM(-B.leftToday)}`, `лимит дня ${fmtM(B.allow)}`],
     reading && ['#books', I.books, 'var(--books)', reading.title, `${bookPct(reading)}% · стр. ${num(reading.page)}${num(reading.pages) ? ' из ' + num(reading.pages) : ''}${readOn(d) ? ` · сегодня +${readOn(d)}` : ''}`],
-    gymOn(d).length && !S.gymLive && ['#gym', I.gym, 'var(--gym)', gymOn(d).map(w => w.type).join(', '), 'тренировка сделана ✓']
+    gymOn(d).length && !S.gymLive && ['#gym', I.gym, 'var(--gym)', gymOn(d).map(w => w.type).join(', '), 'тренировка сделана ✓'],
+    !gymOn(d).length && !S.gymLive && d === t && plansToday(d)[0] && ['#gym', I.gym, 'var(--gym)', `Сегодня тренировка: ${plansToday(d)[0].name}`, `по плану${plansToday(d)[0].time ? ' в ' + plansToday(d)[0].time : ''} — начать`]
   ].filter(Boolean);
   return `<section class="page page-today m-today">
     <header class="mt-head">
@@ -3857,6 +3948,11 @@ function toast(msg, err = false) {
    ДЕЙСТВИЯ
    ============================================================ */
 const ACTIONS = {
+  'plan-from': el => { const w = S.workouts.find(x => x.id === el.dataset.id); if (w) planForm(null, w); },
+  'plan-edit': el => { const p = S.gymPlans.find(x => x.id === el.dataset.id); if (p) planForm(p); },
+  'plan-del': el => { const p = S.gymPlans.find(x => x.id === el.dataset.id); closeModal(); if (p) removeItems('gymPlans', x => x.id === p.id, `План «${p.name}» удалён`); },
+  'plan-start': el => { const p = S.gymPlans.find(x => x.id === el.dataset.id); if (!p) return; if (S.gymLive) { location.hash = '#gym'; toast('Уже идёт тренировка'); return; }
+    S.gymLive = { ...liveFromWorkout({ exercises: (p.ex || []).map(e => ({ ex: e.ex, name: e.name, sets: Array.from({ length: Math.max(1, e.n || 3) }, () => ({})) })) }, {}), title: p.name }; view.rest = null; save(); location.hash = '#gym'; render(); },
   'push-on': () => pushOn(),
   'push-off': async () => { try { const reg = await navigator.serviceWorker.ready, sub = await reg.pushManager.getSubscription(); if (sub) { await apiFetch('/api/push/unsubscribe', { method: 'POST', body: JSON.stringify({ endpoint: sub.endpoint }) }); await sub.unsubscribe(); } toast('Напоминания на этом устройстве выключены'); } catch { toast('Не получилось выключить', true); } pushState(); },
   'push-test': async () => { try { await apiFetch('/api/push/test', { method: 'POST', body: '{}' }); toast('Отправил — уведомление придёт через пару секунд'); } catch (e) { toast(e.message, true); } },
@@ -4025,6 +4121,8 @@ const ACTIONS = {
   'comp-prio': el => { const c = view.comp[el.dataset.scope]; c.prio = !c.prio; render(); },
   'comp-note': el => { const c = view.comp[el.dataset.scope]; c.noteOpen = !c.noteOpen; render(); if (c.noteOpen) requestAnimationFrame(() => $(`[data-comp="${el.dataset.scope}"][data-f=note]`)?.focus()); },
   'comp-add': el => compAdd(el.dataset.scope),
+  'comp-rep': el => { const c = view.comp[el.dataset.scope]; c.rep = el.dataset.k; if (c.rep === 'days' && !(c.repDays || []).length) c.repDays = [parseYmd(c.date || ymd()).getDay()]; render(); },
+  'comp-repday': el => { const c = view.comp[el.dataset.scope], w = +el.dataset.w; c.repDays = (c.repDays || []).includes(w) ? c.repDays.filter(x => x !== w) : [...(c.repDays || []), w]; render(); },
   'comp-opts': el => { const c = view.comp[el.dataset.scope]; c.optsOpen = !c.optsOpen; render(); },
   'plan-kind': el => { view.planKind = el.dataset.v; setSub(el.dataset.v); render(); },
   'plan-shift': el => { const k = view.planKind || 'week'; view.planDate = shiftDate(k, view.planDate || ymd(), +el.dataset.n); render(); },
@@ -4044,7 +4142,13 @@ const ACTIONS = {
   },
   'task-toggle': el => { const t = S.tasks.find(x => x.id === el.dataset.id); if (!t) return; t.done = !t.done; t.doneAt = t.done ? new Date().toISOString() : null; save(); render(); },
   'task-edit': el => { const t = S.tasks.find(x => x.id === el.dataset.id); if (t) taskForm(t); },
-  'task-del': el => { const t = S.tasks.find(x => x.id === el.dataset.id); closeModal(); if (t) removeItems('tasks', x => x.id === t.id, `Задача «${t.title}» удалена`); },
+  'task-del': el => { const t = S.tasks.find(x => x.id === el.dataset.id); closeModal(); if (!t) return; const sr = t.seriesId && S.series.find(x => x.id === t.seriesId);
+    if (sr) (sr.skip = sr.skip || []).push(t.date);
+    removeItems('tasks', x => x.id === t.id, `Задача «${t.title}» удалена`, { after: () => {}, snapshot: () => sr, restore: s0 => { if (s0) s0.skip = (s0.skip || []).filter(d => d !== t.date); } }); },
+  'series-del': el => { const sr = S.series.find(x => x.id === el.dataset.id); closeModal(); if (!sr) return; const today = ymd();
+    const gone = S.tasks.filter(x => x.seriesId === sr.id && !x.done && x.date >= today);
+    S.series = S.series.filter(x => x !== sr); S.tasks = S.tasks.filter(x => !gone.includes(x)); save(); render();
+    undoToast(`Повторы «${sr.title}» удалены`, () => { S.series.push(sr); S.tasks.push(...gone); }); },
   'task-day': el => { const f = el.closest('form'); f.date.value = el.dataset.d; f.querySelectorAll('[data-action=task-day]').forEach(b => b.classList.toggle('on', b === el)); },
   'tasks-to-today': () => { const t = ymd(), od = overdueTasks(); od.forEach(x => { x.date = t; }); save(); render(); toast(`Перенесено на сегодня: ${od.length}`); },
   'rd-open': el => openReader(el.dataset.rel, el.dataset.h || '', view.studyQ || ''),
@@ -4120,6 +4224,16 @@ const ACTIONS = {
 };
 
 const FORMS = {
+  'gym-plan'(fd) {
+    const name = String(fd.get('name') || '').trim(); if (!name) return;
+    const days = fd.getAll('days').map(Number); if (!days.length) { toast('Выбери хотя бы один день', true); return; }
+    const id = fd.get('id'), from = S.workouts.find(w => w.id === fd.get('from'));
+    const p = id ? S.gymPlans.find(x => x.id === id) : { id: 'p' + uid() };
+    Object.assign(p, { name: name.slice(0, 40), days, time: String(fd.get('time') || '') });
+    if (from) p.ex = (from.exercises || []).map(e => ({ ex: exOf(e).id, name: exOf(e).name, n: (e.sets || []).length || 3 }));
+    if (!id) S.gymPlans.push(p);
+    save(); closeModal(); render(); toast(`План «${p.name}»: ${planDaysText(p)}${p.time ? ' в ' + p.time : ''}`);
+  },
   'settings-more'(fd) { S.settings.rest = Math.max(15, Math.min(600, Math.round(num(fd.get('rest'))) || 90)); S.settings.booksGoal = Math.max(1, Math.min(365, Math.round(num(fd.get('booksGoal'))) || 12)); save(); render(); toast('Сохранено'); },
   async book(fd, f) {
     const title = String(fd.get('title') || '').trim(); if (!title) return;
@@ -4230,8 +4344,29 @@ const FORMS = {
   },
   task(fd) {
     const id = fd.get('id'), title = String(fd.get('title') || '').trim(); if (!title) return;
+    const kind = String(fd.get('rep') || ''), days = fd.getAll('repDays').map(Number);
+    if (kind === 'days' && !days.length) { toast('Выбери дни недели для повтора', true); return; }
     const t = id ? S.tasks.find(x => x.id === id) : { id: uid(), done: false, created: ymd() };
-    Object.assign(t, { title, date: fd.get('date') || null, time: fd.get('time') || '', goalId: fd.has('goalId') ? fd.get('goalId') || null : (t.goalId || null), prio: fd.get('prio') === 'on', note: String(fd.get('note') || '').trim() });
+    const vals = { title, date: fd.get('date') || null, time: fd.get('time') || '', goalId: fd.has('goalId') ? fd.get('goalId') || null : (t.goalId || null), prio: fd.get('prio') === 'on', note: String(fd.get('note') || '').trim() };
+    const sr = t.seriesId && S.series.find(x => x.id === t.seriesId), today = ymd();
+    if (sr) {
+      Object.assign(t, vals);
+      Object.assign(sr, { title: vals.title, time: vals.time, prio: vals.prio, goalId: vals.goalId, note: vals.note });
+      const future = x => x.seriesId === sr.id && !x.done && x.date >= today && x.id !== t.id;
+      if (!kind) { sr.end = addDays(today, -1); S.tasks = S.tasks.filter(x => !future(x)); delete t.seriesId; }
+      else {
+        if (kind !== sr.rule.kind || JSON.stringify(days) !== JSON.stringify(sr.rule.days || [])) { sr.rule = { kind, days }; S.tasks = S.tasks.filter(x => !future(x) || repeatHits(sr, x.date)); }
+        S.tasks.forEach(x => { if (future(x)) Object.assign(x, { title: sr.title, time: sr.time, prio: sr.prio, goalId: sr.goalId, note: sr.note }); });
+        syncSeries();
+      }
+      save(); closeModal(); render(); toast('Сохранено'); return;
+    }
+    if (kind) {
+      if (id) S.tasks = S.tasks.filter(x => x.id !== id);
+      const n = newSeries({ ...vals, kind, days, start: vals.date || today });
+      save(); closeModal(); render(); toast(`Повторяется: ${repeatText(n)}`); return;
+    }
+    Object.assign(t, vals);
     if (!id) S.tasks.push(t);
     save(); closeModal(); render(); toast(id ? 'Сохранено' : `Задача на ${t.date ? relDay(t.date) : 'без даты'}`);
   },
@@ -4320,6 +4455,8 @@ document.addEventListener('input', e => {
 });
 document.addEventListener('change', e => {
   const t = e.target;
+  if (t.closest?.('.rep')) { const box = t.closest('.rep'); box.querySelectorAll('.rep-k').forEach(l => l.classList.toggle('on', l.querySelector('input').checked)); box.querySelectorAll('.rep-d').forEach(l => l.classList.toggle('on', l.querySelector('input').checked)); const k = box.querySelector('.rep-k input:checked')?.value; box.querySelector('.rep-days').hidden = k !== 'days'; return; }
+  if (t.name === 'days' && t.closest('.rep-d')) { t.closest('.rep-d').classList.toggle('on', t.checked); return; }
   if (t.dataset.remind) { S.settings.remind = { ...(S.settings.remind || {}), [t.dataset.remind]: t.checked }; save(); return; }
   if (t.dataset.comp && ['date', 'time', 'goalId'].includes(t.dataset.f)) { const c = view.comp?.[t.dataset.comp]; if (c) { c[t.dataset.f] = t.value || (t.dataset.f === 'date' ? c.date : ''); render(); } return; }
   if (t.dataset.rdSec !== undefined && t.value) { const h = $('.rd-body #' + headId(t.value)); if (h) h.scrollIntoView({ block: 'start', behavior: 'smooth' }); t.value = ''; return; }
@@ -4418,6 +4555,7 @@ async function loadState() {
   rev = r.rev; S = normalize(r.state); base = JSON.stringify(S); checkDay();
   if (r.state && r.state.settings && 'apiKey' in r.state.settings) save(); // убрать старый ключ Claude с сервера
   if (migrateCardIds()) save();
+  if (syncSeries()) save();
   // план на сегодня — по свежим данным (вес, шаги, активность недели)
   if (S.profile) { const old = num(S.settings.kcal), c = applyGoals(true); if (old !== c.kcal) { save(); if (old) setTimeout(() => toast(`План пересчитан: ${fmtN(old)} → ${fmtN(c.kcal)} ккал`), 600); } }
   if (stash && stash.user === me) { S = normalize(merge3(stash.base ? JSON.parse(stash.base) : S, JSON.parse(stash.state), S)); save(); toast('Несохранённые правки восстановлены'); }
