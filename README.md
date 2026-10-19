@@ -31,6 +31,17 @@ npm start
 Настройки через переменные окружения (`.env`): `PORT` (3333), `HOST` (127.0.0.1), `DATA_DIR`, `ALLOW_REGISTER`,
 `ALLOWED_HOSTS` (дополнительные имена хоста через запятую), `AI_DAILY_LIMIT` / `AI_GLOBAL_LIMIT` / `PHOTO_DAILY_LIMIT`.
 
+## Автозапуск на Mac
+
+Журнал запускается сам при входе в систему и перезапускается при сбое (LaunchAgent
+`~/Library/LaunchAgents/com.bortjournal.server.plist`, лог — `~/Library/Logs/bortjournal.log`).
+
+    launchctl kickstart -k gui/$(id -u)/com.bortjournal.server   # перезапустить после обновления
+    launchctl bootout gui/$(id -u)/com.bortjournal.server        # остановить и убрать из автозапуска
+
+Публикация в Tailscale (`tailscale serve`) сохраняется сама. Mac должен быть включён и не спать:
+«Системные настройки» → «Аккумулятор» → «Параметры» → «Не переходить в режим сна при питании от сети».
+
 ## Напоминания на телефон
 
 Сервер сам решает, когда написать, и присылает уведомление, даже если журнал закрыт:
