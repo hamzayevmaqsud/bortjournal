@@ -480,12 +480,56 @@ function taskRow(t, opts = {}) {
     <button class="cbx ${t.done ? 'on' : ''}" data-action="task-toggle" data-id="${t.id}" aria-label="${t.done ? 'Вернуть' : 'Выполнено'}">${t.done ? I.check : ''}</button>
     <div class="task-main" data-action="task-edit" data-id="${t.id}">
       <span class="task-title">${t.prio ? '<b class="task-prio">!</b>' : ''}${esc(t.title)}</span>
-      ${(() => { const meta = [opts.showDate && t.date ? relDay(t.date) : '', t.time ? esc(t.time) : '', g ? `◎ ${esc(g.title)}` : ''].filter(Boolean).join(' · '); return meta ? `<span class="task-meta">${meta}</span>` : ''; })()}
+      ${(() => { const meta = [opts.showDate && t.date ? relDay(t.date) : '', t.time && !opts.noTime ? esc(t.time) : '', g ? `◎ ${esc(g.title)}` : ''].filter(Boolean).join(' · '); return meta ? `<span class="task-meta">${meta}</span>` : ''; })()}
     </div>
   </div>`;
 }
-function quickTask(date) {
-  return `<input class="task-add" data-qtask="${date || ''}" placeholder="+ задача" aria-label="Новая задача${date ? ` на ${human(date)}` : ''}" enterkeyhint="done">`;
+/* Строка создания задачи со всеми опциями сразу. scope — где она стоит (план недели, главная) */
+function compState(scope, date) {
+  view.comp = view.comp || {};
+  const c = view.comp[scope] = view.comp[scope] || { title: '', time: '', prio: false, goalId: '', note: '', noteOpen: false };
+  if (c.ctx !== date) { c.ctx = date; c.date = date; }
+  return c;
+}
+function composerHtml(scope, date) {
+  const c = compState(scope, date), t = ymd(), tm = addDays(t, 1);
+  const mon = mondayOf(c.date || t), week = Array.from({ length: 7 }, (_, k) => addDays(mon, k));
+  const ref = c.date || t;
+  const goals = [...goalsOf('week', periodKey('week', ref)), ...goalsOf('month', periodKey('month', ref)), ...goalsOf('quarter', periodKey('quarter', ref)), ...goalsOf('year', periodKey('year', ref))];
+  const dayChip = (d, label) => `<button type="button" class="opt-chip ${c.date === d ? 'on' : ''}" data-action="comp-date" data-scope="${scope}" data-d="${d}">${label}</button>`;
+  const other = c.date && c.date !== t && c.date !== tm && !week.includes(c.date);
+  const open = c.open || c.title || c.time || c.prio || c.goalId || c.note || c.noteOpen || c.date !== c.ctx;
+  return `<div class="composer ${open ? 'open' : ''}" data-scope="${scope}">
+    <div class="comp-main">
+      <input class="comp-title" data-comp="${scope}" data-f="title" value="${esc(c.title)}" placeholder="Что нужно сделать?" maxlength="200" enterkeyhint="done" aria-label="Новая задача">
+      <button type="button" class="btn btn-primary" style="--c:var(--orange)" data-action="comp-add" data-scope="${scope}">${I.plus}Добавить</button>
+    </div>
+    <div class="comp-opts">
+      <div class="comp-group"><span class="comp-lbl">Когда</span>
+        ${dayChip(t, 'Сегодня')}${dayChip(tm, 'Завтра')}
+        ${week.filter(d => d !== t && d !== tm).map(d => dayChip(d, `${WD[parseYmd(d).getDay()]} ${parseYmd(d).getDate()}`)).join('')}
+        ${dayChip('', 'Без даты')}
+        <label class="opt-chip opt-date ${other ? 'on' : ''}">${I.plans}<input type="date" data-comp="${scope}" data-f="date" value="${other ? c.date : ''}" aria-label="Другая дата">${other ? human(c.date) : 'Дата'}</label>
+      </div>
+      <div class="comp-group">
+        <label class="opt-chip opt-time ${c.time ? 'on' : ''}"><input type="time" data-comp="${scope}" data-f="time" value="${c.time}" aria-label="Время"></label>
+        <button type="button" class="opt-chip ${c.prio ? 'on prio' : ''}" data-action="comp-prio" data-scope="${scope}">! Важная</button>
+        ${goals.length ? `<label class="opt-chip opt-goal ${c.goalId ? 'on' : ''}">◎<select data-comp="${scope}" data-f="goalId" aria-label="Цель"><option value="">Цель</option>${goals.map(g => `<option value="${g.id}" ${c.goalId === g.id ? 'selected' : ''}>${PERIODS[g.period]}: ${esc(g.title)}</option>`).join('')}</select></label>` : ''}
+        <button type="button" class="opt-chip ${c.noteOpen || c.note ? 'on' : ''}" data-action="comp-note" data-scope="${scope}">${I.edit}Заметка</button>
+      </div>
+      ${c.noteOpen ? `<textarea class="comp-note" data-comp="${scope}" data-f="note" rows="2" placeholder="Детали, ссылки, что подготовить">${esc(c.note)}</textarea>` : ''}
+    </div>
+  </div>`;
+}
+function compAdd(scope) {
+  const c = view.comp?.[scope]; if (!c) return;
+  const title = c.title.trim(); if (!title) { $(`[data-comp="${scope}"][data-f=title]`)?.focus(); return; }
+  const t = { id: uid(), title, date: c.date || null, time: c.time || '', done: false, prio: c.prio, goalId: c.goalId || null, note: c.note.trim(), created: ymd() };
+  S.tasks.push(t);
+  Object.assign(c, { title: '', time: '', prio: false, note: '', noteOpen: false, goalId: '', date: c.ctx, open: false });
+  save(); render();
+  toast(`Задача на ${t.date ? `${relDay(t.date)}${t.time ? ', ' + t.time : ''}` : 'без даты'}`);
+  requestAnimationFrame(() => $(`[data-comp="${scope}"][data-f=title]`)?.focus());
 }
 function addTaskFromText(text, date) {
   let title = String(text).trim(); if (!title) return null;
@@ -498,29 +542,47 @@ function addTaskFromText(text, date) {
   S.tasks.push(t); return t;
 }
 
+function dayTasksPanel(d, scope) {
+  const list = d === null ? S.tasks.filter(x => !x.date) : tasksOn(d);
+  const open = list.filter(x => !x.done), timed = open.filter(x => x.time).sort((a, b) => a.time.localeCompare(b.time)), free = open.filter(x => !x.time), done = list.filter(x => x.done);
+  const now = nowHM(), isToday = d === ymd();
+  return `${timed.length ? `<div class="dp-sec"><div class="dp-h">По времени</div><div class="sched">${timed.map(x => `<div class="sched-row ${isToday && x.time < now ? 'past' : ''}"><span class="sched-t">${x.time}</span>${taskRow(x, { noTime: true })}</div>`).join('')}</div></div>` : ''}
+    ${free.length ? `<div class="dp-sec"><div class="dp-h">${d === null ? 'Когда-нибудь' : 'В течение дня'}</div><div class="tasks">${free.map(x => taskRow(x)).join('')}</div></div>` : ''}
+    ${!open.length ? `<p class="dp-empty">${list.length ? 'Всё сделано 🎉' : d === null ? 'Здесь задачи без даты — идеи и «когда-нибудь».' : 'Задач нет. Добавь первую — опции сразу под строкой.'}</p>` : ''}
+    ${done.length ? `<details class="dp-done"><summary>Сделано · ${done.length}</summary><div class="tasks">${done.map(x => taskRow(x)).join('')}</div></details>` : ''}`;
+}
 function weekView(anchor) {
   const key = periodKey('week', anchor), [mon] = periodRange('week', key), t = ymd();
   const days = Array.from({ length: 7 }, (_, k) => addDays(mon, k));
-  const od = overdueTasks();
-  const monthKey = periodKey('month', anchor), mg = goalsOf('month', monthKey);
-  const inbox = S.tasks.filter(x => !x.date && !x.done);
-  return `<div class="grid">
-    ${card({ domain: 'food', title: `Цели недели`, span: 12, i: 0, body: goalsBlock('week', key) + (mg.length ? `<p class="plans-up">Цели месяца: ${mg.map(g => `<button class="link-btn" data-action="goal-edit" data-id="${g.id}">${esc(g.title)} · ${goalProgress(g)}%</button>`).join(' ')}</p>` : '') })}
-    ${od.length && days.includes(t) ? card({ domain: 'food', title: `Просрочено · ${od.length}`, span: 12, i: 1, cls: 'overdue-card', body: `<div class="tasks">${od.slice(0, 8).map(x => taskRow(x, { showDate: true })).join('')}</div><button class="btn btn-sm btn-primary" style="--c:var(--orange)" data-action="tasks-to-today">${I.repeat}Перенести все на сегодня</button>` }) : ''}
-  </div>
-  <div class="week">
-    ${days.map(d => { const dt = parseYmd(d), list = tasksOn(d), done = list.filter(x => x.done).length; return `<section class="day ${d === t ? 'today' : ''} ${d < t ? 'past' : ''}" data-drop="${d}">
-      <header class="day-head"><b>${WD[dt.getDay()]}</b><span>${dt.getDate()} ${MON[dt.getMonth()]}</span>${list.length ? `<em>${done}/${list.length}</em>` : ''}</header>
-      <div class="tasks">${list.map(x => taskRow(x)).join('')}</div>
-      ${quickTask(d)}
-    </section>`; }).join('')}
-    <section class="day inbox" data-drop="">
-      <header class="day-head"><b>Без даты</b>${inbox.length ? `<em>${inbox.length}</em>` : ''}</header>
-      <div class="tasks">${inbox.map(x => taskRow(x)).join('')}</div>
-      ${quickTask('')}
+  if (view.planDay === undefined || (view.planDay !== null && !days.includes(view.planDay))) view.planDay = days.includes(t) ? t : mon;
+  const sel = view.planDay, od = overdueTasks();
+  const wg = goalsOf('week', key), inbox = S.tasks.filter(x => !x.date && !x.done);
+  const tab = d => {
+    const list = d === null ? inbox : tasksOn(d), done = list.filter(x => x.done).length, dt = d && parseYmd(d);
+    return `<button class="dtab ${d === sel ? 'open' : ''} ${d === t ? 'is-today' : ''} ${d && d < t ? 'past' : ''} ${d === null ? 'inbox' : ''}" data-action="plan-day" data-d="${d ?? ''}" data-drop="${d ?? ''}" aria-pressed="${d === sel}">
+      ${d === null ? `<span class="dtab-wd">без даты</span><span class="dtab-n">∞</span>` : `<span class="dtab-wd">${d === t ? 'сегодня' : WD[dt.getDay()]}</span><span class="dtab-n">${dt.getDate()}</span>`}
+      <span class="dtab-c">${list.length ? (d === null ? list.length : `${done}/${list.length}`) : '—'}</span>
+      ${list.length && d !== null ? `<i class="dtab-bar"><b style="width:${done / list.length * 100}%"></b></i>` : ''}
+    </button>`;
+  };
+  const sd = sel && parseYmd(sel), list = sel === null ? inbox : tasksOn(sel), doneN = list.filter(x => x.done).length;
+  return `<div class="wgoals">
+      <span class="wgoals-l">Цели недели</span>
+      ${wg.map(g => { const pr = goalProgress(g); return `<button class="wgoal ${pr >= 100 ? 'done' : ''}" data-action="goal-edit" data-id="${g.id}"><span>${esc(g.title)}</span><i class="wgoal-bar"><b style="width:${pr}%"></b></i><em>${pr}%</em></button>`; }).join('')}
+      <button class="link-btn" data-action="goal-add" data-kind="week" data-key="${key}">${I.plus}Цель</button>
+    </div>
+    <div class="dtabs" role="tablist">${days.map(tab).join('')}${tab(null)}</div>
+    <section class="dpanel ${sel === t ? 'is-today' : ''}">
+      <header class="dp-head">
+        <div><h2>${sel === null ? 'Без даты' : `${WDF[sd.getDay()][0].toUpperCase() + WDF[sd.getDay()].slice(1)}, ${sd.getDate()} ${MONG[sd.getMonth()]}`}</h2>
+          <span class="dp-sub">${sel === t ? 'сегодня · ' : sel === addDays(t, 1) ? 'завтра · ' : ''}${list.length ? `сделано ${doneN} из ${list.length}` : 'задач нет'}</span></div>
+        ${list.length && sel !== null ? `<div class="dp-pr"><i class="sb-track"><i data-w="${doneN / list.length * 100}" style="background:${doneN === list.length ? 'var(--st-good)' : 'var(--orange)'}"></i></i><b>${Math.round(doneN / list.length * 100)}%</b></div>` : ''}
+      </header>
+      ${sel === t && od.length ? `<div class="dp-overdue"><span>${I.repeat}Просрочено ${od.length}: ${od.slice(0, 3).map(x => esc(x.title)).join(', ')}${od.length > 3 ? '…' : ''}</span><button class="btn btn-sm btn-primary" style="--c:var(--orange)" data-action="tasks-to-today">Перенести на сегодня</button></div>` : ''}
+      ${composerHtml('plan', sel)}
+      <div class="dp-list">${dayTasksPanel(sel, 'plan')}</div>
     </section>
-  </div>
-  <p class="hint">Enter — добавить задачу. Время в конце («Позвонить 15:00») попадёт в ленту дня, «!» в начале — важная. Задачи можно перетаскивать между днями, а нажатие на задачу открывает перенос на любую дату и привязку к цели.</p>`;
+    <p class="hint">Задачу можно перетащить на закладку другого дня. Нажатие на задачу — правка, перенос, цель и заметка.</p>`;
 }
 function monthView(anchor) {
   const key = periodKey('month', anchor), [a, b] = periodRange('month', key), t = ymd();
@@ -600,8 +662,7 @@ function taskForm(t, date) {
 function todayTasksCard(d) {
   const list = tasksOn(d), od = d === ymd() ? overdueTasks() : [];
   const wg = goalsOf('week', periodKey('week', d)).filter(g => goalProgress(g) < 100);
-  return `<div class="tasks">${list.map(x => taskRow(x)).join('')}</div>
-    ${quickTask(d)}
+  return `${composerHtml('today', d)}<div class="tasks" style="margin-top:12px">${list.map(x => taskRow(x)).join('')}</div>
     ${od.length ? `<p class="hint" style="margin:10px 0 0">Просрочено: ${od.length} — <button class="link-btn" data-action="tasks-to-today">перенести на сегодня</button></p>` : ''}
     ${wg.length ? `<div class="today-goals"><span>Цели недели:</span>${wg.slice(0, 3).map(g => `<a href="#plans">${esc(g.title)} · ${goalProgress(g)}%</a>`).join('')}</div>` : ''}`;
 }
@@ -2465,11 +2526,16 @@ const ACTIONS = {
     ({ food: () => mealForm(), drink: () => drinkForm(), study: () => studyForm(), gym: () => gymForm(), quiz: () => { view.presetTime = null; location.hash = '#quiz'; }, task: () => { const tm = view.presetTime; view.presetTime = null; taskForm(null, view.date); setTimeout(() => { const f = $('#modal-root [data-form=task]'); if (f) f.time.value = tm; }, 0); } })[el.dataset.k]?.();
   },
   'tl-open': () => {},
+  'plan-day': el => { view.planDay = el.dataset.d || null; render(); },
+  'comp-date': el => { const c = view.comp[el.dataset.scope]; c.date = el.dataset.d || null; render(); requestAnimationFrame(() => $(`[data-comp="${el.dataset.scope}"][data-f=title]`)?.focus()); },
+  'comp-prio': el => { const c = view.comp[el.dataset.scope]; c.prio = !c.prio; render(); },
+  'comp-note': el => { const c = view.comp[el.dataset.scope]; c.noteOpen = !c.noteOpen; render(); if (c.noteOpen) requestAnimationFrame(() => $(`[data-comp="${el.dataset.scope}"][data-f=note]`)?.focus()); },
+  'comp-add': el => compAdd(el.dataset.scope),
   'plan-kind': el => { view.planKind = el.dataset.v; render(); },
   'plan-shift': el => { const k = view.planKind || 'week'; view.planDate = shiftDate(k, view.planDate || ymd(), +el.dataset.n); render(); },
   'plan-now': () => { view.planDate = ymd(); render(); },
   'plan-go': el => { view.planKind = el.dataset.kind; view.planDate = el.dataset.d; render(); },
-  'plan-open-week': el => { view.planKind = 'week'; view.planDate = el.dataset.d; render(); },
+  'plan-open-week': el => { view.planKind = 'week'; view.planDate = el.dataset.d; view.planDay = el.dataset.d; render(); },
   'goal-add': el => goalForm(null, el.dataset.kind, el.dataset.key),
   'goal-edit': el => { const g = S.goals.find(x => x.id === el.dataset.id); if (g) goalForm(g); },
   'goal-toggle': el => { const g = S.goals.find(x => x.id === el.dataset.id); if (!g) return; g.done = !g.done; save(); render(); if (g.done) toast(`Цель выполнена: ${g.title}`); },
@@ -2661,6 +2727,7 @@ document.addEventListener('submit', e => {
 let noteTimer;
 document.addEventListener('input', e => {
   const t = e.target;
+  if (t.dataset.comp && ['title', 'note'].includes(t.dataset.f)) { const c = view.comp?.[t.dataset.comp]; if (c) c[t.dataset.f] = t.value; }
   if (t.dataset.search !== undefined) { clearTimeout(searchTimer); const v = t.value; searchTimer = setTimeout(() => runSearch(v), 250); }
   if (t.dataset.rdFind !== undefined) { clearTimeout(searchTimer); const v = t.value; searchTimer = setTimeout(() => rdFind(v), 250); }
   if (t.dataset.qans !== undefined) { const it = S.quizzes[ymd()]?.items[+t.dataset.qans]; if (it) it.answer = t.value; }
@@ -2696,6 +2763,7 @@ document.addEventListener('input', e => {
 });
 document.addEventListener('change', e => {
   const t = e.target;
+  if (t.dataset.comp && ['date', 'time', 'goalId'].includes(t.dataset.f)) { const c = view.comp?.[t.dataset.comp]; if (c) { c[t.dataset.f] = t.value || (t.dataset.f === 'date' ? c.date : ''); render(); } return; }
   if (t.dataset.rdSec !== undefined && t.value) { const h = $('.rd-body #' + headId(t.value)); if (h) h.scrollIntoView({ block: 'start', behavior: 'smooth' }); t.value = ''; return; }
   if (t.dataset.photo !== undefined && t.files[0]) { startPhoto(t.files[0]); t.value = ''; return; }
   if (t.dataset.import !== undefined && t.files[0]) {
@@ -2711,6 +2779,12 @@ document.addEventListener('change', e => {
     r.readAsText(t.files[0]); t.value = '';
   }
 });
+document.addEventListener('focusin', e => {
+  const sc = e.target.dataset?.comp; if (!sc || e.target.dataset.f !== 'title') return;
+  const c = view.comp?.[sc]; if (c && !c.open) { c.open = true; e.target.closest('.composer')?.classList.add('open'); }
+});
+// чип «Дата» в строке создания сразу открывает выбор даты
+document.addEventListener('click', e => { const l = e.target.closest?.('.opt-date'); if (!l || e.target.tagName === 'INPUT') return; e.preventDefault(); const i = l.querySelector('input'); try { i.showPicker(); } catch { i.focus(); } });
 let dragTask = null;
 document.addEventListener('dragstart', e => { const el = e.target.closest?.('[data-task]'); if (!el) return; dragTask = el.dataset.task; e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', dragTask); el.classList.add('dragging'); });
 document.addEventListener('dragend', e => { e.target.closest?.('[data-task]')?.classList.remove('dragging'); document.querySelectorAll('.drop-over').forEach(x => x.classList.remove('drop-over')); dragTask = null; });
@@ -2723,6 +2797,7 @@ document.addEventListener('drop', e => {
   toast(`«${t.title}» → ${t.date ? `${relDay(t.date)}, ${human(t.date)}` : 'без даты'}`);
 });
 document.addEventListener('keydown', e => {
+  if (e.target.dataset?.comp && e.target.dataset.f === 'title' && e.key === 'Enter' && !e.isComposing) { e.preventDefault(); compAdd(e.target.dataset.comp); return; }
   const qt = e.target.dataset?.qtask;
   if (qt !== undefined && e.key === 'Enter' && !e.isComposing) {
     e.preventDefault();
