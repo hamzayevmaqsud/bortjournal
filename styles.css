@@ -1927,3 +1927,33 @@ div.feed-i{cursor:default}
   .do{padding:14px;border-radius:16px}
   .do b{font-size:28px}
 }
+
+/* ---------- пустые разделы ---------- */
+.eh{display:flex;flex-direction:column;align-items:flex-start;gap:10px;padding:28px;margin:0 0 14px;border-radius:var(--r);background:var(--ink-1);border:1.5px solid var(--line-2);position:relative;overflow:hidden}
+.eh::after{content:"";position:absolute;right:-40px;top:-40px;width:140px;height:140px;border-radius:50%;background:var(--ec);opacity:.12}
+.eh-ic{width:52px;height:52px;border-radius:16px;display:grid;place-items:center;background:var(--ec);color:var(--cream)}
+.eh-ic svg{width:28px;height:28px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.eh h2{margin:4px 0 0;font:800 26px var(--display);letter-spacing:-.01em}
+.eh p{margin:0;max-width:560px;color:var(--paper-2);font-size:15px}
+.eh-steps{margin:6px 0 4px;padding:0;list-style:none;counter-reset:s;display:flex;flex-direction:column;gap:10px;max-width:600px}
+.eh-steps li{counter-increment:s;display:flex;gap:12px;align-items:flex-start;font-size:14px;line-height:1.45}
+.eh-steps li::before{content:counter(s);flex:none;width:26px;height:26px;border-radius:50%;display:grid;place-items:center;background:color-mix(in srgb,var(--ec) 16%,var(--ink-2));color:var(--ec);font:800 13px var(--sans)}
+.eh .btn{margin-top:6px}
+.account-more summary{cursor:pointer;font-weight:700;font-size:14px;color:var(--cream);opacity:.85;margin:4px 0}
+.account-more[open] summary{margin-bottom:10px}
+
+/* «Записать» — главная кнопка телефона; на компьютере у разделов свои кнопки */
+@media (min-width:861px){ .tab-add{display:none} }
+@media (max-width:860px){
+  .ov-score{flex-direction:row;align-items:center;gap:16px}
+  .ov-score .bud-ring{width:96px!important;height:96px!important;flex:none}
+  .ov-score .bud-ring svg{width:96px;height:96px}
+  .ov-score .bud-ring-c b{font-size:20px}
+  .eh{padding:20px}
+  .eh h2{font-size:22px}
+}
+@media (max-width:860px){
+  .stat-tabs{flex-wrap:nowrap;overflow-x:auto;max-width:100%;scrollbar-width:none}
+  .stat-tabs::-webkit-scrollbar{display:none}
+  .stat-tabs button{flex:none}
+}

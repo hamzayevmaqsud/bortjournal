@@ -325,6 +325,15 @@ function card({ domain, title, span = 4, i = 0, body, action = '', cls = '' }) {
   return `<section class="card ${cls}" style="--c:var(--${domain});--cf:var(--${domain}-f);--span:${span};--i:${i}">
     <header class="card-head"><h2 class="card-title">${title}</h2>${action}</header>${body}</section>`;
 }
+// пустой раздел: зачем он, 2–3 шага и одна главная кнопка — вместо стены нулей
+function emptyHero({ color = 'var(--c)', icon = '', title, text, steps = [], btn = '' }) {
+  return `<section class="eh" style="--ec:${color}">
+    ${icon ? `<span class="eh-ic">${icon}</span>` : ''}
+    <h2>${title}</h2><p>${text}</p>
+    ${steps.length ? `<ol class="eh-steps">${steps.map(x => `<li>${x}</li>`).join('')}</ol>` : ''}
+    ${btn}
+  </section>`;
+}
 function addBtn(action, label, extra = '') {
   return `<button class="btn btn-accent btn-sm" data-action="${action}" ${extra}>${I.plus}${label}</button>`;
 }
@@ -1734,9 +1743,16 @@ function pageStudy() {
   const due = dueCards(ymd()).length;
   const days30 = rangeDays(30).map(d => ({ label: parseYmd(d).getDate(), v: studyMin(d), hint: `${human(d)}: ${fmtMin(studyMin(d))}` }));
   let i = 0;
+  if (!OBS.enabled && !S.study.length && !allMin) return `<section class="page" style="--c:var(--study)">
+    ${topbar('Учёба', 'дневник занятий и повторение', { date: false })}
+    ${emptyHero({ color: 'var(--study)', icon: I.study, title: 'Дневник учёбы', text: 'Записывай, что изучал, — журнал посчитает часы, а из тезисов соберёт вопросы на повторение.',
+      steps: ['Запиши занятие: тема, минуты и пара тезисов — по одному в строке', 'Завтра тезисы придут вопросами в раздел «Вопросы»', 'Отвечай — повторения разнесутся по дням, чтобы не забывалось'],
+      btn: `<button class="btn btn-primary" style="--c:var(--study)" data-action="add-study">${I.plus}Записать первое занятие</button>` })}
+    <p class="hint">Конспекты можно подтягивать из Obsidian автоматически — это включается на сервере (см. README).</p>
+  </section>`;
   return `<section class="page" style="--c:var(--study)">
     ${topbar('Учёба', OBS.enabled ? `конспекты из Obsidian · ${OBS.vaultName}` : `${S.study.length} ${plural(S.study.length, 'занятие', 'занятия', 'занятий')}`, { date: false, actions: `<button class="btn" data-action="add-study">${I.plus}Занятие вручную</button>` })}
-    <div class="kpis">
+    <div class="kpis" ${OBS.enabled ? '' : 'hidden'}>
       ${kpi('Конспектов', `${OBS.notes.length}`, 'study', i++, `${secs.length} ${plural(secs.length, 'раздел', 'раздела', 'разделов')}`)}
       ${kpi('Вопросов', `${qn}`, 'quiz', i++, 'по разделам конспектов')}
       ${kpi('К повторению', `${due}`, 'paper', i++, due ? `порциями по ${QUIZ_SIZE} в день` : 'на сегодня всё')}
@@ -1744,8 +1760,7 @@ function pageStudy() {
     </div>
     <div class="grid">
       ${OBS.enabled ? card({ domain: 'study', title: 'Поиск и чтение', span: 12, i: i++, body: studySearchCard() }) : ''}
-      ${card({ domain: 'study', title: 'Obsidian', span: 12, i: i++, body: obsStatusCard() })}
-      ${card({ domain: 'study', title: 'Конспекты', span: 12, i: i++, body: notesCard() })}
+      ${OBS.enabled || OBS.notes.length ? card({ domain: 'study', title: 'Obsidian', span: 12, i: i++, body: obsStatusCard() }) + card({ domain: 'study', title: 'Конспекты', span: 12, i: i++, body: notesCard() }) : ''}
       ${card({ domain: 'study', title: 'Дневник занятий', span: 8, i: i++, body: diaryCard() + '<p class="hint">Время занятия можно вписать прямо в строку дневника — оно пойдёт в часы и график.</p>' })}
       ${card({ domain: 'study', title: '30 дней, минуты', span: 4, i: i++, body: barChart(days30, { color: 'var(--study)', target: S.settings.study, unit: 'мин', labelEvery: 7 }) })}
     </div>
@@ -2278,11 +2293,13 @@ function pageGym() {
   const repeat = []; for (const w of recent) { const t = w.type || workoutTitle(w.exercises || []); if ((w.exercises || []).length && !repeat.some(r => (r.type || workoutTitle(r.exercises)) === t)) repeat.push(w); if (repeat.length >= 3) break; }
   let i = 0;
   return `<section class="page" style="--c:var(--gym)">
-    ${topbar('Зал', `${S.workouts.length} ${plural(S.workouts.length, 'тренировка', 'тренировки', 'тренировок')}`, { date: false, actions: `<button class="btn btn-ghost" data-action="gym-past">${I.plus}Записать прошедшую</button>` })}
+    ${topbar('Зал', S.workouts.length ? `${S.workouts.length} ${plural(S.workouts.length, 'тренировка', 'тренировки', 'тренировок')}` : 'тренировки по подходам', { date: false, actions: `<button class="btn btn-ghost" data-action="gym-past">${I.plus}Записать прошедшую</button>` })}
     <div class="gym-hero">
       <button class="gym-start" data-action="gym-start">${GI.dumbbell ? gymIcon('dumbbell') : ''}<span><b>Начать тренировку</b><small>подходы, вес и отдых — по ходу</small></span></button>
       ${repeat.length ? `<div class="gym-repeat"><span class="bud-k">Повторить</span>${repeat.map(w => `<button class="gym-rep" data-action="gym-repeat" data-id="${w.id}"><span class="gym-rep-ics">${(w.exercises || []).slice(0, 4).map(e => exIcon(exOf(e), 'sm')).join('')}</span><b>${esc(w.type || workoutTitle(w.exercises))}</b><small>${human(w.date)} · ${(w.exercises || []).length} упр.</small></button>`).join('')}</div>` : ''}
     </div>
+    ${!S.workouts.length ? emptyHero({ color: 'var(--gym)', title: 'Как это работает', text: 'Тренировка записывается по ходу — не нужно ничего вспоминать вечером.',
+      steps: ['Нажми «Начать тренировку» и добавь упражнения — у каждого своя иконка', 'Вписывай вес и повторы, отмечай подход галочкой — включится отдых', 'В следующий раз журнал подскажет прошлые веса и покажет рекорды'] }) : `
     <div class="kpis">
       ${kpi('За 7 дней', `${week}`, 'gym', i++, plural(week, 'тренировка', 'тренировки', 'тренировок'))}
       ${kpi('За 30 дней', `${month}`, 'gym', i++, `${fmt1(month / 30 * 7)} в неделю`)}
@@ -2293,8 +2310,8 @@ function pageGym() {
       ${card({ domain: 'gym', title: 'Тренировок в неделю', span: 7, i: i++, body: barChart(weeklyCounts(12, d => gymOn(d).length), { color: 'var(--gym)', unit: 'тр.', max: 7, labelEvery: 1, values: true }) })}
       ${card({ domain: 'gym', title: 'Мышцы за 30 дней · подходы', span: 5, i: i++, body: gl.length ? `<div class="hbars">${gl.map(([g, n]) => `<div class="hbar" style="--c:${GYM_GROUPS[g][1]}"><span class="hbar-label">${GYM_GROUPS[g][0]}</span><span class="hbar-track"><i data-w="${n / gmax * 100}"></i></span><span class="hbar-val">${n}</span></div>`).join('')}</div>${Object.keys(GYM_GROUPS).filter(g => g !== 'cardio' && g !== 'full' && !groups[g]).length ? `<p class="hint">Не было: ${Object.keys(GYM_GROUPS).filter(g => g !== 'cardio' && g !== 'full' && !groups[g]).map(g => GYM_GROUPS[g][0].toLowerCase()).join(', ')}.</p>` : ''}` : empty('Тренировок за месяц не было.') })}
       ${card({ domain: 'gym', title: 'Мои упражнения', span: 12, i: i++, body: myEx.length ? `<div class="gym-ex">${myEx.slice(0, 24).map(m => { const b = exBest(m.key), h = exHistory(m.key); return `<button class="gym-ex-i" data-action="ex-open" data-k="${esc(m.key)}">${exIcon(m.c)}<span><b>${esc(m.c.name)}</b><small>${m.c.kind === 'w' && b.kg ? `рекорд ${fmtKg(b.kg)} кг` : m.c.kind === 'bw' && b.reps ? `до ${b.reps} повт.` : m.c.kind === 'c' && b.km ? `до ${fmt1(b.km)} км` : ''}${h.length ? ` · ${h.length}×` : ''} · ${human(m.date)}</small></span></button>`; }).join('')}</div>` : empty('Начни тренировку — здесь появятся твои упражнения с рекордами и прогрессом.') })}
-      ${card({ domain: 'gym', title: 'Журнал', span: 12, i: i++, body: recent.length ? recent.map(gymItem).join('') : empty('Пока без тренировок.') })}
-    </div>
+      ${card({ domain: 'gym', title: 'Журнал', span: 12, i: i++, body: recent.map(gymItem).join('') })}
+    </div>`}
   </section>`;
 }
 function gymItem(w) {
@@ -2558,8 +2575,11 @@ function pageBooks() {
   const tab = view.bookTab || 'now', y = new Date().getFullYear(), goal = num(S.settings.booksGoal) || 12;
   const done = booksDoneIn(y).length;
   const tabs = `<div class="seg" role="tablist">${[['now', 'Читаю'], ['shelf', 'Полка'], ['quotes', 'Цитаты']].map(([k, n]) => `<button role="tab" class="${tab === k ? 'on' : ''}" data-action="book-tab" data-v="${k}">${n}</button>`).join('')}</div>`;
-  const head = topbar('Книги', `${done} из ${goal} за ${y} год · ${S.books.length} ${plural(S.books.length, 'книга', 'книги', 'книг')} на полке`, { date: false, actions: `${tabs}<button class="btn btn-primary btn-sm" style="--c:var(--books)" data-action="book-add">${I.plus}Книга</button>` });
-  const body = tab === 'shelf' ? booksShelf() : tab === 'quotes' ? booksQuotes() : booksNow(y, goal, done);
+  const head = topbar('Книги', S.books.length ? `${done} из ${goal} за ${y} год · ${S.books.length} ${plural(S.books.length, 'книга', 'книги', 'книг')} на полке` : 'чтение и коллекция', { date: false, actions: S.books.length ? `${tabs}<button class="btn btn-primary btn-sm" style="--c:var(--books)" data-action="book-add">${I.plus}Книга</button>` : '' });
+  const body = !S.books.length ? emptyHero({ color: 'var(--books)', icon: I.books, title: 'Твоя книжная полка', text: 'Что читаешь, что прочитал и что хочешь прочитать — в одном месте, с обложками.',
+      steps: ['Найди книгу по названию — обложка, автор и страницы подставятся сами', 'Записывай, до какой страницы дочитал, — появятся темп и серия', 'Сохраняй цитаты и ставь оценки — получится своя библиотека'],
+      btn: `<button class="btn btn-primary" style="--c:var(--books)" data-action="book-add">${I.plus}Добавить первую книгу</button>` })
+    : tab === 'shelf' ? booksShelf() : tab === 'quotes' ? booksQuotes() : booksNow(y, goal, done);
   return `<section class="page page-books" style="--c:var(--books)">${head}${body}</section>`;
 }
 
@@ -2958,6 +2978,9 @@ function yearHeat() {
 
 function statsOverview() {
   const cal = scoreCalendar(), t = ymd();
+  if (historyDays().filter(hasAny).length < 2) return `${emptyHero({ color: 'var(--navy)', icon: I.stats, title: 'Статистика копится', text: 'Через пару дней записей здесь появятся оценка дня, календарь с кольцами, год клетками, рекорды и лучшие дни недели.',
+      steps: ['Записывай еду, воду, шаги или учёбу — из этого складывается оценка дня', 'Каждый день с записями продлевает серию', 'Первые достижения откроются уже сегодня'], btn: `<button class="btn btn-primary" style="--c:var(--orange)" data-action="quick-add">${I.plus}Записать</button>` })}
+    <div class="grid">${card({ domain: 'paper', title: 'Календарь', span: 12, body: cal.html })}</div>`;
   const hist = past().filter(hasAny), all = historyDays();
   const yearDays = all.filter(d => d >= addDays(t, -364) && d < t);
   const active365 = yearDays.filter(hasAny).length, perfect365 = yearDays.filter(d => dayScore(d) >= 0.95).length;
@@ -3691,16 +3714,7 @@ function pageSettings() {
   return `<section class="page">
     ${topbar('Настройки', 'аккаунт, цели, данные', { date: false })}
     <div class="grid">
-      ${card({ domain: 'study', title: 'Аккаунт', span: 12, cls: 'tile tile-navy', body: `<div class="account">
-        <div class="account-who"><div class="big"><b>${esc(me)}</b></div><p class="hint" style="margin:6px 0 0">Ты вошёл в аккаунт. Данные хранятся на сервере и доступны с любого устройства, где ты войдёшь.</p></div>
-        <form data-form="password" class="account-pw">
-          <input name="current" type="password" autocomplete="current-password" placeholder="Текущий пароль" required>
-          <input name="next" type="password" autocomplete="new-password" placeholder="Новый пароль" minlength="6" required>
-          <button class="btn btn-accent" type="submit">Сменить пароль</button>
-        </form>
-        <button class="btn btn-accent" data-action="logout">${I.logout}Выйти</button>
-      </div>` })}
-      ${card({ domain: 'paper', title: 'Цели на день', span: 6, body: `<form data-form="settings" class="form-stack">
+      ${card({ domain: 'paper', title: 'Цели на день', span: 7, body: `<form data-form="settings" class="form-stack">
         ${S.profile ? '<p class="hint" style="margin:0">Ккал и белок считаются по твоему плану и обновляются каждую неделю. Можно поправить вручную — до следующего пересчёта.</p>' : ''}
         ${field('Как к тебе обращаться', `<input name="name" placeholder="Имя (необязательно)" value="${esc(s.name)}">`)}
         <div class="row">
@@ -3710,6 +3724,11 @@ function pageSettings() {
           ${field('Учёба, мин', `<input name="study" type="number" min="0" step="5" value="${s.study}" style="--c:var(--study)">`)}
         </div>
         <div><button class="btn btn-primary" type="submit">Сохранить цели</button></div></form>` })}
+      ${card({ domain: 'paper', title: 'Разное', span: 5, body: `<form data-form="settings-more" class="form-stack">
+        ${field('Отдых между подходами, сек', `<input name="rest" type="number" min="15" max="600" step="15" value="${num(s.rest) || 90}">`)}
+        ${field('Книг за год', `<input name="booksGoal" type="number" min="1" max="365" value="${num(s.booksGoal) || 12}">`)}
+        <p class="hint" style="margin:0">Бюджет на месяц и валюта — в разделе <a href="#budget">«Бюджет»</a> → «Настроить».</p>
+        <div><button class="btn btn-primary" type="submit">Сохранить</button></div></form>` })}
       ${card({ domain: 'paper', title: 'Данные', span: 12, body: `
         <p class="hint" style="margin:0 0 12px">Записи аккаунта «${esc(me)}» хранятся на сервере (${(size / 1024).toFixed(1)} КБ). Экспорт в JSON нужен для резервной копии или переноса.</p>
         <div class="chips" style="gap:8px">
@@ -3717,6 +3736,15 @@ function pageSettings() {
           <label class="btn" style="cursor:pointer">${I.upload}Импорт JSON<input type="file" accept="application/json" data-import hidden></label>
           <button class="btn btn-danger" data-action="wipe">${I.trash}Стереть всё</button>
         </div>` })}
+      ${card({ domain: 'study', title: 'Аккаунт', span: 12, cls: 'tile tile-navy', body: `<div class="account">
+        <div class="account-who"><div class="big"><b>${esc(me)}</b></div><p class="hint" style="margin:6px 0 0">Ты вошёл в аккаунт. Данные хранятся на сервере и доступны с любого устройства, где ты войдёшь.</p></div>
+        <details class="account-more"><summary>Сменить пароль</summary><form data-form="password" class="account-pw">
+          <input name="current" type="password" autocomplete="current-password" placeholder="Текущий пароль" required>
+          <input name="next" type="password" autocomplete="new-password" placeholder="Новый пароль" minlength="6" required>
+          <button class="btn btn-accent" type="submit">Сменить пароль</button>
+        </form></details>
+        <button class="btn btn-accent" data-action="logout">${I.logout}Выйти</button>
+      </div>` })}
     </div>
   </section>`;
 }
@@ -4040,6 +4068,7 @@ const ACTIONS = {
 };
 
 const FORMS = {
+  'settings-more'(fd) { S.settings.rest = Math.max(15, Math.min(600, Math.round(num(fd.get('rest'))) || 90)); S.settings.booksGoal = Math.max(1, Math.min(365, Math.round(num(fd.get('booksGoal'))) || 12)); save(); render(); toast('Сохранено'); },
   async book(fd, f) {
     const title = String(fd.get('title') || '').trim(); if (!title) return;
     const old = fd.get('id'), b = old ? bookById(old) : { id: uid(), added: ymd(), quotes: [], page: 0 };
