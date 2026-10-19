@@ -163,6 +163,7 @@ const I = {
   download: '<svg viewBox="0 0 24 24"><path d="M12 4v11m-4-4l4 4 4-4M5 20h14"/></svg>',
   upload: '<svg viewBox="0 0 24 24"><path d="M12 15V4m-4 4l4-4 4 4M5 20h14"/></svg>',
   goal: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r=".9"/></svg>',
+  search: '<svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg>',
   star: '<svg viewBox="0 0 24 24"><path d="M12 3.8l2.5 5.1 5.6.8-4 3.9.9 5.6-5-2.6-5 2.6.9-5.6-4-3.9 5.6-.8z"/></svg>',
   repeat: '<svg viewBox="0 0 24 24"><path d="M4 12a8 8 0 0 1 13.7-5.6M20 4v4h-4M20 12a8 8 0 0 1-13.7 5.6M4 20v-4h4"/></svg>',
   drop: '<svg viewBox="0 0 24 24"><path d="M12 3.5c3.2 4 6 7.3 6 10.5a6 6 0 0 1-12 0c0-3.2 2.8-6.5 6-10.5z"/><path d="M9 14.5a3 3 0 0 0 3 3"/></svg>',
@@ -337,7 +338,7 @@ function pageToday() {
       </div>
     </header>
     ${nudgeBar()}
-    ${ruler(d)}
+    ${dayTimeline(d)}
     <div class="grid">
       ${onboard}
       ${card({ domain: 'food', title: 'Еда', i: i++, body: foodBody, action: `<span class="card-actions">${photoBtn('btn btn-accent btn-sm', 'Фото')}${addBtn('add-meal', 'Приём')}</span>` })}
@@ -350,26 +351,64 @@ function pageToday() {
   </section>`;
 }
 
-function ruler(d) {
-  const start = 360, span = 1080;
+/* ============================================================
+   ЛЕНТА ДНЯ: еда, вода, учёба, зал, вопросы по времени
+   ============================================================ */
+// время, выбранное нажатием на ленту, подставляется в следующую открытую форму
+function defTime(fallback) { const t = view.presetTime; view.presetTime = null; return t || (view.date === ymd() ? nowHM() : fallback); }
+function dayTimeline(d) {
+  const t = ymd(), live = d === t, now = new Date(), nowMin = now.getHours() * 60 + now.getMinutes();
+  const meals = S.meals.filter(m => m.date === d && m.time).sort((a, b) => a.time.localeCompare(b.time));
+  const drinks = drinksOn(d).filter(x => x.time);
+  const study = S.study.filter(x => x.date === d && x.time);
+  const gym = gymOn(d).filter(w => w.time);
+  const edits = (OBS.diary || []).filter(e => e.date === d && e.at && ymd(new Date(e.at)) === d);
+  const quiz = (S.quizzes[d]?.items || []).filter(i => i.result && i.at);
+  const all = [...meals, ...drinks, ...study, ...gym].map(x => hmToMin(x.time));
+  const startH = Math.min(6, ...all.map(m => Math.floor(m / 60)));
+  const start = startH * 60, span = 24 * 60 - start;
   const pos = m => Math.max(0, Math.min(100, (m - start) / span * 100));
-  const width = m => Math.max(0.6, Math.min(100, m / span * 100));
-  const hours = [6, 9, 12, 15, 18, 21, 24];
-  const ms = mealsOn(d).filter(m => m.time), st = studyOn(d).filter(s => s.time), gw = gymOn(d).filter(w => w.time);
-  const n = new Date();
-  const now = d === ymd() ? pos(n.getHours() * 60 + n.getMinutes()) : null;
-  const bars = (arr, label) => arr.map(x => {
-    const l = pos(hmToMin(x.time)), w = Math.min(width(num(x.minutes) || 30), 100 - l);
-    return `<i class="mark bar" style="left:${l}%;width:${w}%" title="${esc(x.time)} · ${esc(label(x))}"></i>`;
-  }).join('');
-  return `<div class="ruler" aria-label="Лента дня">
-    <div class="ruler-hours">${hours.map(h => `<span style="left:${pos(h * 60)}%">${h === 24 ? '00' : z(h)}</span>`).join('')}</div>
-    <div class="ruler-lane lane-food">${ms.map(m => `<i class="mark dot" style="left:${pos(hmToMin(m.time))}%" title="${esc(m.time)} · ${esc(m.name)} · ${fmtN(m.kcal)} ккал"></i>`).join('')}</div>
-    <div class="ruler-lane lane-study">${bars(st, s => `${s.topic} · ${fmtMin(s.minutes)}`)}</div>
-    <div class="ruler-lane lane-gym">${bars(gw, w => `${w.type} · ${fmtMin(w.minutes)}`)}</div>
-    ${now !== null ? `<i class="ruler-now" style="--x:${now.toFixed(2)}"></i>` : ''}
-    <div class="ruler-legend"><span><i class="d"></i>еда</span><span><i class="s"></i>учёба</span><span><i class="g"></i>зал</span></div>
-  </div>`;
+  const w = mins => Math.max(0.8, mins / span * 100);
+  const ticks = []; for (let h = Math.ceil(startH / 3) * 3; h <= 24; h += 3) ticks.push(h);
+  const grid = ticks.map(h => `<i class="tl-tick" style="left:${pos(h * 60)}%"></i>`).join('') + (live ? `<i class="tl-nowline" style="left:${pos(nowMin)}%"></i>` : '');
+  const gap = (lastMin, minGap, text) => live && lastMin !== undefined && nowMin - lastMin >= minGap
+    ? `<div class="tl-gap" style="left:${pos(lastMin)}%;width:${pos(nowMin) - pos(lastMin)}%"><span>${text(Math.floor((nowMin - lastMin) / 60))}</span></div>` : '';
+  const tip = s => `data-tip="${esc(s)}" aria-label="${esc(s)}"`;
+
+  const foodK = meals.reduce((a, m) => a + num(m.kcal), 0);
+  const foodMarks = meals.map(m => { const sz = Math.round(10 + Math.min(12, num(m.kcal) / 60)); return `<button class="tl-dot tl-food" style="left:${pos(hmToMin(m.time))}%;--s:${sz}px" data-action="edit-meal" data-id="${m.id}" ${tip(`${m.time} · ${m.name} · ${fmtN(m.kcal)} ккал`)}></button>`; }).join('');
+  const lastMeal = meals.length ? hmToMin(meals[meals.length - 1].time) : undefined;
+
+  const dd = drinkDay(d);
+  const drinkMarks = drinks.map(x => { const tt = drinkTotals(x), sz = Math.round(8 + Math.min(10, num(x.ml) / 80)); return `<button class="tl-dot tl-drink" style="left:${pos(hmToMin(x.time))}%;--s:${sz}px;--c:${(DRINKS[x.type] || DRINKS.custom).color}" data-action="edit-drink" data-id="${x.id}" ${tip(`${x.time} · ${drinkName(x)} ${fmtN(x.ml)} мл${tt.kcal ? ` · ${tt.kcal} ккал` : ''}`)}></button>`; }).join('');
+  const lastDrink = drinks.length ? Math.max(...drinks.map(x => hmToMin(x.time))) : undefined;
+
+  const studyMarks = study.map(x => `<button class="tl-bar tl-study" style="left:${pos(hmToMin(x.time))}%;width:${w(num(x.minutes) || 30)}%" data-action="edit-study" data-id="${x.id}" ${tip(`${x.time} · ${x.topic}${x.minutes ? ` · ${fmtMin(x.minutes)}` : ''}`)}></button>`).join('')
+    + edits.map(e => { const dt = new Date(e.at), m = dt.getHours() * 60 + dt.getMinutes(), n = OBS.notes.find(x => x.id === e.noteId); return `<a class="tl-pin" href="${esc(n?.link || '#study')}" data-action="tl-open" style="left:${pos(m)}%" ${tip(`${z(dt.getHours())}:${z(dt.getMinutes())} · Obsidian: ${noteShort(e.title)}${e.kind === 'new' ? ' — новый конспект' : ` — ${[...e.added, ...e.changed].slice(0, 3).join(', ')}`}`)}><i class="tl-diamond"></i></a>`; }).join('');
+  const sMin = studyMin(d);
+
+  const gymMarks = gym.map(x => `<button class="tl-bar tl-gym" style="left:${pos(hmToMin(x.time))}%;width:${w(num(x.minutes) || 60)}%" data-action="edit-gym" data-id="${x.id}" ${tip(`${x.time} · ${x.type}${x.minutes ? ` · ${fmtMin(x.minutes)}` : ''}${x.exercises?.length ? ` · ${x.exercises.map(e => e.name).slice(0, 3).join(', ')}` : ''}`)}></button>`).join('');
+  const gymMin = gym.reduce((a, x) => a + num(x.minutes), 0);
+
+  const qItems = S.quizzes[d]?.items || [], qDone = qItems.filter(i => i.result).length;
+  const RES = { good: 'помню', hard: 'частично', again: 'не помню' };
+  const quizMarks = quiz.map(i => `<a class="tl-dot tl-quiz tl-q-${i.result}" href="#quiz" data-action="tl-open" style="left:${pos(hmToMin(i.at))}%;--s:10px" ${tip(`${i.at} · ${plainText(i.q).slice(0, 70)} — ${RES[i.result]}`)}></a>`).join('');
+
+  const lanes = [
+    { k: 'food', icon: I.food, name: 'Еда', marks: foodMarks + gap(lastMeal, 240, h => `${h} ч без еды`), sum: meals.length ? `${meals.length} · ${fmtN(foodK)} ккал` : 'нет записей' },
+    { k: 'drink', icon: I.drop, name: 'Вода', marks: drinkMarks + gap(lastDrink, 150, h => `воды нет ${h} ч`), sum: `${fmt1(dd.hyd / 1000)} из ${fmt1(waterNorm() / 1000)} л` },
+    { k: 'study', icon: I.study, name: 'Учёба', marks: studyMarks, sum: sMin ? fmtMin(sMin) : edits.length ? `${edits.length} ${plural(edits.length, 'правка', 'правки', 'правок')} в Obsidian` : '—' },
+    { k: 'gym', icon: I.gym, name: 'Зал', marks: gymMarks, sum: gymMin ? fmtMin(gymMin) : gym.length ? `${gym.length} тр.` : '—' },
+    { k: 'quiz', icon: I.quiz, name: 'Вопросы', marks: quizMarks, sum: qItems.length ? `${qDone} из ${qItems.length}` : '—' }
+  ];
+  return `<section class="tl" aria-label="Лента дня">
+    <div class="tl-row tl-axis"><span></span><div class="tl-axis-track">${ticks.map(h => `<span style="left:${pos(h * 60)}%">${h === 24 ? '00' : z(h)}</span>`).join('')}${live ? `<b class="tl-now-label" style="left:${pos(nowMin)}%">сейчас ${nowHM()}</b>` : ''}</div><span></span></div>
+    ${lanes.map(l => `<div class="tl-row tl-${l.k}-row">
+      <div class="tl-label">${l.icon}<span>${l.name}</span></div>
+      <div class="tl-track" data-action="tl-add" data-k="${l.k}" data-start="${start}" data-span="${span}" title="Нажми, чтобы добавить на это время">${grid}${l.marks}</div>
+      <div class="tl-sum">${l.sum}</div></div>`).join('')}
+    <p class="tl-hint">Нажми на пустое место дорожки — добавишь запись на это время. Нажми на отметку — изменишь её.</p>
+  </section>`;
 }
 
 /* ============================================================
@@ -671,7 +710,7 @@ function mealForm(m) {
       </div>
       <div class="row">
         ${field('Приём пищи', slotSelect(m?.slot || ''))}
-        ${field('Время', `<input name="time" type="time" value="${m ? m.time : (view.date === ymd() ? nowHM() : '12:00')}">`)}
+        ${field('Время', `<input name="time" type="time" value="${m ? m.time : defTime('12:00')}">`)}
         ${field('Дата', `<input name="date" type="date" value="${m ? m.date : view.date}">`)}
       </div>
       <details class="more-fields" ${m && (m.fi !== undefined || m.su !== undefined || m.sa !== undefined) ? 'open' : ''}><summary>Клетчатка, сахар, соль</summary>
@@ -815,6 +854,98 @@ function nudgeBar() {
   return nudges().map(n => `<div class="nudge">${n.icon}<span>${n.text}</span>${n.btn}<button class="icon-btn" data-action="nudge-off" data-k="${n.k}" aria-label="Скрыть">${I.x}</button></div>`).join('');
 }
 
+
+/* ============================================================
+   ЧИТАЛКА КОНСПЕКТОВ И ПОИСК
+   ============================================================ */
+let rd = null;
+function markTerms(root, q) {
+  const words = String(q || '').toLowerCase().replace(/ё/g, 'е').split(/[^\p{L}\p{N}._\-/]+/u).filter(w => w.length >= 2);
+  if (!words.length) return;
+  const re = new RegExp(words.map(w => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/е/g, '[её]')).join('|'), 'gi');
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, { acceptNode: n => n.parentElement.closest('pre,code,.mermaid-wrap,mark') ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT });
+  const nodes = []; while (walker.nextNode()) nodes.push(walker.currentNode);
+  for (const n of nodes) {
+    if (!re.test(n.data)) continue; re.lastIndex = 0;
+    const span = document.createElement('span');
+    span.innerHTML = esc(n.data).replace(re, m => `<mark class="hit">${m}</mark>`);
+    n.replaceWith(...span.childNodes);
+  }
+}
+async function openReader(rel, h = '', q = '') {
+  closeModal();
+  const root = $('#modal-root');
+  rd = { rel, h, q };
+  root.innerHTML = `<div class="overlay reader-overlay" data-action="close-modal"><div class="sheet reader" role="dialog" aria-modal="true" aria-label="Конспект">
+    <p class="cheat-wait"><span class="busy-dot"></span>Открываю…</p></div></div>`;
+  requestAnimationFrame(() => root.classList.add('open'));
+  let n;
+  try { n = await apiFetch('/api/obsidian/note?rel=' + encodeURIComponent(rel)); }
+  catch (e) { root.querySelector('.reader').innerHTML = `<header class="sheet-head"><h2>Не открылось</h2><button type="button" class="icon-btn" data-action="close-modal" aria-label="Закрыть">${I.x}</button></header><p class="auth-err">${esc(e.message)}</p>`; return; }
+  if (!rd || rd.rel !== rel) return;
+  rd.note = n;
+  const toc = n.sections.map(x => `<button class="rd-toc-i" data-action="rd-jump" data-h="${esc(x)}">${esc(x)}</button>`).join('');
+  const sheet = root.querySelector('.reader');
+  sheet.innerHTML = `<header class="reader-head">
+      <div class="reader-title"><small>${esc(n.rel.replace(/\.md$/, ''))}</small><h2>${esc(n.title)}</h2>
+        ${n.tags.length ? `<div class="chips">${n.tags.map(t => `<span class="chip chip-pill" style="--c:var(--study);--cf:var(--study-f)">#${esc(t)}</span>`).join('')}</div>` : ''}</div>
+      <div class="reader-actions">
+        ${n.sections.length ? `<select class="rd-toc-sel" data-rd-sec aria-label="Перейти к разделу"><option value="">Разделы…</option>${n.sections.map(x => `<option>${esc(x)}</option>`).join('')}</select>` : ''}
+        <label class="rd-find">${I.search}<input type="search" placeholder="Найти в конспекте" value="${esc(q)}" data-rd-find></label>
+        ${n.noteId ? `<button class="btn btn-sm btn-primary" style="--c:var(--quiz)" data-action="quiz-note" data-id="${n.noteId}">${I.quiz}Повторить</button>` : ''}
+        ${n.noteId && photoOn ? `<button class="btn btn-sm btn-accent" style="--c:var(--study);--cf:var(--study-f)" data-action="cheat" data-id="${n.noteId}">${I.spark}Шпаргалка</button>` : ''}
+        <a class="btn btn-sm" href="${esc(n.link)}">Открыть в Obsidian</a>
+        <button type="button" class="icon-btn" data-action="close-modal" aria-label="Закрыть">${I.x}</button>
+      </div></header>
+    <div class="reader-main">
+      ${toc ? `<nav class="rd-toc" aria-label="Разделы"><div class="rd-toc-h">Разделы</div>${toc}</nav>` : ''}
+      <article class="rd-body md">${mdToHtml(n.markdown)}</article>
+    </div>`;
+  const body = sheet.querySelector('.rd-body');
+  markTerms(body, q);
+  renderMermaid(body);
+  const target = h ? body.querySelector('#' + headId(h)) : body.querySelector('mark.hit');
+  if (target) setTimeout(() => target.scrollIntoView({ block: 'start' }), 60);
+}
+function rdFind(q) {
+  const body = $('.rd-body'); if (!body || !rd?.note) return;
+  body.innerHTML = mdToHtml(rd.note.markdown);
+  markTerms(body, q); renderMermaid(body);
+  const first = body.querySelector('mark.hit'); if (first) first.scrollIntoView({ block: 'center' });
+}
+
+let searchTimer = null, searchSeq = 0;
+function studySearchCard() {
+  if (!OBS.enabled) return '';
+  return `<div class="search">
+    <label class="search-box">${I.search}<input type="search" placeholder="Поиск по всем заметкам Obsidian: etcd кворум, multipath, LACP…" data-search value="${esc(view.studyQ || '')}" autocomplete="off"></label>
+    <div class="search-res" id="search-res">${searchResultsHtml()}</div>
+  </div>`;
+}
+function searchResultsHtml() {
+  const r = view.searchRes;
+  if (!view.studyQ || view.studyQ.trim().length < 2) {
+    const lib = view.library || [];
+    if (!lib.length) return '';
+    return `<div class="lib"><div class="fav-sub">Заметки в хранилище · ${lib.length}</div>${lib.slice(0, 12).map(n => `<button class="lib-i" data-action="rd-open" data-rel="${esc(n.rel)}"><b>${esc(n.title)}</b><span>${esc(n.rel.split('/').slice(0, -1).join(' / ') || 'корень')}${n.sections ? ` · ${n.sections} ${plural(n.sections, 'раздел', 'раздела', 'разделов')}` : ''}</span></button>`).join('')}</div>`;
+  }
+  if (!r) return '<p class="hint">Ищу…</p>';
+  if (!r.length) return '<p class="hint">Ничего не нашлось. Попробуй другое слово.</p>';
+  return r.map(x => `<button class="hit-i" data-action="rd-open" data-rel="${esc(x.rel)}" data-h="${esc(x.h)}"><span class="hit-path"><b>${esc(noteShort(x.title))}</b>${x.h ? ` › ${esc(x.h)}` : ''}</span><span class="hit-snip">${esc(x.snippet)}</span></button>`).join('');
+}
+async function runSearch(q) {
+  const seq = ++searchSeq;
+  view.studyQ = q; view.searchRes = null;
+  const box = $('#search-res'); if (box) box.innerHTML = searchResultsHtml();
+  if (q.trim().length < 2) return;
+  try { const r = await apiFetch('/api/obsidian/search?q=' + encodeURIComponent(q)); if (seq !== searchSeq) return; view.searchRes = r.hits; }
+  catch (e) { view.searchRes = []; }
+  const b2 = $('#search-res'); if (b2) { b2.innerHTML = searchResultsHtml(); markTerms(b2, q); }
+}
+async function loadLibrary() {
+  try { view.library = (await apiFetch('/api/obsidian/library')).notes; const b = $('#search-res'); if (b && !view.studyQ) b.innerHTML = searchResultsHtml(); } catch { /* без хранилища */ }
+}
+
 /* ============================================================
    ВОДА И НАПИТКИ
    ============================================================ */
@@ -892,7 +1023,7 @@ function drinkForm(x) {
       </div>
       <p class="drink-prev" id="drink-prev"></p>
       <div class="row row-2">
-        ${field('Время', `<input name="time" type="time" value="${x ? x.time : (view.date === ymd() ? nowHM() : '12:00')}">`)}
+        ${field('Время', `<input name="time" type="time" value="${x ? x.time : defTime('12:00')}">`)}
         ${field('Дата', `<input name="date" type="date" value="${x ? x.date : view.date}">`)}
       </div>`,
     submit: x ? 'Сохранить' : 'Записать'
@@ -1046,36 +1177,98 @@ function photoSave() {
 const CATS = ['C#', 'Unity', 'Алгоритмы', 'Архитектура', 'Web', 'Git', 'Математика', 'Английский'];
 function usedCats() { return [...new Set([...S.study.map(s => s.category), ...CATS])].filter(Boolean); }
 
-/* Небольшой markdown → HTML для шпаргалок: заголовки, списки, таблицы, код, жирный */
+/* ---------- markdown → HTML (конспекты Obsidian и шпаргалки) ---------- */
+const CALLOUT = { info: 'Инфо', note: 'Заметка', tip: 'Совет', warning: 'Внимание', important: 'Важно', example: 'Пример', bug: 'Гипотеза', todo: 'Сделать', danger: 'Опасно', quote: 'Цитата', abstract: 'Кратко', question: 'Вопрос', success: 'Готово', failure: 'Ошибка' };
+const headId = t => 'h-' + hash(String(t).trim().toLowerCase()).toString(36);
+function mdInline(t) {
+  return esc(t)
+    .replace(/`([^`]+)`/g, (m, c) => `<code>${c}</code>`)
+    .replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>')
+    .replace(/(^|[^*\w])\*([^*\n]+)\*/g, '$1<i>$2</i>')
+    .replace(/==([^=]+)==/g, '<mark>$1</mark>')
+    .replace(/\[\[([^\]|#]*)(#[^\]|]+)?(?:\|([^\]]+))?\]\]/g, (m, note, sec, label) => {
+      const h = sec ? sec.slice(1) : '';
+      return `<a class="wl" href="#" data-action="rd-link" data-note="${note}" data-h="${h}">${label || (note ? note + (h ? ' › ' + h : '') : h)}</a>`;
+    })
+    .replace(/\[([^\]]+)\]\((https?:[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+}
 function mdToHtml(md) {
-  const inline = t => esc(t).replace(/`([^`]+)`/g, '<code>$1</code>').replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>').replace(/(^|[^*])\*([^*\n]+)\*/g, '$1<i>$2</i>').replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (m, a, b) => b || a.replace(/#.*/, ''));
-  const out = [], lines = String(md).split('\n');
+  const lines = String(md).replace(/\r/g, '').split('\n'), out = [];
   for (let i = 0; i < lines.length; i++) {
     const l = lines[i];
-    if (/^```/.test(l)) { const buf = []; while (++i < lines.length && !/^```/.test(lines[i])) buf.push(lines[i]); out.push(`<pre><code>${esc(buf.join('\n'))}</code></pre>`); continue; }
+    const fence = /^\s*(```|~~~)\s*([\w-]*)/.exec(l);
+    if (fence) {
+      const buf = [];
+      while (++i < lines.length && !lines[i].trim().startsWith(fence[1])) buf.push(lines[i]);
+      out.push(fence[2] === 'mermaid' ? `<div class="mermaid-wrap"><pre class="mermaid">${esc(buf.join('\n'))}</pre></div>` : `<pre${fence[2] ? ` data-lang="${esc(fence[2])}"` : ''}><code>${esc(buf.join('\n'))}</code></pre>`);
+      continue;
+    }
+    if (/^\s*>/.test(l)) {
+      const buf = []; i--;
+      while (++i < lines.length && /^\s*>/.test(lines[i])) buf.push(lines[i].replace(/^\s*>\s?/, ''));
+      i--;
+      const c = /^\[!(\w+)\][+-]?\s*(.*)$/.exec(buf[0] || '');
+      if (c) { const type = c[1].toLowerCase(); out.push(`<div class="callout callout-${esc(type)}"><div class="callout-title">${mdInline(c[2] || CALLOUT[type] || type)}</div>${mdToHtml(buf.slice(1).join('\n'))}</div>`); }
+      else out.push(`<blockquote>${mdToHtml(buf.join('\n'))}</blockquote>`);
+      continue;
+    }
     if (/^\s*\|.*\|\s*$/.test(l)) {
       const rows = []; i--;
       while (++i < lines.length && /^\s*\|.*\|\s*$/.test(lines[i])) rows.push(lines[i]);
       i--;
-      const cells = r => r.trim().replace(/^\||\|$/g, '').split('|').map(c => c.trim());
+      const cells = r => r.trim().replace(/^\||\|$/g, '').split('|').map(x => x.trim());
       const body = rows.filter(r => !/^\s*\|[\s:|-]+\|\s*$/.test(r));
-      out.push(`<div class="md-table"><table>${body.map((r, k) => `<tr>${cells(r).map(c => k ? `<td>${inline(c)}</td>` : `<th>${inline(c)}</th>`).join('')}</tr>`).join('')}</table></div>`);
+      out.push(`<div class="md-table"><table>${body.map((r, k) => `<tr>${cells(r).map(x => k ? `<td>${mdInline(x)}</td>` : `<th>${mdInline(x)}</th>`).join('')}</tr>`).join('')}</table></div>`);
       continue;
     }
-    const h = /^(#{1,4})\s+(.+)$/.exec(l);
-    if (h) { out.push(`<h${Math.min(4, h[1].length + 1)}>${inline(h[2])}</h${Math.min(4, h[1].length + 1)}>`); continue; }
-    if (/^\s*([-*]|\d+\.)\s+/.test(l)) {
-      const ordered = /^\s*\d+\./.test(l), items = []; i--;
-      while (++i < lines.length && /^\s*([-*]|\d+\.)\s+/.test(lines[i])) items.push(lines[i].replace(/^\s*([-*]|\d+\.)\s+(\[[ xX]\]\s+)?/, ''));
+    const h = /^(#{1,6})\s+(.+?)\s*#*$/.exec(l);
+    if (h) { const lvl = Math.min(4, h[1].length + 1); out.push(`<h${lvl} id="${headId(h[2])}">${mdInline(h[2])}</h${lvl}>`); continue; }
+    if (/^\s*(---|\*\*\*|___)\s*$/.test(l)) { out.push('<hr>'); continue; }
+    if (/^\s*([-*+]|\d+[.)])\s+/.test(l)) {
+      const items = []; i--;
+      while (++i < lines.length && (/^\s*([-*+]|\d+[.)])\s+/.test(lines[i]) || (/^\s{2,}\S/.test(lines[i]) && items.length))) {
+        const m = /^(\s*)([-*+]|\d+[.)])\s+(.*)$/.exec(lines[i]);
+        if (m) items.push({ ind: m[1].replace(/\t/g, '  ').length, ord: /\d/.test(m[2]), text: m[3] });
+        else items[items.length - 1].text += ' ' + lines[i].trim();
+      }
       i--;
-      out.push(`<${ordered ? 'ol' : 'ul'}>${items.map(x => `<li>${inline(x)}</li>`).join('')}</${ordered ? 'ol' : 'ul'}>`);
+      // вложенность по отступам
+      const render = (arr, from, ind) => {
+        let html = '', k = from;
+        const ord = arr[from].ord;
+        while (k < arr.length && arr[k].ind >= ind) {
+          if (arr[k].ind > ind) { const [sub, next] = render(arr, k, arr[k].ind); html = html.replace(/<\/li>$/, sub + '</li>'); k = next; continue; }
+          const t = /^\[( |x|X)\]\s+(.*)$/.exec(arr[k].text);
+          html += t ? `<li class="task${t[1] !== ' ' ? ' done' : ''}"><span class="cb">${t[1] !== ' ' ? '✓' : ''}</span>${mdInline(t[2])}</li>` : `<li>${mdInline(arr[k].text)}</li>`;
+          k++;
+        }
+        return [`<${ord ? 'ol' : 'ul'}>${html}</${ord ? 'ol' : 'ul'}>`, k];
+      };
+      let k = 0; while (k < items.length) { const [html, next] = render(items, k, items[k].ind); out.push(html); k = next; }
       continue;
     }
-    if (/^>\s?/.test(l)) { out.push(`<blockquote>${inline(l.replace(/^>\s?(\[![^\]]+\]\s*)?/, ''))}</blockquote>`); continue; }
-    if (l.trim()) out.push(`<p>${inline(l)}</p>`);
+    if (l.trim()) {
+      const buf = [l]; // абзац — до пустой строки или блока
+      while (i + 1 < lines.length && lines[i + 1].trim() && !/^\s*([-*+]|\d+[.)])\s+|^\s*>|^#{1,6}\s|^\s*\||^\s*(```|~~~)|^\s*---\s*$/.test(lines[i + 1])) buf.push(lines[++i]);
+      out.push(`<p>${buf.map(mdInline).join('<br>')}</p>`);
+    }
   }
   return out.join('');
 }
+// mermaid-схемы рисуем, если есть интернет (библиотека с CDN); иначе остаётся текст схемы
+let mermaidLoading = null;
+function renderMermaid(root) {
+  const nodes = [...root.querySelectorAll('pre.mermaid:not([data-done])')];
+  if (!nodes.length) return;
+  mermaidLoading = mermaidLoading || new Promise((ok, fail) => {
+    if (window.mermaid) return ok();
+    const sc = document.createElement('script'); sc.src = 'https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.min.js';
+    sc.onload = ok; sc.onerror = fail; document.head.appendChild(sc);
+  }).then(() => window.mermaid.initialize({ startOnLoad: false, theme: 'base', securityLevel: 'strict', fontFamily: 'Onest, sans-serif',
+    themeVariables: { primaryColor: '#FBF4E6', primaryBorderColor: '#2F3B4F', primaryTextColor: '#2B3445', lineColor: '#6E6758', secondaryColor: '#F4D4BE', tertiaryColor: '#C8D8BD', clusterBkg: '#EFE3CE', clusterBorder: '#A19682' } }));
+  mermaidLoading.then(() => { nodes.forEach(n => n.dataset.done = '1'); return window.mermaid.run({ nodes }); }).catch(() => {});
+}
+
 async function openCheat(id, regenerate) {
   const n = OBS.notes.find(x => x.id === id); if (!n) return;
   const root = $('#modal-root');
@@ -1125,12 +1318,13 @@ function notesCard() {
     return `<div class="note">
       <div class="note-head"><div class="note-title"><b>${esc(n.title)}</b><span class="note-meta">${human(n.date)} · ${secs.length} ${plural(secs.length, 'раздел', 'раздела', 'разделов')} · ${qn} ${plural(qn, 'вопрос', 'вопроса', 'вопросов')}${ready < secs.length ? ` (готово ${ready}/${secs.length})` : ''}</span></div>
         <div class="note-actions">
-          <button class="btn btn-primary btn-sm" style="--c:var(--quiz)" data-action="quiz-note" data-id="${n.id}" ${qn ? '' : 'disabled'}>${I.quiz}Повторить${due ? ` · ${due}` : ''}</button>
+          <button class="btn btn-primary btn-sm" style="--c:var(--study)" data-action="rd-open" data-rel="${esc(n.rel)}">${I.study}Читать</button>
+          <button class="btn btn-accent btn-sm" style="--c:var(--quiz);--cf:var(--quiz-f)" data-action="quiz-note" data-id="${n.id}" ${qn ? '' : 'disabled'}>${I.quiz}Повторить${due ? ` · ${due}` : ''}</button>
           <button class="btn btn-accent btn-sm" style="--c:var(--study);--cf:var(--study-f)" data-action="cheat" data-id="${n.id}" ${photoOn ? '' : 'disabled'}>${I.spark}${n.cheat ? 'Шпаргалка' : 'Сделать шпаргалку'}</button>
           <a class="btn btn-sm" href="${esc(n.link)}">Открыть в Obsidian</a>
         </div></div>
       ${n.tags.length ? `<div class="chips note-tags">${n.tags.map(t => `<span class="chip chip-pill" style="--c:var(--study);--cf:var(--study-f)">#${esc(t)}</span>`).join('')}</div>` : ''}
-      <details class="theses"><summary>Разделы и вопросы</summary><div class="note-secs">${secs.map(sec => `<div class="note-sec"><span>${esc(sec.h)}</span>
+      <details class="theses"><summary>Разделы и вопросы</summary><div class="note-secs">${secs.map(sec => `<div class="note-sec"><button class="link-btn note-sec-h" data-action="rd-open" data-rel="${esc(n.rel)}" data-h="${esc(sec.h)}">${esc(sec.h)}</button>
         <span class="muted">${sec.questions === null ? 'вопросы готовятся…' : sec.qError ? `ошибка: ${esc(sec.qError.slice(0, 60))}` : `${sec.questions.length} ${plural(sec.questions.length, 'вопрос', 'вопроса', 'вопросов')}`}</span>
         <button class="icon-btn" title="Пересобрать вопросы по разделу" aria-label="Пересобрать вопросы" data-action="obs-regen" data-id="${n.id}" data-key="${sec.key}">${I.repeat}</button></div>`).join('')}</div></details>
       ${open.length ? `<details class="theses"><summary>Что проверить · ${open.length}</summary><ul class="note-tasks">${open.map(t => `<li>${esc(t.text)}</li>`).join('')}</ul></details>` : ''}
@@ -1153,6 +1347,7 @@ function diaryCard() {
 }
 
 function pageStudy() {
+  if (OBS.enabled && !view.library) { view.library = []; loadLibrary(); }
   const allMin = S.study.reduce((a, s) => a + num(s.minutes), 0) + Object.values(S.studyTime).reduce((a, v) => a + num(v), 0);
   const week = rangeDays(7).reduce((a, d) => a + studyMin(d), 0);
   const secs = OBS.notes.flatMap(n => n.sections.filter(s => !s.skip));
@@ -1169,6 +1364,7 @@ function pageStudy() {
       ${kpi('За 7 дней', `${hoursStr(week)}<small>ч</small>`, 'study', i++, `всего ${hoursStr(allMin)} ч`)}
     </div>
     <div class="grid">
+      ${OBS.enabled ? card({ domain: 'study', title: 'Поиск и чтение', span: 12, i: i++, body: studySearchCard() }) : ''}
       ${card({ domain: 'study', title: 'Obsidian', span: 12, i: i++, body: obsStatusCard() })}
       ${card({ domain: 'study', title: 'Конспекты', span: 12, i: i++, body: notesCard() })}
       ${card({ domain: 'study', title: 'Дневник занятий', span: 8, i: i++, body: diaryCard() + '<p class="hint">Время занятия можно вписать прямо в строку дневника — оно пойдёт в часы и график.</p>' })}
@@ -1195,7 +1391,7 @@ function studyForm(s) {
       <div class="row">
         ${field('Направление', `<input name="category" list="cats" autocomplete="off" placeholder="C#" value="${esc(s?.category || '')}">${datalist('cats', usedCats())}`)}
         ${field('Минут', `<input name="minutes" type="number" min="0" step="5" inputmode="numeric" placeholder="45" value="${s?.minutes ?? ''}">`)}
-        ${field('Время', `<input name="time" type="time" value="${s ? s.time : (view.date === ymd() ? nowHM() : '19:00')}">`)}
+        ${field('Время', `<input name="time" type="time" value="${s ? s.time : defTime('19:00')}">`)}
         ${field('Дата', `<input name="date" type="date" value="${s ? s.date : view.date}">`)}
       </div>
       ${field('Тезисы — что понял', `<textarea name="notes" placeholder="Каждая строка — отдельная мысль. Например:&#10;Делегат — это тип, описывающий сигнатуру метода&#10;event запрещает вызывать делегат извне класса">${esc(s ? s.notes.join('\n') : '')}</textarea>`)}
@@ -1465,7 +1661,7 @@ function gymForm(w) {
       <div class="row">
         ${field('Тип', `<input name="type" list="gymtypes" required autocomplete="off" placeholder="Силовая" value="${esc(w?.type || '')}">${datalist('gymtypes', [...GYM_TYPES, ...S.workouts.map(x => x.type)])}`)}
         ${field('Минут', `<input name="minutes" type="number" min="0" step="5" inputmode="numeric" placeholder="60" value="${w?.minutes ?? ''}">`)}
-        ${field('Время', `<input name="time" type="time" value="${w ? w.time : (view.date === ymd() ? nowHM() : '18:00')}">`)}
+        ${field('Время', `<input name="time" type="time" value="${w ? w.time : defTime('18:00')}">`)}
         ${field('Дата', `<input name="date" type="date" value="${w ? w.date : view.date}">`)}
       </div>
       ${field('Упражнения', `<textarea name="exercises" data-live="exercises" placeholder="Жим лёжа 3x8 60&#10;Присед 4x6 80, 1x4 90&#10;Подтягивания 3x10&#10;Бег 20 мин">${esc(text)}</textarea>`)}
@@ -1989,7 +2185,7 @@ function openModal({ title, accent, body, submit = 'Сохранить', form })
   setTimeout(() => first && first.focus(), 60);
 }
 function closeModal() {
-  ph = null;
+  ph = null; rd = null;
   const root = $('#modal-root'); if (!root.innerHTML) return;
   root.classList.remove('open');
   const html = root.innerHTML;
@@ -2067,6 +2263,22 @@ const ACTIONS = {
     form.kcal.focus();
   },
   'mood': el => { const d = view.date; S.days[d] = { ...dayRec(d), mood: dayRec(d).mood === +el.dataset.v ? 0 : +el.dataset.v }; save(); document.querySelectorAll('.mood').forEach(m => m.classList.toggle('on', +m.dataset.v === S.days[d].mood)); },
+  'tl-add': (el, e) => {
+    const r = el.getBoundingClientRect(), x = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
+    const m = Math.min(23 * 60 + 45, Math.round((+el.dataset.start + x * +el.dataset.span) / 15) * 15);
+    view.presetTime = `${z(Math.floor(m / 60))}:${z(m % 60)}`;
+    ({ food: () => mealForm(), drink: () => drinkForm(), study: () => studyForm(), gym: () => gymForm(), quiz: () => { view.presetTime = null; location.hash = '#quiz'; } })[el.dataset.k]?.();
+  },
+  'tl-open': () => {},
+  'rd-open': el => openReader(el.dataset.rel, el.dataset.h || '', view.studyQ || ''),
+  'rd-jump': el => { const t = $('.rd-body #' + headId(el.dataset.h)); if (t) t.scrollIntoView({ block: 'start', behavior: 'smooth' }); },
+  'rd-link': (el, e) => {
+    e.preventDefault();
+    const note = el.dataset.note, h = el.dataset.h;
+    if (!note) { const t = $('.rd-body #' + headId(h)); if (t) t.scrollIntoView({ block: 'start', behavior: 'smooth' }); return; }
+    const hit = (view.library || []).find(n => n.rel.replace(/\.md$/, '').endsWith(note) || n.title === note);
+    if (hit) openReader(hit.rel, h); else toast(`Заметка «${note}» не найдена в хранилище`, true);
+  },
   'q-check': async el => {
     const d = ymd(), q = S.quizzes[d], it = q.items[+el.dataset.k];
     const ta = document.querySelector(`[data-qans="${el.dataset.k}"]`); it.answer = (ta?.value || it.answer || '').trim();
@@ -2097,7 +2309,7 @@ const ACTIONS = {
   'reveal': el => { const q = S.quizzes[ymd()]; q.items[+el.dataset.k].revealed = true; save(); render(); },
   'grade': el => {
     const q = S.quizzes[ymd()], it = q.items[+el.dataset.k];
-    it.result = el.dataset.g; gradeCard(it.cardId, el.dataset.g); save(); render();
+    it.result = el.dataset.g; it.at = nowHM(); gradeCard(it.cardId, el.dataset.g); save(); render();
   },
   'quiz-early': () => { const d = ymd(); const pool = soonestCards(5, d); if (!pool.length) return; S.quizzes[d] = buildQuiz(d, pool); save(); render(); },
   'quiz-more': () => { const d = ymd(), q = S.quizzes[d]; const have = new Set(q.items.map(i => i.cardId)); const pool = dueCards(d).filter(c => !have.has(c.id)); const extra = buildQuiz(d + ':' + q.items.length, pool); q.items.push(...extra.items); save(); render(); },
@@ -2226,6 +2438,8 @@ document.addEventListener('submit', e => {
 let noteTimer;
 document.addEventListener('input', e => {
   const t = e.target;
+  if (t.dataset.search !== undefined) { clearTimeout(searchTimer); const v = t.value; searchTimer = setTimeout(() => runSearch(v), 250); }
+  if (t.dataset.rdFind !== undefined) { clearTimeout(searchTimer); const v = t.value; searchTimer = setTimeout(() => rdFind(v), 250); }
   if (t.dataset.qans !== undefined) { const it = S.quizzes[ymd()]?.items[+t.dataset.qans]; if (it) it.answer = t.value; }
   if (t.dataset.dmin !== undefined) { const v = Math.max(0, Math.round(num(t.value))); if (v) S.studyTime[t.dataset.dmin] = v; else delete S.studyTime[t.dataset.dmin]; save(); }
   if (ph && t.dataset.ph) ph[t.dataset.ph] = t.value;
@@ -2259,6 +2473,7 @@ document.addEventListener('input', e => {
 });
 document.addEventListener('change', e => {
   const t = e.target;
+  if (t.dataset.rdSec !== undefined && t.value) { const h = $('.rd-body #' + headId(t.value)); if (h) h.scrollIntoView({ block: 'start', behavior: 'smooth' }); t.value = ''; return; }
   if (t.dataset.photo !== undefined && t.files[0]) { startPhoto(t.files[0]); t.value = ''; return; }
   if (t.dataset.import !== undefined && t.files[0]) {
     const r = new FileReader();

@@ -289,6 +289,18 @@ async function api(req, res, url) {
     if (!obsidian || user !== OBS_USER) return send(res, 404, { error: 'Obsidian не подключён.' });
     await obsidian.sync(); return send(res, 200, obsidian.publicState());
   }
+  if (route === 'GET /api/obsidian/search') {
+    if (!obsidian || user !== OBS_USER) return send(res, 404, { error: 'Obsidian не подключён.' });
+    return send(res, 200, { hits: await obsidian.search(String(url.searchParams.get('q') || '').slice(0, 200)) });
+  }
+  if (route === 'GET /api/obsidian/library') {
+    if (!obsidian || user !== OBS_USER) return send(res, 404, { error: 'Obsidian не подключён.' });
+    return send(res, 200, { notes: await obsidian.listLibrary() });
+  }
+  if (route === 'GET /api/obsidian/note') {
+    if (!obsidian || user !== OBS_USER) return send(res, 404, { error: 'Obsidian не подключён.' });
+    return send(res, 200, await obsidian.readNote(url.searchParams.get('rel') || ''));
+  }
   if (route === 'POST /api/obsidian/regen') {
     if (!obsidian || user !== OBS_USER) return send(res, 404, { error: 'Obsidian не подключён.' });
     const body = await readBody(req); obsidian.regen(String(body.noteId || ''), body.key ? String(body.key) : null);

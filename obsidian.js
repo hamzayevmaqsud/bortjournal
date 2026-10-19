@@ -255,6 +255,68 @@ ${raw.slice(0, 60000)}`;
     return { markdown: raw.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, '').replace(/^#\s+.+\n+/, ''), rel: note.cheat.rel, link: link(note.cheat.rel) };
   }
 
+
+  /* ---------- библиотека: все заметки хранилища для чтения и поиска ---------- */
+  const lib = new Map(); // rel → { mtimeMs, title, tags, sections:[{h, text}], intro }
+  async function indexVault() {
+    const files = (await walk(vault)) || [], seen = new Set();
+    for (const file of files) {
+      const rel = path.relative(vault, file);
+      seen.add(rel);
+      let stat; try { stat = await fsp.stat(file); } catch { continue; }
+      if (lib.get(rel)?.mtimeMs === stat.mtimeMs) continue;
+      let raw; try { raw = await fsp.readFile(file, 'utf8'); } catch { continue; }
+      const n = parseNote(raw, rel, stat);
+      const body = raw.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, '');
+      const intro = body.split(/^##\s+/m)[0];
+      lib.set(rel, { mtimeMs: stat.mtimeMs, title: n.title, tags: n.tags, date: n.date, sections: n.sections.map(x => ({ h: x.h, text: x.text })), intro, size: raw.length });
+    }
+    for (const rel of [...lib.keys()]) if (!seen.has(rel)) lib.delete(rel);
+  }
+  const norm = t => String(t).toLowerCase().replace(/ё/g, 'е');
+  async function search(q, limit = 40) {
+    await indexVault();
+    const words = norm(q).split(/[^\p{L}\p{N}._\-/]+/u).filter(w => w.length >= 2);
+    if (!words.length) return [];
+    const hits = [];
+    for (const [rel, n] of lib) {
+      const parts = [{ h: '', text: n.intro }, ...n.sections];
+      const tnorm = norm(n.title + ' ' + n.tags.join(' '));
+      for (const p of parts) {
+        const hay = norm(p.h + '\n' + p.text);
+        let score = 0, first = -1;
+        for (const w of words) {
+          let i = hay.indexOf(w), c = 0;
+          if (i < 0) { if (!tnorm.includes(w)) { score = 0; break; } continue; }
+          if (first < 0 || i < first) first = i;
+          while (i >= 0 && c < 20) { c++; i = hay.indexOf(w, i + w.length); }
+          score += c + (norm(p.h).includes(w) ? 5 : 0);
+        }
+        if (!score) continue;
+        if (words.every(w => tnorm.includes(w))) score += 3;
+        const raw = p.h + '\n' + p.text, start = Math.max(0, first - 70);
+        const snippet = raw.slice(start, start + 220).replace(/\[!\w+\]/g, '').replace(/:?-{3,}:?/g, ' ').replace(/[#>*`|=]+/g, ' ').replace(/\s+/g, ' ').trim();
+        hits.push({ rel, title: n.title, h: p.h, snippet: (start ? '…' : '') + snippet + '…', score, link: link(rel), study: rel.startsWith(folder + path.sep) || rel.startsWith(folder + '/') });
+      }
+    }
+    return hits.sort((a, b) => b.score - a.score).slice(0, limit);
+  }
+  async function listLibrary() {
+    await indexVault();
+    return [...lib.entries()].map(([rel, n]) => ({ rel, title: n.title, tags: n.tags, date: n.date, mtimeMs: n.mtimeMs, sections: n.sections.length, link: link(rel), study: rel.startsWith(folder + '/') || rel.startsWith(folder + path.sep), cheat: rel.startsWith(cheatsFolder + '/') || rel.startsWith(cheatsFolder + path.sep) }))
+      .sort((a, b) => b.mtimeMs - a.mtimeMs);
+  }
+  async function readNote(rel) {
+    const full = path.resolve(vault, String(rel));
+    if (!full.startsWith(path.resolve(vault) + path.sep) || !full.endsWith('.md')) throw Object.assign(new Error('Неверный путь.'), { code: 400 });
+    let raw, stat;
+    try { [raw, stat] = await Promise.all([fsp.readFile(full, 'utf8'), fsp.stat(full)]); } catch { throw Object.assign(new Error('Заметка не найдена.'), { code: 404 }); }
+    const r = path.relative(vault, full), n = parseNote(raw, r, stat);
+    const note = Object.values(store.notes).find(x => x.rel === r);
+    return { rel: r, title: n.title, tags: n.tags, date: n.date, link: link(r), noteId: note?.id || null, cheat: note?.cheat ? { ...note.cheat, link: link(note.cheat.rel) } : null,
+      markdown: raw.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, ''), sections: n.sections.map(x => x.h) };
+  }
+
   function regen(noteId, key) {
     const note = Object.values(store.notes).find(x => x.id === noteId);
     for (const s of note?.sections || []) if (!key || s.key === key) { if (!s.skip) { s.questions = null; s.qError = null; } }
@@ -276,6 +338,6 @@ ${raw.slice(0, 60000)}`;
 
   setInterval(sync, 60e3).unref();
   setTimeout(sync, 1000);
-  return { sync, publicState, check, cheatsheet, readCheat, regen, user };
+  return { sync, publicState, check, cheatsheet, readCheat, regen, search, listLibrary, readNote, user };
 };
 module.exports.parseNote = parseNote;
