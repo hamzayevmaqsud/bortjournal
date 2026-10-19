@@ -9,7 +9,7 @@ const KEY = 'bortjournal.v1'; // старое хранилище браузер�
 const DEF = {
   settings: { kcal: 2200, protein: 140, steps: 10000, study: 60, apiKey: '', aiAuto: false, name: '' },
   meals: [], study: [], workouts: [], days: {}, srs: {}, quizzes: {}, foods: {},
-  profile: null, activity: {}
+  profile: null, activity: {}, drinks: []
 };
 let S = structuredClone(DEF);
 let me = null, rev = 0, photoOn = false;
@@ -114,7 +114,10 @@ function hmToMin(hm) { if (!hm) return null; const [h, m] = hm.split(':').map(Nu
 function rangeDays(n, end = ymd()) { const out = []; for (let i = n - 1; i >= 0; i--) out.push(addDays(end, -i)); return out; }
 
 /* ---------- выборки ---------- */
-const mealsOn = d => S.meals.filter(m => m.date === d).sort((a, b) => (a.time || '').localeCompare(b.time || ''));
+const drinksOn = d => S.drinks.filter(x => x.date === d).sort((a, b) => (a.time || '').localeCompare(b.time || ''));
+// калорийные напитки (сок, газировка, латте) считаются в еде дня как отдельные записи
+const mealsOn = d => [...S.meals.filter(m => m.date === d), ...drinksOn(d).map(drinkAsMeal).filter(m => m.kcal > 0)]
+  .sort((a, b) => (a.time || '').localeCompare(b.time || ''));
 const studyOn = d => S.study.filter(s => s.date === d).sort((a, b) => (a.time || '').localeCompare(b.time || ''));
 const gymOn = d => S.workouts.filter(w => w.date === d).sort((a, b) => (a.time || '').localeCompare(b.time || ''));
 const dayRec = d => S.days[d] || {};
@@ -153,6 +156,7 @@ const I = {
   download: '<svg viewBox="0 0 24 24"><path d="M12 4v11m-4-4l4 4 4-4M5 20h14"/></svg>',
   upload: '<svg viewBox="0 0 24 24"><path d="M12 15V4m-4 4l4-4 4 4M5 20h14"/></svg>',
   goal: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r=".9"/></svg>',
+  drop: '<svg viewBox="0 0 24 24"><path d="M12 3.5c3.2 4 6 7.3 6 10.5a6 6 0 0 1-12 0c0-3.2 2.8-6.5 6-10.5z"/><path d="M9 14.5a3 3 0 0 0 3 3"/></svg>',
   camera: '<svg viewBox="0 0 24 24"><path d="M4 8.5A1.5 1.5 0 0 1 5.5 7h2l1.5-2h6l1.5 2h2A1.5 1.5 0 0 1 20 8.5v9a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 17.5z"/><circle cx="12" cy="12.5" r="3.5"/></svg>',
   logout: '<svg viewBox="0 0 24 24"><path d="M15 4h3a2 2 0 012 2v12a2 2 0 01-2 2h-3M10 16l-4-4 4-4M6 12h10"/></svg>'
 };
@@ -281,6 +285,7 @@ function pageToday() {
       <div class="big"><b data-count="${Math.round(tot.kcal)}">0</b><small>/ ${fmtN(set.kcal)} ккал</small></div>
       <div class="macros"><span class="macro"><em>Б</em>${fmtN(tot.p)}<i>/${set.protein}</i></span><span class="macro"><em>Ж</em>${fmtN(tot.f)}</span><span class="macro"><em>У</em>${fmtN(tot.c)}</span></div>
     </div></div>
+    ${S.drinks.length || drinkDay(d).ml ? `<p class="hint" style="margin:10px 0 0">Вода: ${fmt1(drinkDay(d).hyd / 1000)} из ${fmt1(waterNorm() / 1000)} л</p>` : ''}
     ${ms.length ? `<div class="mini-list">${ms.slice(-4).map(m => `<div class="mini"><span class="mini-time">${esc(m.time || '')}</span><span class="mini-name">${esc(m.name)}</span><span class="mini-val">${fmtN(m.kcal)}</span></div>`).join('')}${ms.length > 4 ? `<a class="more" href="#food">и ещё ${ms.length - 4}</a>` : ''}</div>` : empty('Ещё ничего не ел')}`;
 
   const studyBody = `<div class="ring-row">${ring(stMin, set.study, 'var(--study)')}
@@ -507,6 +512,13 @@ function foodCalendarCard(nm) {
     <div class="heat-legend"><span><i style="background:var(--st-good)"></i>в норме</span><span><i style="background:var(--st-warn)"></i>мимо нормы</span><span><i style="background:var(--st-bad)"></i>перебор</span><span><i class="cal-p cal-p-l"></i>белок закрыт</span></div>`;
 }
 
+// калорийные напитки видны в блоке «Вода и напитки», здесь — только итог по ним
+function foodListBody(ms, live) {
+  const food = ms.filter(m => !m.drink), dr = ms.filter(m => m.drink), dk = dr.reduce((a, m) => a + m.kcal, 0);
+  const extra = dr.length ? `<p class="drinks-sum">${I.drop}<span>+ напитки: <b>${fmtN(dk)} ккал</b> (${dr.map(m => m.name.split(',')[0]).join(', ')}) — уже в норме дня</span></p>` : '';
+  if (!food.length) return (dr.length ? '' : empty(live ? 'Сегодня ещё ничего не записано. Сфотографируй еду или запиши вручную — кнопки выше.' : 'За этот день записей нет.')) + extra;
+  return `<div class="list">${food.map(mealItem).join('')}</div>${extra}`;
+}
 function pageFood() {
   const d = view.date, ms = mealsOn(d), tot = sumMeals(ms), nm = norms(), live = d === ymd();
   const freq = topFoods(8);
@@ -516,10 +528,12 @@ function pageFood() {
     <div class="add-tiles">
       ${photoOn ? `<label class="add-tile add-photo">${I.camera}<span><b>Сфотографировать еду</b><small>ИИ разберёт тарелку и посчитает ккал и БЖУ</small></span><input type="file" accept="image/*" data-photo hidden></label>` : ''}
       <button class="add-tile add-manual" data-action="add-meal">${I.plus}<span><b>Записать вручную</b><small>Название и калории, БЖУ по желанию</small></span></button>
+      <button class="add-tile add-drink" data-action="add-drink">${I.drop}<span><b>Вода и напитки</b><small>Вода, чай, кофе, сок, газировка — по мл</small></span></button>
     </div>
     <div class="grid">
       ${card({ domain: 'food', title: live ? 'Норма на сегодня' : `Норма на ${human(d)}`, span: 12, i: i++, body: dayNormsCard(d, tot, nm, live) + `<p class="hint">${S.profile ? 'Нормы — из твоего плана на вкладке «Цель».' : 'Заполни профиль на вкладке «Цель», чтобы нормы стали личными.'} Тёмный второй виток кольца — сколько сверх нормы.</p>` })}
-      ${card({ domain: 'food', title: live ? 'Записи за сегодня' : `Записи за ${human(d)}`, span: 7, i: i++, body: ms.length ? `<div class="list">${ms.map(mealItem).join('')}</div>` : empty(live ? 'Сегодня ещё ничего не записано. Сфотографируй еду или запиши вручную — кнопки выше.' : 'За этот день записей нет.') })}
+      ${card({ domain: 'steps', title: live ? 'Вода и напитки сегодня' : `Вода и напитки за ${human(d)}`, span: 12, i: i++, body: drinksCard(d, live) })}
+      ${card({ domain: 'food', title: live ? 'Записи за сегодня' : `Записи за ${human(d)}`, span: 7, i: i++, body: foodListBody(ms, live) })}
       ${card({ domain: 'food', title: 'Календарь питания', span: 5, i: i++, body: foodCalendarCard(nm) })}
       ${card({ domain: 'food', title: live ? 'Баланс БЖУ за сегодня' : `Баланс БЖУ за ${human(d)}`, span: 6, i: i++, body: macroSplitCard(tot) })}
       ${card({ domain: 'food', title: 'Когда ешь · 7 дней', span: 6, i: i++, body: mealTimingCard(d) })}
@@ -566,6 +580,115 @@ function mealForm(m) {
   });
 }
 
+
+
+/* ============================================================
+   ВОДА И НАПИТКИ
+   ============================================================ */
+// на 100 мл: ккал, белки, жиры, углеводы, сахар (г), кофеин (мг); hyd — засчитывается в воду
+const DRINKS = {
+  water:   { name: 'Вода без газа',     kcal: 0,  p: 0,   f: 0,   c: 0,    sugar: 0,    caf: 0,  hyd: 1, color: '#5B9BD1' },
+  soda:    { name: 'Вода с газом',      kcal: 0,  p: 0,   f: 0,   c: 0,    sugar: 0,    caf: 0,  hyd: 1, color: '#7FB3DD' },
+  tea:     { name: 'Чай без сахара',    kcal: 1,  p: 0,   f: 0,   c: 0.2,  sugar: 0,    caf: 15, hyd: 1, color: '#A3742A' },
+  coffee:  { name: 'Кофе чёрный',       kcal: 2,  p: 0.1, f: 0,   c: 0.3,  sugar: 0,    caf: 40, hyd: 1, color: '#5A3A22' },
+  latte:   { name: 'Кофе с молоком',    kcal: 45, p: 2.7, f: 2.3, c: 3.8,  sugar: 3.8,  caf: 25, hyd: 1, color: '#B0835A' },
+  juice:   { name: 'Сок',               kcal: 45, p: 0.7, f: 0.2, c: 10.4, sugar: 8.4,  caf: 0,  hyd: 1, color: '#E89A2C' },
+  cola:    { name: 'Газировка',         kcal: 42, p: 0,   f: 0,   c: 10.6, sugar: 10.6, caf: 10, hyd: 1, color: '#B8432E' },
+  zero:    { name: 'Газировка без сахара', kcal: 0, p: 0, f: 0,   c: 0,    sugar: 0,    caf: 10, hyd: 1, color: '#6B6457' },
+  milk:    { name: 'Молоко 2,5%',       kcal: 52, p: 2.9, f: 2.5, c: 4.7,  sugar: 4.7,  caf: 0,  hyd: 1, color: '#D8CBB0' },
+  kefir:   { name: 'Кефир 1%',          kcal: 40, p: 3,   f: 1,   c: 4,    sugar: 4,    caf: 0,  hyd: 1, color: '#C9C0AE' },
+  energy:  { name: 'Энергетик',         kcal: 45, p: 0,   f: 0,   c: 11,   sugar: 11,   caf: 32, hyd: 1, color: '#3C9A4E' },
+  beer:    { name: 'Пиво',              kcal: 43, p: 0.5, f: 0,   c: 3.6,  sugar: 0,    caf: 0,  hyd: 0, color: '#C99A2E' },
+  custom:  { name: 'Своё',              kcal: 0,  p: 0,   f: 0,   c: 0,    sugar: 0,    caf: 0,  hyd: 1, color: '#A19682' }
+};
+const ML_CHOICES = [[200, 'стакан'], [250, 'кружка'], [330, 'банка'], [500, 'бутылка'], [1000, 'литр']];
+const CAF_MAX = 400, SUGAR_MAX = 25;
+
+function drinkTotals(x) {
+  const t = DRINKS[x.type] || DRINKS.custom, k = num(x.ml) / 100;
+  const per = x.type === 'custom' ? { ...t, kcal: num(x.kcal100), c: num(x.sugar100), sugar: num(x.sugar100) } : t;
+  return { kcal: Math.round(per.kcal * k), p: per.p * k, f: per.f * k, c: per.c * k, sugar: per.sugar * k, caf: per.caf * k, hyd: num(x.ml) * per.hyd };
+}
+function drinkName(x) { return x.type === 'custom' ? (x.name || 'Напиток') : DRINKS[x.type]?.name || 'Напиток'; }
+function drinkAsMeal(x) {
+  const t = drinkTotals(x);
+  return { id: 'drink:' + x.id, drinkId: x.id, drink: true, date: x.date, time: x.time, name: `${drinkName(x)}, ${fmtN(x.ml)} мл`, kcal: t.kcal, p: t.p, f: t.f, c: t.c, sugar: t.sugar };
+}
+/* Норма питья: EFSA — общая вода 2,5 л мужчинам / 2,0 л женщинам, ~80% из напитков; плюс тренировки */
+function waterNorm() {
+  const base = S.profile?.sex === 'f' ? 1600 : 2000;
+  const bonus = { sed: 0, light: 250, mod: 400, high: 600, ath: 800 }[S.profile ? curLevel() : 'sed'] || 0;
+  return base + bonus;
+}
+function drinkDay(d) {
+  return drinksOn(d).reduce((a, x) => { const t = drinkTotals(x); a.hyd += t.hyd; a.ml += num(x.ml); a.sugar += t.sugar; a.caf += t.caf; a.kcal += t.kcal; return a; }, { hyd: 0, ml: 0, sugar: 0, caf: 0, kcal: 0 });
+}
+
+function drinksCard(d, live) {
+  const tot = drinkDay(d), norm = waterNorm(), list = drinksOn(d);
+  const wr = tot.hyd / norm;
+  const wst = !tot.hyd ? { lvl: 'info', icon: '•', text: live ? 'пока ничего' : 'нет записей' }
+    : wr >= 1 ? { lvl: 'good', icon: '✓', text: 'норма выпита' }
+    : live ? { lvl: 'info', icon: '•', text: `ещё ${fmt1((norm - tot.hyd) / 1000)} л` }
+    : wr >= 0.75 ? { lvl: 'low', icon: '▼', text: `чуть меньше нормы, −${fmtN(norm - tot.hyd)} мл` } : { lvl: 'bad', icon: '▼', text: `мало воды, −${fmtN(norm - tot.hyd)} мл` };
+  const sst = tot.sugar > SUGAR_MAX * 2 ? { lvl: 'bad', icon: '▲', text: `много сахара: ${fmtN(tot.sugar)} г` } : tot.sugar > SUGAR_MAX ? { lvl: 'warn', icon: '▲', text: `выше ${SUGAR_MAX} г` } : { lvl: 'good', icon: '✓', text: tot.sugar ? 'в пределах' : 'без сахара' };
+  const cst = tot.caf > CAF_MAX ? { lvl: 'bad', icon: '▲', text: `больше ${CAF_MAX} мг` } : tot.caf > CAF_MAX * 0.75 ? { lvl: 'warn', icon: '▲', text: 'близко к пределу' } : { lvl: 'good', icon: '✓', text: tot.caf ? 'в пределах' : 'без кофеина' };
+  const small = (val, max, color, label, unit, st) => `<div class="meter-cell">${meterRing(val, max, color, label, 96)}
+    <div class="meter-name"><i style="background:${color}"></i>${label}</div><div class="meter-val"><b>${fmtN(val)}</b> / ${fmtN(max)} ${unit}</div>${statusChip(st)}</div>`;
+  return `<div class="drinks">
+    <div class="drinks-main">
+      <div class="meter-cell">${meterRing(tot.hyd, norm, '#2A7FB8', 'Вода', 150)}
+        <div class="meter-name"><i style="background:#2A7FB8"></i>Вода</div>
+        <div class="meter-val"><b>${fmt1(tot.hyd / 1000)}</b> / ${fmt1(norm / 1000)} л</div>${statusChip(wst)}</div>
+      <div class="drinks-side">
+        ${small(tot.sugar, SUGAR_MAX, '#B8432E', 'Сахар из напитков', 'г', sst)}
+        ${small(tot.caf, CAF_MAX, '#5A3A22', 'Кофеин', 'мг', cst)}
+      </div>
+    </div>
+    <div class="drinks-quick">
+      <button class="btn btn-primary" style="--c:#2A7FB8" data-action="quick-drink" data-type="water" data-ml="250">${I.plus}Стакан воды · 250 мл</button>
+      <button class="btn btn-accent" style="--c:#2A7FB8;--cf:#D6E6F2" data-action="quick-drink" data-type="water" data-ml="500">${I.plus}Бутылка · 500 мл</button>
+      <button class="btn" data-action="add-drink">${I.plus}Другой напиток</button>
+    </div>
+    ${list.length ? `<div class="drinks-list">${list.map(x => { const t = drinkTotals(x), c = DRINKS[x.type] || DRINKS.custom; return `<span class="drink-chip" title="${esc(drinkName(x))}: ${fmtN(x.ml)} мл${t.kcal ? `, ${t.kcal} ккал` : ''}${t.caf ? `, кофеин ${fmtN(t.caf)} мг` : ''}"><i style="background:${c.color}"></i><span class="drink-t">${esc(x.time || '')}</span><b>${esc(drinkName(x))}</b> ${fmtN(x.ml)} мл${t.kcal ? ` · ${t.kcal} ккал` : ''}<button class="icon-btn" data-action="edit-drink" data-id="${x.id}" aria-label="Изменить">${I.edit}</button><button class="icon-btn danger" data-action="del-drink" data-id="${x.id}" aria-label="Удалить">${I.x}</button></span>`; }).join('')}</div>` : ''}
+    <p class="hint">Норма питья — по рекомендации EFSA (${S.profile?.sex === 'f' ? '≈1,6' : '≈2'} л напитков в день${waterNorm() > (S.profile?.sex === 'f' ? 1600 : 2000) ? ', плюс добавка за тренировки этой недели' : ''}). Чай и кофе засчитываются в воду, пиво — нет. Сахар — ориентир ВОЗ до ${SUGAR_MAX} г добавленного сахара в день, кофеин — до ${CAF_MAX} мг. Калорийные напитки сами попадают в калории и БЖУ дня.</p>
+  </div>`;
+}
+
+function drinkForm(x) {
+  const type = x?.type || 'water', ml = x?.ml || 250;
+  openModal({
+    title: x ? 'Изменить напиток' : 'Напиток', accent: '#2A7FB8', form: 'drink',
+    body: `<input type="hidden" name="id" value="${x ? x.id : ''}">
+      <div class="opts opts-drinks">${Object.entries(DRINKS).map(([k, t]) => `<label class="opt opt-drink"><input type="radio" name="type" value="${k}" ${k === type ? 'checked' : ''}><b><i style="background:${t.color}"></i>${t.name}</b><span>${k === 'custom' ? 'название и ккал сами' : t.kcal ? `${t.kcal} ккал/100 мл${t.sugar ? ` · сахар ${fmt1(t.sugar)} г` : ''}` : 'без калорий'}${t.caf ? ` · кофеин` : ''}${!t.hyd ? ' · не вода' : ''}</span></label>`).join('')}</div>
+      <div class="drink-custom" ${type === 'custom' ? '' : 'hidden'}>
+        <div class="row">${field('Название', `<input name="name" value="${esc(x?.name || '')}" placeholder="Например, морс">`)}${field('Ккал на 100 мл', `<input name="kcal100" type="number" min="0" step="any" value="${x?.kcal100 ?? ''}" placeholder="0">`)}${field('Сахар на 100 мл, г', `<input name="sugar100" type="number" min="0" step="any" value="${x?.sugar100 ?? ''}" placeholder="0">`)}</div>
+      </div>
+      <div class="field"><label>Сколько</label>
+        <div class="chips">${ML_CHOICES.map(([v, n]) => `<button type="button" class="chip chip-btn ${+ml === v ? 'on' : ''}" data-action="drink-ml" data-v="${v}"><b>${v} мл</b>${n}</button>`).join('')}</div>
+        <div class="ml-row"><button type="button" class="icon-btn" data-action="drink-step" data-n="-50" aria-label="Меньше на 50 мл">−</button><input name="ml" type="number" min="10" max="5000" step="10" inputmode="numeric" value="${ml}" required><span>мл</span><button type="button" class="icon-btn" data-action="drink-step" data-n="50" aria-label="Больше на 50 мл">+</button></div>
+      </div>
+      <p class="drink-prev" id="drink-prev"></p>
+      <div class="row row-2">
+        ${field('Время', `<input name="time" type="time" value="${x ? x.time : (view.date === ymd() ? nowHM() : '12:00')}">`)}
+        ${field('Дата', `<input name="date" type="date" value="${x ? x.date : view.date}">`)}
+      </div>`,
+    submit: x ? 'Сохранить' : 'Записать'
+  });
+  drinkPreview();
+}
+function drinkPreview() {
+  const f = $('#modal-root [data-form=drink]'); if (!f) return;
+  const fd = new FormData(f), x = { type: fd.get('type'), ml: fd.get('ml'), kcal100: fd.get('kcal100'), sugar100: fd.get('sugar100') }, t = drinkTotals(x);
+  f.querySelector('.drink-custom').hidden = x.type !== 'custom';
+  f.querySelectorAll('[data-action=drink-ml]').forEach(b => b.classList.toggle('on', +b.dataset.v === num(x.ml)));
+  $('#drink-prev').innerHTML = `<b>${fmtN(x.ml)} мл</b>${t.hyd ? ` · в воду ${fmtN(t.hyd)} мл` : ' · в воду не засчитывается'}${t.kcal ? ` · ${t.kcal} ккал` : ''}${t.sugar ? ` · сахар ${fmt1(t.sugar)} г` : ''}${t.caf ? ` · кофеин ${fmtN(t.caf)} мг` : ''}`;
+}
+function addDrink(type, ml) {
+  const x = { id: uid(), date: view.date, time: view.date === ymd() ? nowHM() : '12:00', type, ml };
+  S.drinks.push(x); save(); render();
+  toast(`${drinkName(x)} ${fmtN(ml)} мл — записано`);
+}
 
 /* ============================================================
    ФОТО ЕДЫ: распознавание через сервер (Gemini) и проверка
@@ -1532,6 +1655,12 @@ const ACTIONS = {
   'range': el => { view.range = +el.dataset.n; render(); },
   'close-modal': (el, e) => { if (el.classList.contains('overlay') && e.target !== el) return; closeModal(); },
   'add-meal': () => mealForm(),
+  'add-drink': () => drinkForm(),
+  'edit-drink': el => drinkForm(S.drinks.find(x => x.id === el.dataset.id)),
+  'del-drink': el => { S.drinks = S.drinks.filter(x => x.id !== el.dataset.id); save(); render(); toast('Удалено'); },
+  'quick-drink': el => addDrink(el.dataset.type, +el.dataset.ml),
+  'drink-ml': el => { const i = $('#modal-root [name=ml]'); i.value = el.dataset.v; drinkPreview(); },
+  'drink-step': el => { const i = $('#modal-root [name=ml]'); i.value = Math.max(10, num(i.value) + +el.dataset.n); drinkPreview(); },
   'add-study': () => studyForm(),
   'add-gym': () => gymForm(),
   'add-steps': () => openModal({
@@ -1634,6 +1763,15 @@ const FORMS = {
     S.settings.aiAuto = fd.get('aiAuto') === 'on';
     save(); toast(S.settings.apiKey ? 'Ключ сохранён' : 'Ключ удалён');
   },
+  drink(fd) {
+    const id = fd.get('id') || uid(), type = String(fd.get('type') || 'water'), ml = Math.round(num(fd.get('ml')));
+    if (!(ml > 0)) return;
+    const x = { id, date: fd.get('date') || view.date, time: fd.get('time') || '', type, ml };
+    if (type === 'custom') Object.assign(x, { name: String(fd.get('name') || '').trim() || 'Напиток', kcal100: num(fd.get('kcal100')), sugar100: num(fd.get('sugar100')) });
+    const idx = S.drinks.findIndex(d => d.id === id);
+    if (idx >= 0) S.drinks[idx] = x; else S.drinks.push(x);
+    save(); closeModal(); render(); toast(`${drinkName(x)} ${fmtN(ml)} мл — ${idx >= 0 ? 'сохранено' : 'записано'}`);
+  },
   week(fd) {
     const t = ymd(), w = num(fd.get('weight'));
     S.activity[mondayOf(t)] = String(fd.get('level') || curLevel());
@@ -1693,6 +1831,7 @@ document.addEventListener('input', e => {
     view.wizard.d[t.dataset.wiz] = t.value;
     const live = $('#wiz-live'); if (live) live.innerHTML = wizLive();
   }
+  if (t.closest && t.closest('[data-form=drink]')) drinkPreview();
   if (t.dataset.live === 'exercises') { const p = $('#ex-preview'); if (p) p.textContent = exPreview(t.value); }
   if (t.dataset.note !== undefined) {
     clearTimeout(noteTimer);
