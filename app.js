@@ -227,6 +227,7 @@ const I = {
   upload: '<svg viewBox="0 0 24 24"><path d="M12 15V4m-4 4l4-4 4 4M5 20h14"/></svg>',
   goal: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r=".9"/></svg>',
   plans: '<svg viewBox="0 0 24 24"><rect x="4" y="4.5" width="16" height="16" rx="3"/><path d="M8 3v3M16 3v3M4 9.5h16M8.5 14l2 2 4-4"/></svg>',
+  more: '<svg viewBox="0 0 24 24"><circle cx="5.5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="18.5" cy="12" r="1.6"/></svg>',
   search: '<svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg>',
   star: '<svg viewBox="0 0 24 24"><path d="M12 3.8l2.5 5.1 5.6.8-4 3.9.9 5.6-5-2.6-5 2.6.9-5.6-4-3.9 5.6-.8z"/></svg>',
   repeat: '<svg viewBox="0 0 24 24"><path d="M4 12a8 8 0 0 1 13.7-5.6M20 4v4h-4M20 12a8 8 0 0 1-13.7 5.6M4 20v-4h4"/></svg>',
@@ -238,13 +239,20 @@ document.querySelectorAll('[data-ico]').forEach(el => { el.innerHTML = I[el.data
 
 /* ---------- состояние представления ---------- */
 const view = { page: 'today', date: ymd(), range: 30, lastPage: null };
-const PAGES = ['today', 'plans', 'food', 'study', 'quiz', 'gym', 'steps', 'goal', 'stats', 'settings'];
+const PAGES = ['today', 'plans', 'food', 'study', 'quiz', 'gym', 'steps', 'goal', 'stats', 'settings', 'more'];
+// на телефоне внизу 5 вкладок; эти разделы — в «Ещё»
+const MORE_PAGES = ['quiz', 'goal', 'gym', 'steps', 'stats', 'settings'];
 
 function route() {
-  const h = location.hash.replace('#', '') || 'today';
+  const [h, sub] = (decodeURIComponent(location.hash.replace('#', '')) || 'today').split('/');
   view.page = PAGES.includes(h) ? h : 'today';
+  if (view.page === 'food' && ['day', 'analysis'].includes(sub)) view.foodTab = sub;
+  if (view.page === 'plans' && PERIODS[sub]) view.planKind = sub;
+  if ($('#modal-root .overlay')) closeModal('nav');
   render();
 }
+// вкладка внутри раздела — в адрес, без новой записи в истории: перезагрузка не сбрасывает вид
+const setSub = sub => history.replaceState(null, '', `#${view.page}/${sub}`);
 window.addEventListener('hashchange', route);
 
 /* ============================================================
@@ -254,8 +262,8 @@ function render() {
   if (!me) return;
   document.body.classList.toggle('setup-mode', !!view.wizard);
   if (view.wizard) { $('#main').innerHTML = pageWizard(); window.scrollTo({ top: 0, behavior: 'instant' }); return; }
-  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.page === view.page));
-  const pages = { today: pageToday, plans: pagePlans, food: pageFood, study: pageStudy, quiz: pageQuiz, gym: pageGym, steps: pageSteps, goal: pageGoal, stats: pageStats, settings: pageSettings };
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.page === view.page || (t.dataset.page === 'more' && MORE_PAGES.includes(view.page))));
+  const pages = { more: pageMore, today: pageToday, plans: pagePlans, food: pageFood, study: pageStudy, quiz: pageQuiz, gym: pageGym, steps: pageSteps, goal: pageGoal, stats: pageStats, settings: pageSettings };
   const y = window.scrollY;
   $('#main').innerHTML = pages[view.page]();
   afterRender();
@@ -283,11 +291,12 @@ function countUp(el) {
   })(t0);
 }
 function updateBadge() {
-  const b = $('#quiz-badge'); if (!b) return;
+  const b = $('#quiz-badge'), bm = $('#more-badge'); if (!b) return;
   const q = S.quizzes[ymd()];
-  let n = q ? q.items.filter(i => !i.result).length : dueCards(ymd()).length;
-  n = Math.min(n, 9);
+  // значок — сколько осталось в сегодняшней порции (до открытия раздела — сколько в неё попадёт)
+  let n = q ? q.items.filter(i => !i.result).length : Math.min(dueCards(ymd()).length, QUIZ_SIZE);
   b.hidden = !n; b.textContent = n;
+  if (bm) { bm.hidden = !n; bm.textContent = n; }
 }
 
 /* ---------- общие компоненты ---------- */
@@ -382,7 +391,7 @@ function pageToday() {
        <div class="quiz-progress" style="margin-top:12px">${quiz.items.map(it => `<i class="${it.result || ''}"></i>`).join('')}</div>
        <p class="hint">${due ? `Осталось ${due} ${plural(due, 'вопрос', 'вопроса', 'вопросов')}` : 'Все вопросы дня разобраны'}</p>`
     : due
-      ? `<div class="big"><b>${due}</b><small>${plural(due, 'карточка ждёт', 'карточки ждут', 'карточек ждут')}</small></div><p class="hint">Вопросы соберутся, когда откроешь раздел</p>`
+      ? `<div class="big"><b>${Math.min(due, QUIZ_SIZE)}</b><small>${plural(Math.min(due, QUIZ_SIZE), 'вопрос', 'вопроса', 'вопросов')} на сегодня</small></div><p class="hint">${due > QUIZ_SIZE ? `Всего ждут повторения ${due}; по ${QUIZ_SIZE} в день, остальные — кнопкой «ещё».` : 'Откроются в разделе «Вопросы».'}</p>`
       : `<p class="empty">${S.study.length ? 'На этот день повторять нечего' : 'Запиши занятие с тезисами, и вопросы появятся на следующий день'}</p>`;
 
   const noteBody = `<textarea class="note-area" data-note="${d}" placeholder="Как прошёл день? Пара строк для себя…">${esc(day.note || '')}</textarea>
@@ -398,9 +407,11 @@ function pageToday() {
       <div class="hero-side">
         ${greet || d === ymd() ? `<div class="hero-greet">${greet || tod + '.'}</div>` : ''}
         ${S.profile ? `<a class="chip chip-goal" href="#goal">${I.goal}${fmtN(set.kcal)} ккал · ${kgWeek(planNow().weeklyKg)}</a>` : ''}
+        <button class="chip chip-weigh" data-action="weigh">⚖ ${num(day.weight) ? `${fmt1(day.weight)} кг сегодня` : S.profile ? `${fmt1(curWeight())} кг · взвеситься` : 'записать вес'}</button>
         <span class="chip chip-flame">${I.flame}${sk ? `${sk} ${plural(sk, 'день', 'дня', 'дней')} подряд` : 'серия начнётся с первой записи'}</span>
       </div>
     </header>
+    ${starterCard(d)}
     ${nudgeBar()}
     ${dayTimeline(d)}
     <div class="grid">
@@ -421,6 +432,36 @@ function pageToday() {
    ============================================================ */
 // время, выбранное нажатием на ленту, подставляется в следующую открытую форму
 function defTime(fallback) { const t = view.presetTime; view.presetTime = null; return t || (view.date === ymd() ? nowHM() : fallback); }
+function pageMore() {
+  const q = S.quizzes[ymd()], qn = q ? q.items.filter(i => !i.result).length : Math.min(dueCards(ymd()).length, QUIZ_SIZE);
+  const items = [
+    ['quiz', 'Вопросы', qn ? `${qn} на сегодня` : 'на сегодня всё'],
+    ['goal', 'Цель', S.profile ? `${fmt1(curWeight())} кг → ${S.profile.target ? fmt1(S.profile.target) + ' кг' : 'держать'}` : 'составить план'],
+    ['gym', 'Зал', (() => { const n = S.workouts.filter(w => w.date >= addDays(ymd(), -6)).length; return n ? `${n} за неделю` : 'тренировки'; })()],
+    ['steps', 'Шаги и вес', num(dayRec(ymd()).steps) ? `сегодня ${fmtN(dayRec(ymd()).steps)}` : 'шаги за день'],
+    ['stats', 'Статистика', 'графики за период'],
+    ['settings', 'Настройки', 'аккаунт, цели, данные']
+  ];
+  return `<section class="page">${topbar('Ещё', 'остальные разделы', { date: false })}
+    <div class="more-grid">${items.map(([k, n, sub]) => `<a class="more-i" href="#${k}"><span class="more-ic">${I[k]}</span><b>${n}</b><span>${sub}</span>${k === 'quiz' && qn ? `<em>${qn}</em>` : ''}</a>`).join('')}</div>
+  </section>`;
+}
+/* Стартовый список для нового пользователя: пункты отмечаются сами, когда сделаны */
+function starterCard(d) {
+  if (!S.settings.starter || d !== ymd()) return '';
+  const items = [
+    { done: mealsOn(d).some(m => !m.drink), text: 'Запиши первый приём пищи', btn: `<button class="btn btn-sm btn-primary" style="--c:var(--orange)" data-action="${photoOn ? 'add-text' : 'add-meal'}">${I.plus}Записать</button>` },
+    { done: drinkDay(d).hyd > 0, text: 'Выпей стакан воды', btn: `<button class="btn btn-sm btn-primary" style="--c:#2A7FB8" data-action="quick-drink" data-type="water" data-ml="250">${I.plus}250 мл</button>` },
+    { done: !!num(dayRec(d).weight), text: 'Взвесься — по замерам журнал покажет реальный темп', btn: `<button class="btn btn-sm btn-primary" style="--c:var(--navy)" data-action="weigh">${I.plus}Вес</button>` },
+    { done: tasksOn(d).length > 0, text: 'Поставь одну задачу на сегодня', btn: `<button class="btn btn-sm btn-primary" style="--c:var(--mustard)" data-action="focus-task">${I.plus}Задача</button>` }
+  ];
+  const n = items.filter(x => x.done).length;
+  return `<section class="starter">
+    <div class="starter-head"><div><b>С чего начать</b><span>${n === items.length ? 'Всё сделано — дальше журнал подскажет сам.' : `${n} из ${items.length} · четыре шага, пара минут`}</span></div>
+      <button class="icon-btn" data-action="starter-off" aria-label="Скрыть">${I.x}</button></div>
+    <div class="starter-list">${items.map(x => `<div class="starter-i ${x.done ? 'done' : ''}"><span class="cbx ${x.done ? 'on' : ''}">${x.done ? I.check : ''}</span><span class="starter-t">${x.text}</span>${x.done ? '' : x.btn}</div>`).join('')}</div>
+  </section>`;
+}
 function dayTimeline(d) {
   const t = ymd(), live = d === t, now = new Date(), nowMin = now.getHours() * 60 + now.getMinutes();
   const meals = S.meals.filter(m => m.date === d && m.time).sort((a, b) => a.time.localeCompare(b.time));
@@ -560,10 +601,13 @@ function composerHtml(scope, date) {
   const goals = [...goalsOf('week', periodKey('week', ref)), ...goalsOf('month', periodKey('month', ref)), ...goalsOf('quarter', periodKey('quarter', ref)), ...goalsOf('year', periodKey('year', ref))];
   const dayChip = (d, label) => `<button type="button" class="opt-chip ${c.date === d ? 'on' : ''}" data-action="comp-date" data-scope="${scope}" data-d="${d}">${label}</button>`;
   const other = c.date && c.date !== t && c.date !== tm && !week.includes(c.date);
-  const open = c.open || c.title || c.time || c.prio || c.goalId || c.note || c.noteOpen || c.date !== c.ctx;
-  return `<div class="composer ${open ? 'open' : ''}" data-scope="${scope}">
+  const set = c.time || c.prio || c.goalId || c.note || c.noteOpen || c.date !== c.ctx;
+  // на главной опции свёрнуты под «⋯», в планах — раскрываются при вводе
+  const open = scope === 'today' ? (c.optsOpen || set) : (c.open || c.title || set);
+  return `<div class="composer ${open ? 'open' : ''} ${scope === 'today' ? 'compact' : ''}" data-scope="${scope}">
     <div class="comp-main">
       <input class="comp-title" data-comp="${scope}" data-f="title" value="${esc(c.title)}" placeholder="Что нужно сделать?" maxlength="200" enterkeyhint="done" aria-label="Новая задача">
+      ${scope === 'today' ? `<button type="button" class="icon-btn comp-more ${open ? 'on' : ''}" data-action="comp-opts" data-scope="${scope}" aria-label="Опции задачи" aria-expanded="${!!open}" title="День, время, важность, цель">${I.more}</button>` : ''}
       <button type="button" class="btn btn-primary" style="--c:var(--orange)" data-action="comp-add" data-scope="${scope}">${I.plus}Добавить</button>
     </div>
     <div class="comp-opts">
@@ -588,7 +632,7 @@ function compAdd(scope) {
   const title = c.title.trim(); if (!title) { $(`[data-comp="${scope}"][data-f=title]`)?.focus(); return; }
   const t = { id: uid(), title, date: c.date || null, time: c.time || '', done: false, prio: c.prio, goalId: c.goalId || null, note: c.note.trim(), created: ymd() };
   S.tasks.push(t);
-  Object.assign(c, { title: '', time: '', prio: false, note: '', noteOpen: false, goalId: '', date: c.ctx, open: false });
+  Object.assign(c, { title: '', time: '', prio: false, note: '', noteOpen: false, goalId: '', date: c.ctx, open: false, optsOpen: false });
   save(); render();
   toast(`Задача на ${t.date ? `${relDay(t.date)}${t.time ? ', ' + t.time : ''}` : 'без даты'}`);
   requestAnimationFrame(() => $(`[data-comp="${scope}"][data-f=title]`)?.focus());
@@ -644,7 +688,7 @@ function weekView(anchor) {
       ${composerHtml('plan', sel)}
       <div class="dp-list">${dayTasksPanel(sel, 'plan')}</div>
     </section>
-    <p class="hint">Задачу можно перетащить на закладку другого дня. Нажатие на задачу — правка, перенос, цель и заметка.</p>`;
+    <p class="hint">Перенести задачу: на компьютере — перетащи на закладку дня; на телефоне — нажми на задачу и выбери день.</p>`;
 }
 function monthView(anchor) {
   const key = periodKey('month', anchor), [a, b] = periodRange('month', key), t = ymd();
@@ -718,7 +762,7 @@ function taskForm(t, date) {
     body: `<input type="hidden" name="id" value="${t ? t.id : ''}">
       ${field('Что сделать', `<input name="title" required maxlength="200" value="${esc(t?.title || '')}">`)}
       <div class="field"><label>Когда</label>
-        <div class="chips">${week.map(x => `<button type="button" class="chip chip-btn ${x === d ? 'on' : ''}" data-action="task-day" data-d="${x}">${WD[parseYmd(x).getDay()]} ${parseYmd(x).getDate()}</button>`).join('')}<button type="button" class="chip chip-btn ${!d ? 'on' : ''}" data-action="task-day" data-d="">без даты</button></div>
+        <div class="chips">${week.map(x => `<button type="button" class="chip chip-btn ${x === d ? 'on' : ''}" data-action="task-day" data-d="${x}">${x === ymd() ? 'Сегодня' : x === addDays(ymd(), 1) ? 'Завтра' : `${WD[parseYmd(x).getDay()]} ${parseYmd(x).getDate()}`}</button>`).join('')}<button type="button" class="chip chip-btn ${!d ? 'on' : ''}" data-action="task-day" data-d="">без даты</button></div>
         <div class="row row-2" style="margin-top:8px"><input name="date" type="date" value="${d || ''}" aria-label="Дата"><input name="time" type="time" value="${t?.time || ''}" aria-label="Время"></div></div>
       ${goals.length ? field('Цель', `<select name="goalId"><option value="">— без цели —</option>${goals.map(x => `<option value="${x.id}" ${t?.goalId === x.id ? 'selected' : ''}>${PERIODS[x.period]}: ${esc(x.title)}</option>`).join('')}</select>`) : ''}
       <label class="switch" style="--c:var(--orange)"><input type="checkbox" name="prio" ${t?.prio ? 'checked' : ''}><span>Важная</span></label>
@@ -821,7 +865,7 @@ function judgeNut(k, v, norm, live) {
 }
 function nutRow(tot, nm, live) {
   const nn = nutNorms(nm);
-  if (!tot.nut) return `<p class="hint nut-empty">Клетчатка, сахар и соль считаются для еды, записанной по фото или текстом, и для напитков. Пока таких записей за день нет.</p>`;
+  if (!tot.nut) return `<p class="hint nut-empty">Клетчатка, сахар и соль считаются там, где они известны: еда по фото или тексту, ручные записи с заполненными полями «Клетчатка, сахар, соль» и напитки. Пока таких записей за день нет.</p>`;
   const it = [['fi', 'Клетчатка', '#6B8E23', 'не меньше'], ['su', 'Сахар', '#C2185B', 'до'], ['sa', 'Соль', '#5F6B7A', 'до']];
   return `<div class="meters meters-sm">${it.map(([k, name, color, pre]) => `<div class="meter-cell">${meterRing(tot[k], nn[k], color, name, 92)}
       <div class="meter-name"><i style="background:${color}"></i>${name}</div>
@@ -945,7 +989,7 @@ function foodListBody(ms, d, live) {
       ${drinks.length ? `<div class="drinks-list">${drinks.map(drinkChip).join('')}</div>` : ''}
     </div>` : '';
   if (!food.length && !groups && !drinkGroup) return empty('За этот день записей нет.');
-  return (food.length || groups ? groups : empty(live ? 'Еды сегодня ещё нет. Сфотографируй, опиши текстом или запиши вручную — кнопки выше.' : 'Еды за этот день нет.')) + drinkGroup;
+  return (food.length || groups ? groups : empty(live ? (photoOn ? 'Еды сегодня ещё нет. Сфотографируй, опиши текстом или запиши вручную — кнопки выше.' : 'Еды сегодня ещё нет. Запиши вручную — кнопка выше.') : 'Еды за этот день нет.')) + drinkGroup;
 }
 /* Компактная сводка дня: большое кольцо калорий и полоски Б/Ж/У и воды */
 function daySummaryCard(d, tot, nm, live) {
@@ -974,11 +1018,11 @@ function pageFood() {
   const tab = view.foodTab || 'day';
   let i = 0;
   const tabs = `<div class="seg food-tabs" role="tablist">${[['day', 'День'], ['analysis', 'Анализ']].map(([k, n]) => `<button role="tab" aria-selected="${tab === k}" class="${tab === k ? 'on' : ''}" data-action="food-tab" data-v="${k}">${n}</button>`).join('')}</div>`;
-  const head = topbar('Еда', live ? `сегодня, ${humanLong(d)}` : humanLong(d), { date: false, actions: `${live ? '' : `<button class="btn" data-action="date-today">${I.chevL}К сегодня</button>`}${tabs}` });
+  const head = topbar('Еда', live ? `сегодня, ${humanLong(d)}` : humanLong(d), { date: true, actions: tabs });
   if (tab === 'analysis') return `<section class="page" style="--c:var(--food)">${head}
     <div class="grid">
       ${card({ domain: 'food', title: 'Календарь питания', span: 5, i: i++, body: foodCalendarCard(nm) })}
-      ${card({ domain: 'food', title: live ? 'Нормы за сегодня подробно' : `Нормы за ${human(d)} подробно`, span: 7, i: i++, body: dayNormsCard(d, tot, nm, live) + nutRow(tot, nm, live) + drinkMeters(d, live) })}
+      ${card({ domain: 'food', title: live ? 'Клетчатка, сахар, соль, вода · сегодня' : `Клетчатка, сахар, соль, вода · ${human(d)}`, span: 7, i: i++, body: nutRow(tot, nm, live) + drinkMeters(d, live) })}
       ${card({ domain: 'food', title: live ? 'Баланс БЖУ за сегодня' : `Баланс БЖУ за ${human(d)}`, span: 6, i: i++, body: macroSplitCard(tot) })}
       ${card({ domain: 'food', title: 'Когда ешь · 7 дней', span: 6, i: i++, body: mealTimingCard(d) })}
       ${card({ domain: 'paper', title: 'Отчёт за неделю', span: 12, i: i++, body: weekReportCard(nm) })}
@@ -1161,6 +1205,7 @@ function weekReportCard(nm) {
 function nudges() {
   const t = ymd(), now = new Date(), h = now.getHours() + now.getMinutes() / 60, out = [];
   if (view.date !== t || h < 9 || h >= 23) return out;
+  if (S.settings.starter && view.page === 'today') return out; // пока виден стартовый список — он и подсказывает
   view.nudgeOff = view.nudgeOff || {};
   const dr = drinksOn(t), hyd = drinkDay(t).hyd, norm = waterNorm();
   const expect = norm * Math.min(1, Math.max(0, (h - 8) / 13));
@@ -1196,7 +1241,7 @@ function markTerms(root, q) {
   }
 }
 async function openReader(rel, h = '', q = '') {
-  closeModal();
+  closeModal('swap');
   const root = $('#modal-root');
   rd = { rel, h, q };
   root.innerHTML = `<div class="overlay reader-overlay" data-action="close-modal"><div class="sheet reader" role="dialog" aria-modal="true" aria-label="Конспект">
@@ -1625,7 +1670,8 @@ function obsStatusCard() {
     <div class="obs-line">${I.study}<span>Хранилище <b>${esc(OBS.vaultName)}</b> → папка <b>${esc(OBS.folder)}</b> · синхронизировано ${ago(OBS.lastSync)}</span>
       <button class="btn btn-sm" data-action="obs-sync">${I.repeat}Синхронизировать</button></div>
     ${OBS.error ? `<p class="auth-err" style="margin:0">${esc(OBS.error)}</p>` : ''}
-    ${q.total ? `<div class="obs-line"><span class="obs-q">${left ? `${q.pausedUntil ? 'Лимит Gemini — пауза, продолжу сам. ' : 'Gemini готовит вопросы: '}${q.done} из ${q.total} разделов` : `Вопросы готовы для всех ${q.total} разделов`}</span><span class="sb-track obs-track"><i data-w="${q.total ? q.done / q.total * 100 : 0}" style="background:var(--quiz)"></i></span></div>` : ''}
+    ${!photoOn ? '<p class="hint" style="margin:0">Вопросы и шпаргалки по конспектам делает Gemini — добавь ключ GEMINI_API_KEY в файл .env на сервере. Читать и искать можно и без него.</p>' : ''}
+    ${q.total && photoOn ? `<div class="obs-line"><span class="obs-q">${left ? `${q.pausedUntil ? 'Лимит Gemini — пауза, продолжу сам. ' : 'Gemini готовит вопросы: '}${q.done} из ${q.total} разделов` : `Вопросы готовы для всех ${q.total} разделов`}</span><span class="sb-track obs-track"><i data-w="${q.total ? q.done / q.total * 100 : 0}" style="background:var(--quiz)"></i></span></div>` : ''}
     <details class="obs-howto"><summary>Как оформлять конспекты</summary>
       <p>Каждый конспект — отдельная заметка в папке «${esc(OBS.folder)}». Разделы — заголовки <code>##</code>: по каждому разделу будут свои вопросы. Наверху можно указать теги и дату:</p>
       <pre><code>---\ntitle: Название темы\ntags: [ai, transformers]\ncreated: ${ymd()}\n---</code></pre>
@@ -1659,14 +1705,15 @@ function diaryCard() {
   const man = S.study.map(x => ({ id: x.id, date: x.date, src: 'manual', s: x }));
   const all = [...obs, ...man].sort((a, b) => b.date.localeCompare(a.date) || String(b.at || '').localeCompare(String(a.at || ''))).slice(0, 80);
   if (!all.length) return empty('Дневник заполнится сам: новый конспект или дописанный раздел в Obsidian — запись здесь. Без Obsidian можно добавить занятие вручную.');
-  return groupBy(all, e => e.date).map(([d, arr]) => `<div class="group-date"><span>${relDay(d)} · ${human(d)}</span><span>${(() => { const m = studyMin(d); return m ? fmtMin(m) : ''; })()}</span></div>
+  const from = addDays(ymd(), -13), shown = view.diaryAll ? all : all.filter(e => e.date >= from), more = all.length - shown.length;
+  return groupBy(shown, e => e.date).map(([d, arr]) => `<div class="group-date"><span>${relDay(d)} · ${human(d)}</span><span>${(() => { const m = studyMin(d); return m ? fmtMin(m) : ''; })()}</span></div>
     <div class="list">${arr.map(e => e.src === 'manual' ? studyItem(e.s) : `<div class="item diary-item">
       <span class="diary-ic">${e.kind === 'new' ? I.plus : I.edit}</span>
       <div class="item-main"><div class="item-title">${esc(noteShort(e.title))}</div>
         <div class="item-sub">${e.kind === 'new' ? `новый конспект: ${e.added.length} ${plural(e.added.length, 'раздел', 'раздела', 'разделов')}` : [e.added.length ? `дописал: ${e.added.map(esc).join(', ')}` : '', e.changed.length ? `изменил: ${e.changed.map(esc).join(', ')}` : ''].filter(Boolean).join(' · ')}</div></div>
       <label class="diary-min" title="Сколько минут занимался"><input type="number" min="0" step="5" inputmode="numeric" placeholder="—" data-dmin="${e.id}" data-dd="${e.date}" value="${stMin(S.studyTime[e.id]) || ''}"><span>мин</span></label>
       <a class="icon-btn" href="${esc((OBS.notes.find(n => n.id === e.noteId) || {}).link || '#study')}" title="Открыть в Obsidian" aria-label="Открыть в Obsidian">${I.chevR}</a>
-    </div>`).join('')}</div>`).join('');
+    </div>`).join('')}</div>`).join('') + (more > 0 ? `<button class="btn btn-sm" style="margin-top:12px" data-action="diary-all">Показать ещё ${more}</button>` : view.diaryAll && all.length ? '<button class="btn btn-sm btn-ghost" style="margin-top:12px" data-action="diary-all">Свернуть</button>' : '');
 }
 
 function pageStudy() {
@@ -1683,7 +1730,7 @@ function pageStudy() {
     <div class="kpis">
       ${kpi('Конспектов', `${OBS.notes.length}`, 'study', i++, `${secs.length} ${plural(secs.length, 'раздел', 'раздела', 'разделов')}`)}
       ${kpi('Вопросов', `${qn}`, 'quiz', i++, 'по разделам конспектов')}
-      ${kpi('К повторению', `${due}`, 'paper', i++, due ? 'сегодня' : 'на сегодня всё')}
+      ${kpi('К повторению', `${due}`, 'paper', i++, due ? `порциями по ${QUIZ_SIZE} в день` : 'на сегодня всё')}
       ${kpi('За 7 дней', `${hoursStr(week)}<small>ч</small>`, 'study', i++, `всего ${hoursStr(allMin)} ч`)}
     </div>
     <div class="grid">
@@ -1784,7 +1831,7 @@ function makeQuestion(c, r) {
 }
 function buildQuiz(date, pool) {
   const r = rng(hash(date));
-  const picked = shuffle(pool, r).slice(0, 6);
+  const picked = shuffle(pool, r).slice(0, QUIZ_SIZE);
   return { items: picked.map(c => quizItemFrom(c, r)), source: 'local', created: Date.now() };
 }
 // DOMParser не запускает скрипты и не грузит картинки из разбираемого HTML
@@ -1811,6 +1858,7 @@ function gradeCard(cardId, g) {
 }
 
 const quizDay = () => view.quizDay || ymd();
+const QUIZ_SIZE = 6; // сколько вопросов в порции дня
 function pageQuiz() {
   const d = ymd(); view.quizDay = d;
   const quiz = ensureQuiz(d);
@@ -2035,7 +2083,13 @@ function stepsNow() {
   return { steps: num(S.profile?.steps) || 6000, measured: false, days: vals.length };
 }
 function planNow() { return Plan.compute(profileNow(), curWeight(), curLevel(), stepsNow().steps); }
-function applyGoals() { const c = planNow(); S.settings.kcal = c.kcal; S.settings.protein = c.protein; return c; }
+// цели дня пересчитываются из плана; если калории изменились — говорим об этом, чтобы цифры не «прыгали» молча
+function applyGoals(quiet = false) {
+  const c = planNow(), old = num(S.settings.kcal);
+  S.settings.kcal = c.kcal; S.settings.protein = c.protein;
+  if (!quiet && old && Math.abs(old - c.kcal) >= 10) toast(`План пересчитан: ${fmtN(old)} → ${fmtN(c.kcal)} ккал`);
+  return c;
+}
 const fmt2 = n => n.toLocaleString('ru-RU', { maximumFractionDigits: 2 });
 const kgWeek = v => Math.abs(v) < 0.005 ? '±0 кг/нед' : `${v > 0 ? '+' : '−'}${fmt2(Math.abs(v))} кг/нед`;
 const kgDiff = v => Math.abs(v) < 0.05 ? '±0' : `${v > 0 ? '+' : '−'}${fmt1(Math.abs(v))}`;
@@ -2145,11 +2199,11 @@ function pageGoal() {
     hero = `<div class="path">
       <div class="path-top">
         <div><span class="path-k">${g.name}</span><h2 class="path-h">${fmt1(start)} → ${fmt1(target)} кг</h2></div>
-        <div class="path-now"><b>${kg(now)}</b><span>сейчас${f.tr ? ' по тренду' : ''}</span></div>
+        <div class="path-now"><b>${kg(now)}</b><span>сейчас${f.tr ? ' по тренду' : ''}</span><button class="btn btn-sm" data-action="weigh">⚖ Взвеситься</button></div>
       </div>
       <div class="path-track" role="img" aria-label="Пройдено ${fmt1(passed)} из ${fmt1(total)} кг">
         <i class="path-fill" style="width:${pct}%"></i>
-        <span class="path-me" style="left:${pct}%"><b>ты здесь</b></span>
+        <span class="path-me ${pct < 8 ? 'edge-l' : pct > 92 ? 'edge-r' : ''}" style="left:${pct}%"><b>ты здесь</b></span>
         ${ms.slice(0, -1).map(m => `<span class="path-tick" style="left:${Math.abs(m - start) / total * 100}%"><em>${fmt1(m)}</em></span>`).join('')}
       </div>
       <div class="path-ends"><span>старт ${fmt1(start)}</span><b>пройдено ${fmt1(passed)} из ${fmt1(total)} кг · ${Math.round(pct)}%</b><span>цель ${fmt1(target)}</span></div>
@@ -2159,16 +2213,16 @@ function pageGoal() {
   }
 
   /* 2. что делать каждый день */
-  const eaten = sumMeals(mealsOn(t)).kcal, left = c.kcal - eaten;
-  const stepGoal = Math.max(si.steps, num(S.settings.steps) || 0);
+  const nmz = norms(), eaten = sumMeals(mealsOn(t)).kcal, left = nmz.kcal - eaten;
+  const stepGoal = num(S.settings.steps) || si.steps;
   const todaySteps = num(dayRec(t).steps);
   const daily = `<div class="dos">
-    <a class="do do-kcal" href="#food"><span class="do-k">Ешь до</span><b>${fmtN(c.kcal)}</b><span class="do-u">ккал в день</span>
+    <a class="do do-kcal" href="#food"><span class="do-k">Ешь до</span><b>${fmtN(nmz.kcal)}</b><span class="do-u">ккал в день</span>
       <span class="do-today">${eaten ? (left >= 0 ? `сегодня осталось ${fmtN(left)}` : `сегодня перебор ${fmtN(-left)}`) : 'сегодня ещё ничего не записано'}</span></a>
-    <a class="do do-prot" href="#food"><span class="do-k">Белок</span><b>${c.protein}</b><span class="do-u">граммов в день</span>
+    <a class="do do-prot" href="#food"><span class="do-k">Белок</span><b>${nmz.p}</b><span class="do-u">граммов в день</span>
       <span class="do-today">сегодня ${fmtN(sumMeals(mealsOn(t)).p)} г</span></a>
     <a class="do do-steps" href="#steps"><span class="do-k">Шаги</span><b>${fmtN(stepGoal)}+</b><span class="do-u">в день</span>
-      <span class="do-today">${todaySteps ? `сегодня ${fmtN(todaySteps)}` : 'сегодня не записаны'}</span></a>
+      <span class="do-today">${todaySteps ? `сегодня ${fmtN(todaySteps)}` : 'сегодня не записаны'} · в среднем ${fmtN(si.steps)}</span></a>
   </div>
   <p class="hint">Калории посчитаны так, чтобы ${p.goal === 'lose' ? `терять ≈ ${fmt2(Math.abs(c.weeklyKg))} кг в неделю` : p.goal === 'gain' ? `набирать ≈ ${fmt2(c.weeklyKg)} кг в неделю` : 'вес стоял на месте'}. Каждые +3 000 шагов — ещё ≈ ${fmtN(Plan.kcalPerStep(w, p.height) * 3000)} ккал расхода.</p>`;
 
@@ -2296,7 +2350,7 @@ function pageWizard() {
     const p = wizProfile(d), wt = num(d.weight);
     const pace = d.goal === 'maintain' ? '' : `<h3 class="wiz-sub">Темп</h3><div class="opts opts-3">${Object.entries(Plan.PACE[d.goal]).map(([k, x]) => {
       const c = Plan.compute({ ...p, pace: k }, wt, d.level);
-      return opt('pace', k, d.pace, x.name, `${d.goal === 'lose' ? '−' : '+'}${x.kcal} ккал в день · ${kgWeek(c.weeklyKg)}`);
+      return opt('pace', k, d.pace, x.name, `${c.delta < 0 ? '−' : '+'}${fmtN(Math.abs(c.delta))} ккал в день · ${kgWeek(c.weeklyKg)}${Math.abs(Math.abs(c.delta) - x.kcal) > 20 ? ' (урезано до безопасного)' : ''}`);
     }).join('')}</div>
       ${field('Желаемый вес, кг (необязательно)', inp('target', d.goal === 'lose' ? 'например ' + Math.round(wt * 0.85) : 'например ' + Math.round(wt * 1.05)))}`;
     body = `<div class="opts opts-3">${Object.entries(Plan.GOALS).map(([k, g]) => opt('goal', k, d.goal, g.name, g.hint)).join('')}</div>${pace}
@@ -2304,12 +2358,12 @@ function pageWizard() {
   } else {
     const p = { ...wizProfile(d) }, wt = num(d.weight), c = Plan.compute(p, wt, d.level);
     const { lines } = planLines(p, wt, d.level, c);
-    head = ['Твой план', 'Посчитано по формулам, которые точнее всего на больших выборках. Через пару недель записей журнал сверит план с фактом.'];
+    head = ['Твой план', 'Это стартовая оценка. Через пару недель записей веса и еды журнал сверит её с фактом и поправит.'];
     body = `<div class="kpis">
         ${kpi('Калории в день', fmtN(c.kcal), 'paper', 0, `поддержка ${fmtN(c.tdee)}`)}
         ${kpi('Белок', `${c.protein}<small>г</small>`, 'food', 1, `жиры ${c.fat} · углеводы ${c.carbs}`)}
         ${kpi('Темп', kgWeek(c.weeklyKg).replace(' кг/нед', '') + '<small>кг/нед</small>', 'gym', 2, d.goal === 'maintain' ? 'держим вес' : 'без доп. активности')}
-      </div><ul class="goal-lines goal-how">${lines.map(l => `<li>${l}</li>`).join('')}</ul>`;
+      </div><details class="more-block"><summary>Почему такие цифры</summary><ul class="goal-lines goal-how">${lines.map(l => `<li>${l}</li>`).join('')}</ul></details>`;
   }
   const last = w.step === WIZ.length - 1;
   return `<section class="page wiz">
@@ -2334,11 +2388,14 @@ function finishWizard() {
   const restart = !prev || prev.goal !== p.goal || prev.pace !== p.pace || prev.target !== p.target;
   S.profile = { ...p, ageDate: t, weight: wt, start: restart ? t : prev.start, startWeight: restart ? wt : prev.startWeight };
   S.activity[mondayOf(t)] = d.level;
+  if (!prev) S.settings.steps = Math.max(5000, Math.round(num(d.steps) / 500) * 500 || 6000);
   // вес пишем в сегодняшний день, только если его ввели заново, — иначе это ложный замер, который портит тренд
   if (!prev || Math.abs(wt - curWeight()) >= 0.05) S.days[t] = { ...dayRec(t), weight: wt };
-  const c = applyGoals();
+  const c = applyGoals(true);
+  if (!prev) S.settings.starter = true;
   view.wizard = null; save();
-  if (location.hash !== '#goal') location.hash = '#goal'; else render();
+  const to = prev ? '#goal' : '#today';
+  if (location.hash !== to) location.hash = to; else render();
   toast(`План готов: ${fmtN(c.kcal)} ккал и ${c.protein} г белка в день`);
 }
 
@@ -2521,13 +2578,42 @@ function openModal({ title, accent, body, submit = 'Сохранить', form })
   const first = root.querySelector('input:not([type=hidden]),textarea');
   setTimeout(() => first && first.focus(), 60);
 }
-function closeModal() {
+// открытое окно — отдельный шаг истории: «Назад» на телефоне закрывает окно, а не уходит со страницы
+let modalStep = false, ignorePop = false;
+new MutationObserver(() => {
+  const open = !!$('#modal-root .overlay');
+  if (open && !modalStep) { modalStep = true; history.pushState({ modal: 1 }, ''); }
+}).observe(document.getElementById('modal-root'), { childList: true });
+window.addEventListener('popstate', () => {
+  if (ignorePop) { ignorePop = false; return; }
+  if (modalStep) { modalStep = false; if ($('#modal-root .overlay')) closeModal('pop'); }
+});
+// how: 'user' — закрыл сам (шаг истории убираем), 'pop' — «Назад», 'swap' — окно сменяется другим, 'nav' — переход по странице
+function closeModal(how = 'user') {
+  if (modalStep && how === 'user') { modalStep = false; ignorePop = true; history.back(); }
+  else if (how === 'nav') modalStep = false;
   ph = null; rd = null;
   const root = $('#modal-root'); if (!root.innerHTML) return;
   root.classList.remove('open');
   const html = root.innerHTML;
   // чистим, только если за это время не открыли новое окно
   setTimeout(() => { if (root.innerHTML === html && !root.classList.contains('open')) root.innerHTML = ''; }, reduceMotion ? 0 : 220);
+}
+/* Удаление с возможностью вернуть: убранные записи кладутся обратно на свои места */
+function undoToast(msg, undo) {
+  const el = document.createElement('div'); el.className = 'toast toast-undo'; el.setAttribute('role', 'status');
+  el.innerHTML = `<span>${esc(msg)}</span><button type="button">Вернуть</button>`;
+  let used = false;
+  el.querySelector('button').addEventListener('click', () => { if (used) return; used = true; undo(); save(); render(); el.remove(); toast('Вернул'); });
+  $('#toast-root').appendChild(el); setTimeout(() => el.remove(), 6500);
+}
+function removeItems(key, pred, msg, extra = {}) {
+  const removed = S[key].map((x, i) => [i, x]).filter(([, x]) => pred(x));
+  if (!removed.length) return;
+  const snap = extra.snapshot ? extra.snapshot() : null;
+  S[key] = S[key].filter(x => !pred(x)); extra.after?.();
+  save(); render();
+  undoToast(msg, () => { for (const [i, x] of removed) S[key].splice(Math.min(i, S[key].length), 0, x); if (snap) extra.restore(snap); });
 }
 function toast(msg, err = false) {
   const el = document.createElement('div'); el.className = 'toast' + (err ? ' err' : ''); el.textContent = msg;
@@ -2547,11 +2633,11 @@ const ACTIONS = {
   'add-meal': () => mealForm(),
   'add-drink': () => drinkForm(),
   'add-text': () => startText(),
-  'food-tab': el => { view.foodTab = el.dataset.v; window.scrollTo({ top: 0, behavior: 'instant' }); render(); },
+  'food-tab': el => { view.foodTab = el.dataset.v; setSub(el.dataset.v); window.scrollTo({ top: 0, behavior: 'instant' }); render(); },
   'gap-more': () => { view.gapMore = !view.gapMore; render(); },
   'nudge-off': el => { view.nudgeOff = { ...(view.nudgeOff || {}), [el.dataset.k]: true }; render(); },
   'use-set': el => { const st = S.sets.find(x => x.id === el.dataset.id); if (!st) return; useSet(st); save(); render(); toast(`«${st.name}» — записано, ${fmtN(setKcal(st))} ккал`); },
-  'del-set': el => { const st = S.sets.find(x => x.id === el.dataset.id); if (!st || !confirm(`Удалить набор «${st.name}»?`)) return; S.sets = S.sets.filter(x => x.id !== st.id); save(); render(); },
+  'del-set': el => { const st = S.sets.find(x => x.id === el.dataset.id); if (st) removeItems('sets', x => x.id === st.id, `Набор «${st.name}» удалён`); },
   'save-set': el => {
     const items = S.meals.filter(m => m.date === el.dataset.d && slotOf(m) === el.dataset.slot);
     openModal({ title: 'В избранное', accent: 'var(--food)', form: 'set', submit: 'Сохранить',
@@ -2570,7 +2656,7 @@ const ACTIONS = {
     save(); render(); toast(`Записано: ${items.map(x => baseName(x.name)).join(', ')}`);
   },
   'edit-drink': el => drinkForm(S.drinks.find(x => x.id === el.dataset.id)),
-  'del-drink': el => { S.drinks = S.drinks.filter(x => x.id !== el.dataset.id); save(); render(); toast('Удалено'); },
+  'del-drink': el => { const x0 = S.drinks.find(x => x.id === el.dataset.id); if (x0) removeItems('drinks', x => x.id === x0.id, `${drinkName(x0)} ${fmtN(x0.ml)} мл — удалено`); },
   'quick-drink': el => addDrink(el.dataset.type, +el.dataset.ml),
   'drink-ml': el => { const i = $('#modal-root [name=ml]'); i.value = el.dataset.v; drinkPreview(); },
   'drink-step': el => { const i = $('#modal-root [name=ml]'); i.value = Math.max(10, num(i.value) + +el.dataset.n); drinkPreview(); },
@@ -2584,11 +2670,16 @@ const ACTIONS = {
   'edit-meal': el => mealForm(S.meals.find(m => m.id === el.dataset.id)),
   'edit-study': el => studyForm(S.study.find(s => s.id === el.dataset.id)),
   'edit-gym': el => gymForm(S.workouts.find(w => w.id === el.dataset.id)),
-  'del-meal': el => { if (!confirm('Удалить запись?')) return; S.meals = S.meals.filter(m => m.id !== el.dataset.id); save(); render(); toast('Удалено'); },
-  'del-study': el => { if (!confirm('Удалить занятие вместе с его карточками?')) return; const id = el.dataset.id; S.study = S.study.filter(s => s.id !== id); Object.keys(S.srs).forEach(k => { if (k.startsWith(id + ':')) delete S.srs[k]; });
-    for (const q of Object.values(S.quizzes)) q.items = q.items.filter(i => i.result || !String(i.cardId).startsWith(id + ':'));
-    save(); render(); toast('Удалено'); },
-  'del-gym': el => { if (!confirm('Удалить тренировку?')) return; S.workouts = S.workouts.filter(w => w.id !== el.dataset.id); save(); render(); toast('Удалено'); },
+  'del-meal': el => { const m = S.meals.find(x => x.id === el.dataset.id); if (m) removeItems('meals', x => x.id === m.id, `«${baseName(m.name)}» удалено`); },
+  'del-study': el => {
+    const id = el.dataset.id, st = S.study.find(x => x.id === id); if (!st) return;
+    removeItems('study', x => x.id === id, `Занятие «${st.topic}» удалено`, {
+      snapshot: () => ({ srs: Object.fromEntries(Object.entries(S.srs).filter(([k]) => k.startsWith(id + ':'))), quizzes: structuredClone(S.quizzes) }),
+      after: () => { Object.keys(S.srs).forEach(k => { if (k.startsWith(id + ':')) delete S.srs[k]; }); for (const q of Object.values(S.quizzes)) q.items = q.items.filter(i => i.result || !String(i.cardId).startsWith(id + ':')); },
+      restore: snap => { Object.assign(S.srs, snap.srs); S.quizzes = snap.quizzes; }
+    });
+  },
+  'del-gym': el => { const w = S.workouts.find(x => x.id === el.dataset.id); if (w) removeItems('workouts', x => x.id === w.id, `Тренировка «${w.type}» удалена`); },
   'quick-meal': el => {
     const f = S.foods[el.dataset.name.toLowerCase()]; if (!f) return;
     const m = { id: uid(), date: view.date, time: view.date === ymd() ? nowHM() : '12:00', name: f.name, kcal: f.kcal, p: f.p, f: f.f, c: f.c };
@@ -2609,12 +2700,22 @@ const ACTIONS = {
     ({ food: () => mealForm(), drink: () => drinkForm(), study: () => studyForm(), gym: () => gymForm(), quiz: () => { view.presetTime = null; location.hash = '#quiz'; }, task: () => { const tm = view.presetTime; view.presetTime = null; taskForm(null, view.date); setTimeout(() => { const f = $('#modal-root [data-form=task]'); if (f) f.time.value = tm; }, 0); } })[el.dataset.k]?.();
   },
   'tl-open': () => {},
+  'weigh': () => {
+    const t = ymd(), last = curWeight ? (S.profile ? curWeight() : 0) : 0;
+    openModal({ title: 'Вес сегодня', accent: 'var(--navy)', form: 'weigh', submit: 'Записать',
+      body: `<input class="big-input" name="weight" type="number" step="0.1" min="30" max="350" inputmode="decimal" value="${num(dayRec(t).weight) || ''}" placeholder="${last ? `последний: ${fmt1(last)}` : 'кг'}" required>
+        <p class="hint" style="margin:0">Лучше утром натощак, 2–3 раза в неделю — так тренд точнее.</p>` });
+  },
+  'diary-all': () => { view.diaryAll = !view.diaryAll; render(); },
+  'starter-off': () => { S.settings.starter = false; save(); render(); },
+  'focus-task': () => { const i = $('[data-comp=today][data-f=title]'); if (i) { i.scrollIntoView({ block: 'center', behavior: 'smooth' }); setTimeout(() => i.focus(), 300); } else location.hash = '#plans'; },
   'plan-day': el => { view.planDay = el.dataset.d || null; render(); },
   'comp-date': el => { const c = view.comp[el.dataset.scope]; c.date = el.dataset.d || null; render(); requestAnimationFrame(() => $(`[data-comp="${el.dataset.scope}"][data-f=title]`)?.focus()); },
   'comp-prio': el => { const c = view.comp[el.dataset.scope]; c.prio = !c.prio; render(); },
   'comp-note': el => { const c = view.comp[el.dataset.scope]; c.noteOpen = !c.noteOpen; render(); if (c.noteOpen) requestAnimationFrame(() => $(`[data-comp="${el.dataset.scope}"][data-f=note]`)?.focus()); },
   'comp-add': el => compAdd(el.dataset.scope),
-  'plan-kind': el => { view.planKind = el.dataset.v; render(); },
+  'comp-opts': el => { const c = view.comp[el.dataset.scope]; c.optsOpen = !c.optsOpen; render(); },
+  'plan-kind': el => { view.planKind = el.dataset.v; setSub(el.dataset.v); render(); },
   'plan-shift': el => { const k = view.planKind || 'week'; view.planDate = shiftDate(k, view.planDate || ymd(), +el.dataset.n); render(); },
   'plan-now': () => { view.planDate = ymd(); render(); },
   'plan-go': el => { view.planKind = el.dataset.kind; view.planDate = el.dataset.d; render(); },
@@ -2622,10 +2723,17 @@ const ACTIONS = {
   'goal-add': el => goalForm(null, el.dataset.kind, el.dataset.key),
   'goal-edit': el => { const g = S.goals.find(x => x.id === el.dataset.id); if (g) goalForm(g); },
   'goal-toggle': el => { const g = S.goals.find(x => x.id === el.dataset.id); if (!g) return; g.done = !g.done; save(); render(); if (g.done) toast(`Цель выполнена: ${g.title}`); },
-  'goal-del': el => { const g = S.goals.find(x => x.id === el.dataset.id); if (!g || !confirm(`Удалить цель «${g.title}»? Задачи останутся.`)) return; S.goals = S.goals.filter(x => x.id !== g.id); S.goals.forEach(x => { if (x.parentId === g.id) x.parentId = null; }); S.tasks.forEach(t => { if (t.goalId === g.id) t.goalId = null; }); save(); closeModal(); render(); },
+  'goal-del': el => {
+    const g = S.goals.find(x => x.id === el.dataset.id); if (!g) return; closeModal();
+    removeItems('goals', x => x.id === g.id, `Цель «${g.title}» удалена`, {
+      snapshot: () => ({ kids: S.goals.filter(x => x.parentId === g.id).map(x => x.id), tasks: S.tasks.filter(t => t.goalId === g.id).map(t => t.id) }),
+      after: () => { S.goals.forEach(x => { if (x.parentId === g.id) x.parentId = null; }); S.tasks.forEach(t => { if (t.goalId === g.id) t.goalId = null; }); },
+      restore: snap => { S.goals.forEach(x => { if (snap.kids.includes(x.id)) x.parentId = g.id; }); S.tasks.forEach(t => { if (snap.tasks.includes(t.id)) t.goalId = g.id; }); }
+    });
+  },
   'task-toggle': el => { const t = S.tasks.find(x => x.id === el.dataset.id); if (!t) return; t.done = !t.done; t.doneAt = t.done ? new Date().toISOString() : null; save(); render(); },
   'task-edit': el => { const t = S.tasks.find(x => x.id === el.dataset.id); if (t) taskForm(t); },
-  'task-del': el => { S.tasks = S.tasks.filter(x => x.id !== el.dataset.id); save(); closeModal(); render(); toast('Задача удалена'); },
+  'task-del': el => { const t = S.tasks.find(x => x.id === el.dataset.id); closeModal(); if (t) removeItems('tasks', x => x.id === t.id, `Задача «${t.title}» удалена`); },
   'task-day': el => { const f = el.closest('form'); f.date.value = el.dataset.d; f.querySelectorAll('[data-action=task-day]').forEach(b => b.classList.toggle('on', b === el)); },
   'tasks-to-today': () => { const t = ymd(), od = overdueTasks(); od.forEach(x => { x.date = t; }); save(); render(); toast(`Перенесено на сегодня: ${od.length}`); },
   'rd-open': el => openReader(el.dataset.rel, el.dataset.h || '', view.studyQ || ''),
@@ -2652,7 +2760,7 @@ const ACTIONS = {
     const pool = withState().filter(c => c.noteId === el.dataset.id && !have.has(c.id));
     if (!pool.length) { toast(have.size ? 'Все вопросы этого конспекта уже в сегодняшних' : 'Вопросы по этому конспекту ещё готовятся', true); if (have.size) location.hash = '#quiz'; return; }
     const r = rng(hash(d + el.dataset.id + Date.now()));
-    const items = shuffle(pool, r).slice(0, 6).map(c => quizItemFrom(c, r));
+    const items = shuffle(pool, r).slice(0, QUIZ_SIZE).map(c => quizItemFrom(c, r));
     const kept = (S.quizzes[d]?.items || []).filter(i => i.result);
     S.quizzes[d] = { items: [...kept, ...items], source: 'local', created: Date.now() };
     save(); location.hash = '#quiz';
@@ -2681,7 +2789,7 @@ const ACTIONS = {
   'logout': async () => {
     await flush();
     try { await apiFetch('/api/logout', { method: 'POST', body: '{}' }); } catch { /* всё равно выходим */ }
-    showAuth();
+    history.replaceState(null, '', '#today'); showAuth();
   },
   'auth-mode': el => { authMode = el.dataset.mode; showAuth(); },
   'edit-profile': () => startWizard(!!S.profile),
@@ -2697,7 +2805,7 @@ const ACTIONS = {
   'wiz-back': () => { const w = view.wizard; w.err = ''; w.step--; render(); },
   'wiz-cancel': () => { view.wizard = null; render(); },
   'wiz-finish': () => finishWizard(),
-  'set-level': el => { S.activity[mondayOf(ymd())] = el.dataset.v; const c = applyGoals(); save(); render(); toast(`Цели на неделю: ${fmtN(c.kcal)} ккал, белок ${c.protein} г`); }
+  'set-level': el => { S.activity[mondayOf(ymd())] = el.dataset.v; const c = applyGoals(true); save(); render(); toast(`Цели на неделю: ${fmtN(c.kcal)} ккал, белок ${c.protein} г`); }
 };
 
 const FORMS = {
@@ -2733,6 +2841,7 @@ const FORMS = {
   steps(fd) {
     const d = view.date;
     S.days[d] = { ...dayRec(d), steps: num(fd.get('steps')), weight: num(fd.get('weight')) || undefined };
+    if (S.profile && d === ymd()) applyGoals();
     save(); closeModal(); render(); toast('Сохранено');
   },
   settings(fd) {
@@ -2767,11 +2876,18 @@ const FORMS = {
     if (!id) S.tasks.push(t);
     save(); closeModal(); render(); toast(id ? 'Сохранено' : `Задача на ${t.date ? relDay(t.date) : 'без даты'}`);
   },
+  weigh(fd) {
+    const t = ymd(), w = num(fd.get('weight'));
+    if (!(w >= 30 && w <= 350)) { toast('Вес — в килограммах, от 30 до 350', true); return; }
+    S.days[t] = { ...dayRec(t), weight: Math.round(w * 10) / 10 };
+    if (S.profile) applyGoals();
+    save(); closeModal(); render(); toast(`Вес ${fmt1(w)} кг записан`);
+  },
   week(fd) {
     const t = ymd(), w = num(fd.get('weight'));
     S.activity[mondayOf(t)] = String(fd.get('level') || curLevel());
     if (w >= 35 && w <= 300) S.days[t] = { ...dayRec(t), weight: w };
-    const c = applyGoals(); save(); closeModal(); render();
+    const c = applyGoals(true); save(); closeModal(); render();
     toast(`Цели на неделю: ${fmtN(c.kcal)} ккал, белок ${c.protein} г`);
   },
   async password(fd, f) {
@@ -2860,7 +2976,7 @@ document.addEventListener('change', e => {
 });
 document.addEventListener('focusin', e => {
   const sc = e.target.dataset?.comp; if (!sc || e.target.dataset.f !== 'title') return;
-  const c = view.comp?.[sc]; if (c && !c.open) { c.open = true; e.target.closest('.composer')?.classList.add('open'); }
+  const c = view.comp?.[sc]; if (c && !c.open && sc !== 'today') { c.open = true; e.target.closest('.composer')?.classList.add('open'); }
 });
 // чип «Дата» в строке создания сразу открывает выбор даты
 document.addEventListener('click', e => { const l = e.target.closest?.('.opt-date'); if (!l || e.target.tagName === 'INPUT') return; e.preventDefault(); const i = l.querySelector('input'); try { i.showPicker(); } catch { i.focus(); } });
@@ -2937,6 +3053,8 @@ async function loadState() {
   rev = r.rev; S = normalize(r.state); base = JSON.stringify(S); checkDay();
   if (r.state && r.state.settings && 'apiKey' in r.state.settings) save(); // убрать старый ключ Claude с сервера
   if (migrateCardIds()) save();
+  // план на сегодня — по свежим данным (вес, шаги, активность недели)
+  if (S.profile) { const old = num(S.settings.kcal), c = applyGoals(true); if (old !== c.kcal) { save(); if (old) setTimeout(() => toast(`План пересчитан: ${fmtN(old)} → ${fmtN(c.kcal)} ккал`), 600); } }
   if (stash && stash.user === me) { S = normalize(merge3(stash.base ? JSON.parse(stash.base) : S, JSON.parse(stash.state), S)); save(); toast('Несохранённые правки восстановлены'); }
   stash = null;
   document.body.classList.remove('auth-mode');

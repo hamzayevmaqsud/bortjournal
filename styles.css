@@ -487,8 +487,8 @@ details.theses li{margin:3px 0}
   position:relative;overflow:hidden;border-radius:28px;padding:36px 34px;
   background:var(--navy);color:var(--cream);display:flex;flex-direction:column;justify-content:flex-end;min-height:360px;
 }
-.auth-hero::before{content:'';position:absolute;right:-60px;top:-60px;width:220px;height:220px;border-radius:50%;background:var(--orange)}
-.auth-hero::after{content:'';position:absolute;right:90px;top:120px;width:70px;height:70px;border-radius:50%;background:var(--mustard)}
+.auth-hero::before{content:'';position:absolute;right:-70px;top:-70px;width:170px;height:170px;border-radius:50%;background:var(--orange)}
+.auth-hero::after{content:'';position:absolute;right:70px;top:84px;width:44px;height:44px;border-radius:50%;background:var(--mustard)}
 .auth-hero>*{position:relative;z-index:1}
 .auth-kicker{font:700 11px var(--sans);letter-spacing:.18em;text-transform:uppercase;color:rgba(251,244,230,.6)}
 .auth-hero h1{margin:10px 0 12px;font:800 clamp(30px,4vw,42px)/1.05 var(--display);letter-spacing:-.03em;max-width:14ch}
@@ -977,7 +977,6 @@ mark.hit{background:#F6D96B;color:inherit;border-radius:3px;padding:0 1px}
 .today-goals a{color:var(--paper-2);font-weight:600;text-decoration:none}
 .tl-task{background:var(--ink-1);border-color:var(--orange)!important;border-width:2.5px!important}
 .tl-task.on{background:var(--st-good);border-color:var(--st-good)!important}
-.top-gear{display:none}
 
 /* ---------- неделя: закладки дней и панель ---------- */
 .wgoals{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:0 0 18px}
@@ -1105,6 +1104,41 @@ mark.hit{background:#F6D96B;color:inherit;border-radius:3px;padding:0 1px}
 .act em{font-style:normal;font:800 15px var(--display);color:var(--gym);margin-top:4px}
 .more-block summary{cursor:pointer;font:700 14px var(--sans);padding:6px 0}
 .more-block+.more-block{margin-top:6px;padding-top:6px;border-top:1px dashed var(--line-2)}
+
+/* ---------- этап 3: старт, вес, «вернуть», «ещё» ---------- */
+.starter{margin:0 0 16px;padding:18px 20px;border-radius:var(--r);background:var(--navy);color:var(--cream)}
+.starter-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:12px}
+.starter-head b{display:block;font:800 22px var(--display)}
+.starter-head span{font-size:13px;opacity:.75}
+.starter-head .icon-btn{color:var(--cream)}
+.starter-list{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+.starter-i{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:14px;background:rgba(251,244,230,.08)}
+.starter-i.done{opacity:.6}
+.starter-i.done .starter-t{text-decoration:line-through}
+.starter-t{flex:1;font-size:14px;font-weight:600}
+.starter-i .cbx{border-color:rgba(251,244,230,.4);background:transparent}
+.starter-i .cbx.on{background:var(--st-good);border-color:var(--st-good)}
+.chip-weigh{cursor:pointer;border:0;background:var(--ink-1);color:var(--paper);font-weight:700;padding:8px 14px}
+.chip-weigh:hover{background:var(--ink-3)}
+.path-now .btn{margin-top:8px;align-self:flex-end}
+.path-me.edge-l b{left:0;transform:translateX(-12px)}
+.path-me.edge-r b{left:auto;right:0;transform:translateX(12px)}
+.toast-undo{display:flex;align-items:center;gap:14px;pointer-events:auto;animation:toast 6.5s var(--ease) both}
+.toast-undo button{border:0;background:rgba(251,244,230,.16);color:var(--cream);font:700 13px var(--sans);padding:6px 12px;border-radius:999px;cursor:pointer}
+.toast-undo button:hover{background:rgba(251,244,230,.28)}
+.more-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px}
+.more-i{position:relative;display:flex;flex-direction:column;gap:4px;padding:18px;border-radius:20px;background:var(--ink-1);text-decoration:none;color:var(--paper)}
+.more-i:hover{background:var(--ink-2)}
+.more-ic{width:42px;height:42px;border-radius:13px;display:grid;place-items:center;background:var(--peach);color:var(--orange);margin-bottom:6px}
+.more-ic svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.more-i b{font:800 17px var(--display)}
+.more-i span:last-of-type{font-size:12.5px;color:var(--paper-2)}
+.more-i em{position:absolute;top:14px;right:14px;font-style:normal;min-width:22px;height:22px;border-radius:11px;background:var(--orange);color:var(--cream);font:700 12px/22px var(--sans);text-align:center;padding:0 6px}
+.tab-more{display:none}
+.composer.compact:not(.open) .comp-opts{display:none}
+.comp-more.on{background:var(--peach);color:var(--orange)}
+.cbx{width:24px;height:24px}
+.task .cbx{width:22px;height:22px}
 
 /* ---------- календарь питания ---------- */
 .cal-head{display:flex;align-items:center;justify-content:space-between;margin:-6px 0 8px}
@@ -1239,16 +1273,31 @@ mark.hit{background:#F6D96B;color:inherit;border-radius:3px;padding:0 1px}
   .meters{grid-template-columns:repeat(2,1fr);gap:18px 10px}
   .wk{gap:2px}
   .add-tiles{grid-template-columns:1fr 1fr;gap:10px}
+  .tab:not(.tab-more):not([data-page=today]):not([data-page=plans]):not([data-page=food]):not([data-page=study]){display:none}
+  .tab-more{display:flex}
+  .tab-label{display:block!important;font-size:10.5px}
+  .tab{flex:1;gap:2px}
+  .tab-badge{right:calc(50% - 24px)}
+  .starter-list{grid-template-columns:1fr}
+  .starter-i{flex-wrap:wrap}
+  .cbx{width:28px;height:28px;border-radius:9px}
+  .task .cbx{width:26px;height:26px}
+  .item-title,.mini-name{white-space:normal;overflow:visible}
+  .dtabs{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:3px;margin:0;padding:4px 0 0;overflow:visible}
+  .dtab{flex:none;padding:7px 0 9px;border-radius:12px 12px 0 0}
+  .dtab.open{padding-bottom:13px}
+  .dtab-wd{font-size:8.5px;letter-spacing:.04em}
+  .dtab-n{font-size:17px}
+  .dtab.open .dtab-n{font-size:19px}
+  .dtab-c{font-size:9.5px}
+  .dtab.inbox .dtab-wd{font-size:7.5px}
+  .chip-weigh{padding:7px 12px}
   .dos{grid-template-columns:1fr}
   .do b{font-size:38px}
   .acts{grid-template-columns:1fr 1fr}
   .path-eta{font-size:16px}
   .path-ends{font-size:11px}
   .path-tick em{font-size:9.5px}
-  .dtabs{display:flex;overflow-x:auto;scrollbar-width:none;gap:5px;margin:0 -16px;padding:4px 16px 0}
-  .dtabs::-webkit-scrollbar{display:none}
-  .dtab{flex:0 0 58px;padding:8px 2px 10px}
-  .dtab.open{flex-basis:70px}
   .dpanel{padding:18px 14px 18px;border-radius:0 0 22px 22px;margin:0 -4px}
   .dp-head h2{font-size:24px}
   .dp-pr{width:100%}
@@ -1260,9 +1309,7 @@ mark.hit{background:#F6D96B;color:inherit;border-radius:3px;padding:0 1px}
   .goal-pr{width:90px}
   .mcal-cell{min-height:48px;padding:5px}
   .mcal-dots,.mcal-c{display:none}
-  .tab-settings{display:none!important}
-  .top-gear{display:grid;place-items:center;position:absolute;top:12px;right:14px;z-index:5;width:40px;height:40px;border-radius:12px;background:var(--ink-1);color:var(--paper-2)}
-  .top-gear svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round}
+
   .reader-main{grid-template-columns:1fr}
   .rd-toc{display:none}
   .rd-toc-sel{display:block;flex:1 1 100%}
