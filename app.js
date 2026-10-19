@@ -244,7 +244,7 @@ document.querySelectorAll('[data-ico]').forEach(el => { el.innerHTML = I[el.data
 const view = { page: 'today', date: ymd(), range: 30, lastPage: null };
 const PAGES = ['today', 'plans', 'food', 'budget', 'study', 'books', 'quiz', 'gym', 'steps', 'goal', 'stats', 'awards', 'settings', 'more'];
 // на телефоне внизу 5 вкладок; эти разделы — в «Ещё»
-const MORE_PAGES = ['budget', 'books', 'awards', 'quiz', 'goal', 'gym', 'steps', 'stats', 'settings'];
+const MORE_PAGES = ['study', 'budget', 'books', 'awards', 'quiz', 'goal', 'gym', 'steps', 'stats', 'settings'];
 
 function route() {
   const [h, sub] = (decodeURIComponent(location.hash.replace('#', '')) || 'today').split('/');
@@ -268,7 +268,7 @@ function render() {
   document.body.classList.toggle('setup-mode', !!view.wizard);
   if (view.wizard) { $('#main').innerHTML = pageWizard(); window.scrollTo({ top: 0, behavior: 'instant' }); return; }
   document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.page === view.page || (t.dataset.page === 'more' && MORE_PAGES.includes(view.page))));
-  const pages = { more: pageMore, today: pageToday, plans: pagePlans, food: pageFood, budget: pageBudget, books: pageBooks, awards: pageAwards, study: pageStudy, quiz: pageQuiz, gym: pageGym, steps: pageSteps, goal: pageGoal, stats: pageStats, settings: pageSettings };
+  const pages = { more: pageMoreList, today: pageToday, plans: pagePlans, food: pageFood, budget: pageBudget, books: pageBooks, awards: pageAwards, study: pageStudy, quiz: pageQuiz, gym: pageGym, steps: pageSteps, goal: pageGoal, stats: pageStats, settings: pageSettings };
   const y = window.scrollY;
   MEMO = new Map();
   $('#main').innerHTML = pages[view.page]() + (S.gymLive && !S.gymLive.past && view.page !== 'gym' ? `<a class="gym-pill" id="gym-pill" href="#gym">${gymIcon('dumbbell')}<span>Тренировка</span><b>${liveClock()}</b></a>` : '');
@@ -404,6 +404,7 @@ function pageToday() {
   const noteBody = `<textarea class="note-area" data-note="${d}" placeholder="Как прошёл день? Пара строк для себя…">${esc(day.note || '')}</textarea>
     <div class="moods">${['Тяжело', 'Так себе', 'Норм', 'Хорошо', 'Огонь'].map((m, k) => `<button class="mood ${day.mood === k + 1 ? 'on' : ''}" data-action="mood" data-v="${k + 1}">${m}</button>`).join('')}</div>`;
 
+  if (narrow()) return pageTodayMobile({ d, set, tot, sk, noteBody, quiz, due });
   return `<section class="page page-today">
     ${topbar('', '', { actions: '' })}
     <header class="hero">
@@ -454,23 +455,6 @@ function pageToday() {
    ============================================================ */
 // время, выбранное нажатием на ленту, подставляется в следующую открытую форму
 function defTime(fallback) { const t = view.presetTime; view.presetTime = null; return t || (view.date === ymd() ? nowHM() : fallback); }
-function pageMore() {
-  const q = S.quizzes[ymd()], qn = q ? q.items.filter(i => !i.result).length : Math.min(dueCards(ymd()).length, QUIZ_SIZE);
-  const items = [
-    ['budget', 'Бюджет', num(S.budget.amount) ? (v => v >= 0 ? `сегодня можно ${fmtM(v)}` : `перерасход ${fmtM(-v)}`)(budgetDay(ymd()).leftToday) : 'лимит на день'],
-    ['books', 'Книги', (() => { const r = S.books.filter(b => b.status === 'reading'); return r.length ? `читаю «${esc(r[0].title.slice(0, 22))}»` : `${S.books.length} на полке`; })()],
-    ['awards', 'Достижения', `${achState().reduce((a, x) => a + x.tier, 0)} ступеней открыто`],
-    ['quiz', 'Вопросы', qn ? `${qn} на сегодня` : 'на сегодня всё'],
-    ['goal', 'Цель', S.profile ? `${fmt1(curWeight())} кг → ${S.profile.target ? fmt1(S.profile.target) + ' кг' : 'держать'}` : 'составить план'],
-    ['gym', 'Зал', (() => { const n = S.workouts.filter(w => w.date >= addDays(ymd(), -6)).length; return n ? `${n} за неделю` : 'тренировки'; })()],
-    ['steps', 'Шаги и вес', num(dayRec(ymd()).steps) ? `сегодня ${fmtN(dayRec(ymd()).steps)}` : 'шаги за день'],
-    ['stats', 'Статистика', 'графики за период'],
-    ['settings', 'Настройки', 'аккаунт, цели, данные']
-  ];
-  return `<section class="page">${topbar('Ещё', 'остальные разделы', { date: false })}
-    <div class="more-grid">${items.map(([k, n, sub]) => `<a class="more-i" href="#${k}"><span class="more-ic">${I[k]}</span><b>${n}</b><span>${sub}</span>${k === 'quiz' && qn ? `<em>${qn}</em>` : ''}</a>`).join('')}</div>
-  </section>`;
-}
 /* Стартовый список для нового пользователя: пункты отмечаются сами, когда сделаны */
 function starterCard(d) {
   if (!S.settings.starter || d !== ymd()) return '';
@@ -3146,6 +3130,126 @@ function statsBooks(n) {
 }
 
 /* ============================================================
+   ТЕЛЕФОН: компактный «Сегодня», лента дня, быстрая запись «+»
+   ============================================================ */
+function miniRing(val, max, color, size = 58) {
+  const r = (size - 8) / 2, C = 2 * Math.PI * r, p = Math.min(1, max ? val / max : 0);
+  return `<svg class="mr" viewBox="0 0 ${size} ${size}" width="${size}" height="${size}" aria-hidden="true">
+    <circle cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none" stroke="var(--ink-3)" stroke-width="7"/>
+    ${p > 0 ? `<circle cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none" stroke="${color}" stroke-width="7" stroke-linecap="round" stroke-dasharray="${C}" stroke-dashoffset="${C * (1 - p)}" transform="rotate(-90 ${size / 2} ${size / 2})"/>` : ''}
+  </svg>`;
+}
+// всё, что было за день, по времени
+function dayFeed(d) {
+  const it = [];
+  const add = (time, ic, color, title, sub, val, action, id) => it.push({ time: time || '', ic, color, title, sub, val, action, id });
+  S.meals.filter(m => m.date === d).forEach(m => add(m.time, I.food, 'var(--food)', m.name, `Б ${fmtN(m.p)} · Ж ${fmtN(m.f)} · У ${fmtN(m.c)}`, `${fmtN(m.kcal)} ккал`, 'edit-meal', m.id));
+  drinksOn(d).forEach(x => { const t = drinkTotals(x); add(x.time, I.drop, (DRINKS[x.type] || DRINKS.custom).color, drinkName(x), t.kcal ? `${t.kcal} ккал` : '', `${fmtN(x.ml)} мл`, 'edit-drink', x.id); });
+  studyOn(d).forEach(s => add(s.time, I.study, 'var(--study)', s.topic, s.category || '', s.minutes ? fmtMin(s.minutes) : '', 'edit-study', s.id));
+  gymOn(d).forEach(w => add(w.time, I.gym, 'var(--gym)', w.type || 'Тренировка', `${(w.exercises || []).length} упр.`, w.minutes ? fmtMin(w.minutes) : '', 'edit-gym', w.id));
+  tasksOn(d).filter(x => x.time).forEach(x => add(x.time, I.plans, 'var(--mustard)', x.title, x.done ? 'сделано' : 'задача', x.done ? '✓' : '', 'task-edit', x.id));
+  S.money.filter(x => x.date === d).forEach(x => add(x.time, I.budget, 'var(--money)', x.note || mcat(x.kind, x.cat)[1], mcat(x.kind, x.cat)[1], `${x.kind === 'in' ? '+' : '−'}${fmtM(x.amount)}`, 'm-edit', x.id));
+  const pages = readOn(d); if (pages) add('', I.books, 'var(--books)', 'Чтение', S.books.filter(b => S.readLog.some(r => r.date === d && r.book === b.id)).map(b => b.title).join(', '), `${pages} стр.`, '', '');
+  it.sort((a, b) => (a.time || '99').localeCompare(b.time || '99'));
+  if (!it.length) return `<p class="empty">${d === ymd() ? 'День только начинается. Нажми «+» внизу — и первая запись появится здесь.' : 'В этот день записей нет.'}</p>`;
+  const now = d === ymd() ? nowHM() : null; let nowShown = !now;
+  return `<ol class="feed">${it.map(x => {
+    let line = '';
+    if (!nowShown && x.time && x.time > now) { nowShown = true; line = `<li class="feed-now"><span>сейчас ${now}</span></li>`; }
+    const tag = x.action ? 'button' : 'div';
+    return `${line}<li><${tag} class="feed-i" ${x.action ? `type="button" data-action="${x.action}" data-id="${x.id}"` : ''} style="--fc:${x.color}">
+      <span class="feed-t">${esc(x.time || '—')}</span><span class="feed-ic">${x.ic}</span>
+      <span class="feed-m"><b>${esc(x.title)}</b>${x.sub ? `<small>${esc(x.sub)}</small>` : ''}</span><span class="feed-v">${esc(x.val)}</span></${tag}></li>`;
+  }).join('')}${nowShown ? '' : `<li class="feed-now"><span>сейчас ${now}</span></li>`}</ol>`;
+}
+function pageTodayMobile(c) {
+  const { d, set, tot, sk, noteBody, quiz, due } = c, dd = parseYmd(d), t = ymd(), day = dayRec(d);
+  const hyd = drinkDay(d).hyd, wn = waterNorm(), steps = num(day.steps), stm = studyMin(d);
+  const rings = [
+    ['#food', '', tot.kcal, set.kcal, 'var(--food)', 'Еда', `${fmtN(tot.kcal)}`, `из ${fmtN(set.kcal)}`],
+    ['', 'add-drink', hyd, wn, '#2A7FB8', 'Вода', fmt1(hyd / 1000), `из ${fmt1(wn / 1000)} л`],
+    ['', 'add-steps', steps, set.steps, 'var(--steps)', 'Шаги', steps >= 1000 ? `${fmt1(steps / 1000)}к` : fmtN(steps), `из ${fmt1(set.steps / 1000)}к`],
+    ['#study', '', stm, set.study, 'var(--study)', 'Учёба', fmtN(stm), `из ${set.study} мин`]
+  ];
+  // что ещё ждёт: короткие строки вместо больших плиток
+  const reading = S.books.find(b => b.status === 'reading');
+  const B = num(S.budget.amount) ? budgetDay(d) : null;
+  const rows = [
+    S.gymLive && !S.gymLive.past && d === t && [`#gym`, I.gym, 'var(--gym)', 'Тренировка идёт', `${S.gymLive.ex.length} упр. — продолжить`],
+    d === t && due && ['#quiz', I.quiz, 'var(--quiz)', `Вопросы дня`, quiz ? `осталось ${due} из ${quiz.items.length}` : `${Math.min(due, QUIZ_SIZE)} ждут ответа`],
+    B && ['#budget', I.budget, 'var(--money)', B.leftToday >= 0 ? `Можно потратить ${fmtM(B.leftToday)}` : `Перерасход ${fmtM(-B.leftToday)}`, `лимит дня ${fmtM(B.allow)}`],
+    reading && ['#books', I.books, 'var(--books)', reading.title, `${bookPct(reading)}% · стр. ${num(reading.page)}${num(reading.pages) ? ' из ' + num(reading.pages) : ''}${readOn(d) ? ` · сегодня +${readOn(d)}` : ''}`],
+    gymOn(d).length && !S.gymLive && ['#gym', I.gym, 'var(--gym)', gymOn(d).map(w => w.type).join(', '), 'тренировка сделана ✓']
+  ].filter(Boolean);
+  return `<section class="page page-today m-today">
+    <header class="mt-head">
+      <button class="icon-btn" data-action="date" data-n="-1" aria-label="Предыдущий день">${I.chevL}</button>
+      <button class="mt-date" data-action="date-today" title="К сегодняшнему дню"><span class="${d === t ? '' : 'not-today'}">${relDay(d)} · ${WDF[dd.getDay()]}</span><b>${dd.getDate()} ${MONG[dd.getMonth()]}</b></button>
+      <button class="icon-btn" data-action="date" data-n="1" aria-label="Следующий день">${I.chevR}</button>
+    </header>
+    <div class="mt-stats">
+      ${S.profile ? `<a href="#goal"><span>План</span><b>${fmtN(set.kcal)}</b><small>ккал</small></a>` : ''}
+      <button data-action="weigh"><span>Вес</span><b>${num(day.weight) ? fmt1(day.weight) : S.profile ? fmt1(curWeight()) : '—'}</b><small>${num(day.weight) ? 'кг сегодня' : 'взвеситься'}</small></button>
+      <a href="#stats" class="${sk ? 'flame' : ''}"><span>${I.flame}Серия</span><b>${sk}</b><small>${plural(sk, 'день', 'дня', 'дней')}</small></a>
+    </div>
+    ${starterCard(d)}
+    ${nudgeBar()}
+    <div class="mt-rings">${rings.map(([href, act, v, mx, col, name, big, sub]) => `<${href ? `a href="${href}"` : `button type="button" data-action="${act}"`} class="mt-ring" style="--rc:${col}">
+        <span class="mt-ring-g">${miniRing(v, mx, col)}<i>${Math.min(999, Math.round(mx ? v / mx * 100 : 0))}%</i></span><b>${big}</b><small>${name} · ${sub}</small></${href ? 'a' : 'button'}>`).join('')}</div>
+    ${rows.length ? `<div class="mt-rows">${rows.map(([href, ic, col, title, sub]) => `<a class="mt-row" href="${href}" style="--fc:${col}"><span class="feed-ic">${ic}</span><span class="feed-m"><b>${esc(title)}</b><small>${esc(sub)}</small></span>${I.chevR}</a>`).join('')}</div>` : ''}
+    <section class="card mt-card"><header class="card-head"><h2 class="card-title">Лента дня</h2><span class="hint" style="margin:0">нажми запись, чтобы изменить</span></header>${dayFeed(d)}</section>
+    <section class="card mt-card"><header class="card-head"><h2 class="card-title">${d === t ? 'Задачи на сегодня' : `Задачи · ${human(d)}`}</h2><a class="btn btn-ghost btn-sm" href="#plans">Планы</a></header>${todayTasksCard(d)}</section>
+    <section class="card mt-card tile tile-peach" style="--c:var(--paper)"><header class="card-head"><h2 class="card-title">Заметка дня</h2></header>${noteBody}</section>
+  </section>`;
+}
+
+/* быстрая запись: одна кнопка «+» на любой странице */
+function quickAddBody() {
+  const d = view.date, hyd = drinkDay(d).hyd, wn = waterNorm(), reading = S.books.filter(b => b.status === 'reading');
+  const t = (act, ic, name, sub, color, modal = true) => `<button type="button" class="qa-t" style="--qc:${color}" data-action="qa" data-do="${act}" ${modal ? 'data-modal="1"' : ''}><span class="qa-ic">${ic}</span><b>${name}</b>${sub ? `<small>${sub}</small>` : ''}</button>`;
+  return `${d !== ymd() ? `<p class="qa-day">Запись пойдёт в <b>${human(d)}</b> · <button type="button" class="link" data-action="qa-today">на сегодня</button></p>` : ''}
+    <div class="qa-food">
+      ${photoOn ? `<label class="qa-big" style="--qc:var(--food)"><span class="qa-ic">${I.camera}</span><b>Фото еды</b><small>калории посчитает ИИ</small><input type="file" accept="image/*" data-photo hidden></label>` : ''}
+      <button type="button" class="qa-big" style="--qc:var(--navy)" data-action="qa" data-do="${photoOn ? 'add-text' : 'add-meal'}" data-modal="1"><span class="qa-ic">${I.food}</span><b>${photoOn ? 'Еда словами' : 'Приём пищи'}</b><small>${photoOn ? '«гречка 200 г, курица»' : 'калории и БЖУ'}</small></button>
+    </div>
+    <div class="qa-water"><span class="qa-ic" style="--qc:#2A7FB8">${I.drop}</span><span class="qa-w-t"><b>Вода</b><small>${fmt1(hyd / 1000)} из ${fmt1(wn / 1000)} л</small></span>
+      <button type="button" data-action="qa-water" data-ml="250">+250</button><button type="button" data-action="qa-water" data-ml="500">+500</button><button type="button" data-action="qa" data-do="add-drink" data-modal="1" aria-label="Другой напиток">…</button></div>
+    <div class="qa-grid">
+      ${t('weigh', '<i class="qa-emoji">⚖</i>', 'Вес', num(dayRec(d).weight) ? `${fmt1(dayRec(d).weight)} кг` : '', 'var(--navy)')}
+      ${t('add-steps', I.steps, 'Шаги', num(dayRec(d).steps) ? fmtN(dayRec(d).steps) : '', 'var(--steps)')}
+      ${t('qa-gym', I.gym, S.gymLive ? 'Тренировка' : 'Тренировка', S.gymLive ? 'идёт — открыть' : 'начать', 'var(--gym)', false)}
+      ${t('add-study', I.study, 'Занятие', '', 'var(--study)')}
+      ${t('qa-task', I.plans, 'Задача', '', 'var(--mustard)')}
+      ${t('qa-money', I.budget, 'Трата', num(S.budget.amount) ? `можно ${fmtM(Math.max(0, budgetDay(d).leftToday))}` : '', 'var(--money)')}
+      ${t('qa-read', I.books, 'Чтение', reading[0] ? `стр. ${num(reading[0].page)}` : 'книга', 'var(--books)')}
+      ${t('qa-note', I.edit, 'Заметка', '', 'var(--brick)', false)}
+    </div>`;
+}
+function pageMoreList() {
+  const q = S.quizzes[ymd()], qn = q ? q.items.filter(i => !i.result).length : Math.min(dueCards(ymd()).length, QUIZ_SIZE);
+  const B = num(S.budget.amount) ? budgetDay(ymd()) : null, reading = S.books.find(b => b.status === 'reading');
+  const groups = [
+    ['Каждый день', [
+      ['study', 'Учёба', `${fmtMin(studyMin(ymd()))} сегодня · конспекты и дневник`, 'var(--study)'],
+      ['quiz', 'Вопросы', qn ? `${qn} на сегодня` : 'на сегодня всё', 'var(--quiz)', qn],
+      ['gym', 'Зал', S.gymLive ? 'тренировка идёт' : (() => { const n = S.workouts.filter(w => w.date >= addDays(ymd(), -6)).length; return n ? `${n} за неделю` : 'начать тренировку'; })(), 'var(--gym)'],
+      ['budget', 'Бюджет', B ? (B.leftToday >= 0 ? `сегодня можно ${fmtM(B.leftToday)}` : `перерасход ${fmtM(-B.leftToday)}`) : 'лимит на день', 'var(--money)'],
+      ['books', 'Книги', reading ? `читаю «${reading.title.slice(0, 24)}»` : `${S.books.length} на полке`, 'var(--books)'],
+      ['steps', 'Шаги и вес', num(dayRec(ymd()).steps) ? `сегодня ${fmtN(dayRec(ymd()).steps)}` : 'шаги за день', 'var(--steps)']
+    ]],
+    ['Итоги', [
+      ['stats', 'Статистика', 'оценка дня, календарь, графики', 'var(--navy)'],
+      ['awards', 'Достижения', `${achState().reduce((a, x) => a + x.tier, 0)} ступеней открыто`, 'var(--mustard)'],
+      ['goal', 'Цель', S.profile ? `${fmt1(curWeight())} кг → ${S.profile.target ? fmt1(S.profile.target) + ' кг' : 'держать'}` : 'составить план', 'var(--orange)']
+    ]],
+    ['', [['settings', 'Настройки', 'аккаунт, нормы, данные', 'var(--paper-2)']]]
+  ];
+  return `<section class="page">${topbar('Ещё', '', { date: false })}
+    ${groups.map(([title, items]) => `${title ? `<h3 class="more-h">${title}</h3>` : ''}<div class="more-list">${items.map(([k, n, sub, col, badge]) => `<a class="more-row" href="#${k}" style="--fc:${col}"><span class="feed-ic">${I[k]}</span><span class="feed-m"><b>${n}</b><small>${esc(sub)}</small></span>${badge ? `<em class="more-badge">${badge}</em>` : ''}${I.chevR}</a>`).join('')}</div>`).join('')}
+  </section>`;
+}
+
+/* ============================================================
    ЦЕЛЬ: профиль, план и прогноз
    ============================================================ */
 function mondayOf(d) { return addDays(d, -((parseYmd(d).getDay() + 6) % 7)); }
@@ -3676,6 +3780,19 @@ function toast(msg, err = false) {
    ДЕЙСТВИЯ
    ============================================================ */
 const ACTIONS = {
+  'quick-add': () => openSheet({ title: 'Записать', accent: 'var(--orange)', body: quickAddBody(), cls: 'sheet-qa' }),
+  // плитка открывает своё окно поверх этого — или закрывает лист и делает дело
+  'qa': el => { const fn = ACTIONS[el.dataset.do]; if (!fn) return; if (el.dataset.modal) fn(el); else { closeModal('nav'); fn(el); } },
+  'qa-water': el => { addDrink('water', +el.dataset.ml); closeModal(); },
+  'qa-today': () => { view.date = ymd(); render(); const b = $('#sheet-body'); if (b) b.innerHTML = quickAddBody(); },
+  'qa-gym': () => { if (S.gymLive) location.hash = '#gym'; else ACTIONS['add-gym'](); },
+  'qa-task': () => taskForm(null, view.date),
+  'qa-money': () => { if (!num(S.budget.amount)) { closeModal('nav'); location.hash = '#budget'; return; } view.mKind = 'out';
+    openModal({ title: 'Трата', accent: 'var(--money)', form: 'money', submit: 'Записать', body: `<input type="hidden" name="date" value="${view.date}"><div class="m-form">${moneyFields()}</div>` }); },
+  'qa-read': () => { const r = S.books.filter(b => b.status === 'reading'); if (!r.length) { bookForm(); return; }
+    openModal({ title: 'Чтение', accent: 'var(--books)', form: 'read-progress', submit: 'Записать', body: `${r.length > 1 ? field('Книга', `<select name="id">${r.map(b => `<option value="${b.id}">${esc(b.title)}</option>`).join('')}</select>`) : `<input type="hidden" name="id" value="${r[0].id}"><p class="hint" style="margin:0">«${esc(r[0].title)}» · сейчас стр. ${num(r[0].page)}${num(r[0].pages) ? ' из ' + num(r[0].pages) : ''}</p>`}
+      ${field('Дочитал до страницы', `<input name="page" type="number" min="0" inputmode="numeric" required placeholder="${num(r[0].page) + 20}">`)}` }); },
+  'qa-note': () => { if (view.page !== 'today') location.hash = '#today'; setTimeout(() => { const n = $('.note-area[data-note]'); if (n) { n.scrollIntoView({ block: 'center', behavior: 'smooth' }); n.focus(); } }, 350); },
   'stat-tab': el => { view.statTab = el.dataset.v; setSub(el.dataset.v); render(); },
   'stat-month': el => { const [y, m] = (view.statMonth || ymd().slice(0, 7)).split('-').map(Number); const dt = new Date(y, m - 1 + +el.dataset.n, 1); view.statMonth = `${dt.getFullYear()}-${z(dt.getMonth() + 1)}`; render(); },
   'stat-day': el => { view.date = el.dataset.d; location.hash = '#today'; },
@@ -3943,7 +4060,7 @@ const FORMS = {
   'read-progress'(fd) {
     const b = bookById(fd.get('id')); if (!b) return;
     const v = String(fd.get('page') || '').trim(); if (!v) { toast('Впиши страницу, до которой дочитал', true); return; }
-    const d = logPages(b, v);
+    const d = logPages(b, v); if ($('#modal-root [data-form=read-progress]')) closeModal();
     if (num(b.pages) && num(b.page) >= num(b.pages)) { finishBook(b); save(); render(); openBook(b.id); toast(`«${b.title}» дочитана!`); return; }
     save(); render(); toast(d > 0 ? `+${d} стр. · сегодня ${readOn(ymd())}` : `Стр. ${b.page}`);
   },
@@ -3959,14 +4076,15 @@ const FORMS = {
     S.budget = { amount, start: Math.min(28, Math.max(1, +fd.get('start') || 1)), save: Math.max(0, parseAmount(fd.get('save'))), cur: String(fd.get('cur') || '₼').slice(0, 3) };
     save(); closeModal(); render(); toast(`Сегодня можно ${fmtM(budgetDay(ymd()).leftToday)}`);
   },
-  money(fd) {
+  money(fd, f) {
     const amount = parseAmount(fd.get('amount'));
     if (amount <= 0) { toast('Введи сумму', true); return; }
     const old = fd.get('id'), id = old || uid(), kind = fd.get('kind') === 'in' ? 'in' : 'out';
     const x = { id, date: fd.get('date') || view.date, time: old ? String(fd.get('time') || '') : (view.date === ymd() ? nowHM() : ''), kind, cat: mcat(kind, fd.get('cat'))[0], amount, note: String(fd.get('note') || '').trim().slice(0, 80) };
     const idx = S.money.findIndex(m => m.id === id);
     if (idx >= 0) S.money[idx] = x; else S.money.push(x);
-    save(); if (old) closeModal(); render();
+    const inModal = !!f?.closest('#modal-root');
+    save(); if (old || inModal) closeModal(); render();
     if (old) toast('Сохранено');
     else { const B = budgetDay(x.date); toast(kind === 'in' ? `+${fmtM(amount)} к бюджету месяца` : B.leftToday >= 0 ? `Осталось на сегодня ${fmtM(B.leftToday)}` : `Перерасход ${fmtM(-B.leftToday)} — завтра ${fmtM(B.tomorrow ?? 0)}`); $('.m-form [name=amount]')?.focus(); }
   },
