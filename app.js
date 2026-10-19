@@ -1,28 +1,74 @@
 /* ============================================================
    Бортжурнал — логика
-   Данные живут в localStorage этого браузера.
+   Данные живут на локальном сервере (server.js), в аккаунте пользователя.
    ============================================================ */
 'use strict';
 
 /* ---------- хранилище ---------- */
-const KEY = 'bortjournal.v1';
+const KEY = 'bortjournal.v1'; // старое хранилище браузера, нужно только для переноса
 const DEF = {
   settings: { kcal: 2200, protein: 140, steps: 10000, study: 60, apiKey: '', aiAuto: false, name: '' },
   meals: [], study: [], workouts: [], days: {}, srs: {}, quizzes: {}, foods: {}
 };
-let S = load();
+let S = structuredClone(DEF);
+let me = null, rev = 0;
 
-function load() {
-  try {
-    const raw = localStorage.getItem(KEY);
-    if (!raw) return structuredClone(DEF);
-    const d = JSON.parse(raw);
-    const out = Object.assign(structuredClone(DEF), d);
-    out.settings = Object.assign({}, DEF.settings, d.settings || {});
-    return out;
-  } catch (e) { console.warn('load failed', e); return structuredClone(DEF); }
+function normalize(d) {
+  const out = Object.assign(structuredClone(DEF), d || {});
+  out.settings = Object.assign({}, DEF.settings, (d && d.settings) || {});
+  return out;
 }
-function save() { localStorage.setItem(KEY, JSON.stringify(S)); updateBadge(); }
+
+/* ---------- сервер ---------- */
+async function apiFetch(path, opts = {}) {
+  const r = await fetch(path, { credentials: 'same-origin', ...opts, headers: { 'Content-Type': 'application/json', ...(opts.headers || {}) } });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw Object.assign(new Error(data.error || `Ошибка ${r.status}`), { status: r.status, data });
+  return data;
+}
+// сохранение: копим изменения 300 мс и отправляем всё состояние разом
+let saveTimer = null, saving = null, dirty = false, offline = false;
+function save() { updateBadge(); dirty = true; clearTimeout(saveTimer); saveTimer = setTimeout(flush, 300); }
+async function flush() {
+  clearTimeout(saveTimer);
+  while (saving) await saving;
+  if (!dirty || !me) return;
+  dirty = false;
+  const body = JSON.stringify({ rev, state: S });
+  saving = (async () => {
+    try {
+      const r = await apiFetch('/api/state', { method: 'PUT', body });
+      rev = r.rev;
+      if (offline) { offline = false; toast('Связь с сервером есть, всё сохранено'); }
+    } catch (e) {
+      if (e.status === 409) {
+        rev = e.data.rev; S = normalize(e.data.state); render();
+        toast('Данные изменились на другом устройстве. Показываю свежую версию, последнее изменение повтори.', true);
+      } else if (e.status === 401) {
+        showAuth('Сессия закончилась, войди снова.');
+      } else {
+        dirty = true;
+        if (!offline) { offline = true; toast('Сервер недоступен, изменения пока не сохранены. Повторяю…', true); }
+        saveTimer = setTimeout(flush, 5000);
+      }
+    } finally { saving = null; }
+  })();
+  return saving;
+}
+window.addEventListener('pagehide', () => {
+  if (dirty && me) fetch('/api/state', { method: 'PUT', keepalive: true, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ rev, state: S }) });
+});
+// вернулся во вкладку — подтягиваем изменения с других устройств
+document.addEventListener('visibilitychange', async () => {
+  if (!me) return;
+  if (document.hidden) { flush(); return; }
+  const a = document.activeElement;
+  if (dirty || saving || $('#modal-root .overlay') || (a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName))) return;
+  try {
+    const r = await apiFetch('/api/state');
+    if (r.rev !== rev) { rev = r.rev; S = normalize(r.state); render(); }
+  } catch (e) { if (e.status === 401) showAuth('Сессия закончилась, войди снова.'); }
+});
 
 /* ---------- утилиты ---------- */
 const uid = () => Math.random().toString(36).slice(2, 8) + Date.now().toString(36).slice(-4);
@@ -103,7 +149,8 @@ const I = {
   check: '<svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7"/></svg>',
   eye: '<svg viewBox="0 0 24 24"><path d="M3 12s3.5-6 9-6 9 6 9 6-3.5 6-9 6-9-6-9-6z"/><circle cx="12" cy="12" r="2.5"/></svg>',
   download: '<svg viewBox="0 0 24 24"><path d="M12 4v11m-4-4l4 4 4-4M5 20h14"/></svg>',
-  upload: '<svg viewBox="0 0 24 24"><path d="M12 15V4m-4 4l4-4 4 4M5 20h14"/></svg>'
+  upload: '<svg viewBox="0 0 24 24"><path d="M12 15V4m-4 4l4-4 4 4M5 20h14"/></svg>',
+  logout: '<svg viewBox="0 0 24 24"><path d="M15 4h3a2 2 0 012 2v12a2 2 0 01-2 2h-3M10 16l-4-4 4-4M6 12h10"/></svg>'
 };
 document.querySelectorAll('[data-ico]').forEach(el => { el.innerHTML = I[el.dataset.ico] || ''; });
 
@@ -122,6 +169,7 @@ window.addEventListener('hashchange', route);
    РЕНДЕР
    ============================================================ */
 function render() {
+  if (!me) return;
   document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.page === view.page));
   const pages = { today: pageToday, food: pageFood, study: pageStudy, quiz: pageQuiz, gym: pageGym, steps: pageSteps, stats: pageStats, settings: pageSettings };
   const y = window.scrollY;
@@ -271,11 +319,11 @@ function pageToday() {
     <div class="grid">
       ${onboard}
       ${card({ domain: 'food', title: 'Еда', i: i++, body: foodBody, action: addBtn('add-meal', 'Приём') })}
-      ${card({ domain: 'study', title: 'Учёба', i: i++, body: studyBody, action: addBtn('add-study', 'Занятие') })}
-      ${card({ domain: 'steps', title: 'Шаги', i: i++, body: stepsBody, action: addBtn('add-steps', 'Записать') })}
-      ${card({ domain: 'quiz', title: 'Вопросы дня', span: 7, i: i++, body: quizBody, cls: 'sticky sticky-violet', action: `<a class="btn btn-accent btn-sm" href="#quiz">Открыть</a>` })}
-      ${card({ domain: 'gym', title: 'Зал', span: 5, i: i++, body: gymBody, action: addBtn('add-gym', 'Тренировка') })}
-      ${card({ domain: 'paper', title: 'Заметка дня', span: 12, i: i++, body: noteBody, cls: 'sticky' })}
+      ${card({ domain: 'study', title: 'Учёба', i: i++, body: studyBody, cls: 'tile tile-navy', action: addBtn('add-study', 'Занятие') })}
+      ${card({ domain: 'steps', title: 'Шаги', i: i++, body: stepsBody, cls: 'tile tile-mustard', action: addBtn('add-steps', 'Записать') })}
+      ${card({ domain: 'quiz', title: 'Вопросы дня', span: 7, i: i++, body: quizBody, cls: 'tile tile-orange', action: `<a class="btn btn-accent btn-sm" href="#quiz">Открыть</a>` })}
+      ${card({ domain: 'gym', title: 'Зал', span: 5, i: i++, body: gymBody, cls: 'tile tile-sage', action: addBtn('add-gym', 'Тренировка') })}
+      ${card({ domain: 'paper', title: 'Заметка дня', span: 12, i: i++, body: noteBody, cls: 'tile tile-peach' })}
     </div>
   </section>`;
 }
@@ -832,7 +880,7 @@ function heatmap(weeks) {
       const flags = [mealsOn(d).length > 0, studyOn(d).length > 0, gymOn(d).length > 0, num(dayRec(d).steps) > 0];
       const X = (weeks - 1 - w) * cell + 18, Y = k * cell;
       const names = ['еда', 'учёба', 'зал', 'шаги'].filter((_, j) => flags[j]);
-      cols.push(`<g><title>${human(d)}: ${names.join(', ') || 'пусто'}</title>${flags.map((f, j) => `<rect x="${X + pad + (j % 2) * (q + pad)}" y="${Y + pad + Math.floor(j / 2) * (q + pad)}" width="${q}" height="${q}" rx="1.2" fill="${f ? colors[j] : 'rgba(92,64,38,.10)'}"/>`).join('')}</g>`);
+      cols.push(`<g><title>${human(d)}: ${names.join(', ') || 'пусто'}</title>${flags.map((f, j) => `<rect x="${X + pad + (j % 2) * (q + pad)}" y="${Y + pad + Math.floor(j / 2) * (q + pad)}" width="${q}" height="${q}" rx="1.2" fill="${f ? colors[j] : 'rgba(46,58,78,.09)'}"/>`).join('')}</g>`);
     }
   }
   const wd = ['пн', '', 'ср', '', 'пт', '', 'вс'].map((t, k) => t ? `<text x="0" y="${k * cell + cell / 2 + 3.5}">${t}</text>` : '').join('');
@@ -845,10 +893,19 @@ function heatmap(weeks) {
    ============================================================ */
 function pageSettings() {
   const s = S.settings;
-  const size = new Blob([localStorage.getItem(KEY) || '']).size;
+  const size = new Blob([JSON.stringify(S)]).size;
   return `<section class="page">
-    ${topbar('Настройки', 'цели, Claude, данные', { date: false })}
+    ${topbar('Настройки', 'аккаунт, цели, Claude, данные', { date: false })}
     <div class="grid">
+      ${card({ domain: 'study', title: 'Аккаунт', span: 12, cls: 'tile tile-navy', body: `<div class="account">
+        <div class="account-who"><div class="big"><b>${esc(me)}</b></div><p class="hint" style="margin:6px 0 0">Ты вошёл в аккаунт. Данные хранятся на сервере и доступны с любого устройства, где ты войдёшь.</p></div>
+        <form data-form="password" class="account-pw">
+          <input name="current" type="password" autocomplete="current-password" placeholder="Текущий пароль" required>
+          <input name="next" type="password" autocomplete="new-password" placeholder="Новый пароль" minlength="6" required>
+          <button class="btn btn-accent" type="submit">Сменить пароль</button>
+        </form>
+        <button class="btn btn-accent" data-action="logout">${I.logout}Выйти</button>
+      </div>` })}
       ${card({ domain: 'paper', title: 'Цели на день', span: 6, body: `<form data-form="settings" class="form-stack">
         ${field('Как к тебе обращаться', `<input name="name" placeholder="Имя (необязательно)" value="${esc(s.name)}">`)}
         <div class="row">
@@ -859,12 +916,12 @@ function pageSettings() {
         </div>
         <div><button class="btn btn-primary" type="submit">Сохранить цели</button></div></form>` })}
       ${card({ domain: 'quiz', title: 'Вопросы через Claude', span: 6, body: `<form data-form="ai" class="form-stack">
-        <p class="hint" style="margin:0">Без ключа вопросы собираются локально из твоих тезисов. С ключом Claude переформулирует их в живые вопросы на понимание. Ключ хранится только в этом браузере и уходит напрямую в Anthropic API.</p>
+        <p class="hint" style="margin:0">Без ключа вопросы собираются локально из твоих тезисов. С ключом Claude переформулирует их в живые вопросы на понимание. Ключ хранится в твоём аккаунте на сервере и уходит напрямую в Anthropic API.</p>
         ${field('API-ключ Anthropic', `<input name="apiKey" type="password" autocomplete="off" placeholder="sk-ant-…" value="${esc(s.apiKey)}">`)}
         <label class="switch" style="--c:var(--quiz)"><input type="checkbox" name="aiAuto" ${s.aiAuto ? 'checked' : ''}><span>Автоматически переформулировать вопросы дня при открытии</span></label>
         <div><button class="btn btn-primary" style="--c:var(--quiz)" type="submit">Сохранить</button></div></form>` })}
       ${card({ domain: 'paper', title: 'Данные', span: 12, body: `
-        <p class="hint" style="margin:0 0 12px">Всё хранится в localStorage этого браузера (${(size / 1024).toFixed(1)} КБ). Делай экспорт время от времени, чтобы не потерять записи при чистке браузера.</p>
+        <p class="hint" style="margin:0 0 12px">Записи аккаунта «${esc(me)}» хранятся на сервере (${(size / 1024).toFixed(1)} КБ). Экспорт в JSON нужен для резервной копии или переноса.</p>
         <div class="chips" style="gap:8px">
           <button class="btn" data-action="export">${I.download}Экспорт JSON</button>
           <label class="btn" style="cursor:pointer">${I.upload}Импорт JSON<input type="file" accept="application/json" data-import hidden></label>
@@ -944,7 +1001,13 @@ const ACTIONS = {
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `bortjournal-${ymd()}.json`; a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 1000); toast('Файл сохранён');
   },
-  'wipe': () => { if (!confirm('Стереть все записи без возможности восстановления?')) return; if (!confirm('Точно? Экспорт сделан?')) return; localStorage.removeItem(KEY); S = load(); render(); toast('Чисто'); }
+  'wipe': () => { if (!confirm('Стереть все записи без возможности восстановления?')) return; if (!confirm('Точно? Экспорт сделан?')) return; S = structuredClone(DEF); save(); render(); toast('Чисто'); },
+  'logout': async () => {
+    await flush();
+    try { await apiFetch('/api/logout', { method: 'POST', body: '{}' }); } catch { /* всё равно выходим */ }
+    showAuth();
+  },
+  'auth-mode': el => { authMode = el.dataset.mode; showAuth(); }
 };
 
 const FORMS = {
@@ -987,6 +1050,23 @@ const FORMS = {
     S.settings.apiKey = String(fd.get('apiKey') || '').trim();
     S.settings.aiAuto = fd.get('aiAuto') === 'on';
     save(); toast(S.settings.apiKey ? 'Ключ сохранён' : 'Ключ удалён');
+  },
+  async password(fd, f) {
+    try {
+      await apiFetch('/api/password', { method: 'POST', body: JSON.stringify({ current: fd.get('current'), next: fd.get('next') }) });
+      f.reset(); toast('Пароль изменён');
+    } catch (e) { toast(e.message, true); }
+  },
+  async auth(fd, f) {
+    const username = String(fd.get('username') || '').trim(), password = String(fd.get('password') || '');
+    const err = $('#auth-err'), btn = f.querySelector('[type=submit]');
+    if (authMode === 'register' && password !== fd.get('password2')) { err.textContent = 'Пароли не совпадают.'; return; }
+    err.textContent = ''; btn.classList.add('busy');
+    try {
+      me = (await apiFetch(`/api/${authMode}`, { method: 'POST', body: JSON.stringify({ username, password }) })).username;
+      await loadState();
+    } catch (e) { me = null; err.textContent = e.status ? e.message : 'Сервер недоступен.'; }
+    finally { btn.classList.remove('busy'); }
   }
 };
 
@@ -1016,7 +1096,7 @@ document.addEventListener('change', e => {
         const d = JSON.parse(r.result);
         if (!d || !Array.isArray(d.meals) || !Array.isArray(d.study)) throw new Error('не похоже на экспорт Бортжурнала');
         if (!confirm('Заменить текущие данные импортированными?')) return;
-        localStorage.setItem(KEY, JSON.stringify(d)); S = load(); render(); toast('Импортировано');
+        S = normalize(d); save(); render(); toast('Импортировано');
       } catch (err) { toast(`Импорт не удался: ${err.message}`, true); }
     };
     r.readAsText(t.files[0]); t.value = '';
@@ -1035,4 +1115,64 @@ window.addEventListener('hashchange', () => {
   }
 });
 
-route();
+/* ============================================================
+   ВХОД И ЗАПУСК
+   ============================================================ */
+let authMode = 'login';
+function showAuth(msg = '') {
+  me = null; rev = 0; dirty = false; clearTimeout(saveTimer); S = structuredClone(DEF);
+  document.body.classList.add('auth-mode');
+  const reg = authMode === 'register';
+  $('#main').innerHTML = `<section class="page auth">
+    <div class="auth-hero">
+      <div class="auth-kicker">Бортжурнал</div>
+      <h1>Еда, учёба, зал и шаги в одном журнале</h1>
+      <p>У каждого свой аккаунт. Записи хранятся на сервере, поэтому их видно с любого устройства, где ты войдёшь.</p>
+    </div>
+    <form class="auth-card" data-form="auth" novalidate>
+      <div class="seg" role="tablist">
+        <button type="button" class="${reg ? '' : 'on'}" data-action="auth-mode" data-mode="login">Вход</button>
+        <button type="button" class="${reg ? 'on' : ''}" data-action="auth-mode" data-mode="register">Регистрация</button>
+      </div>
+      <h2>${reg ? 'Новый аккаунт' : 'С возвращением'}</h2>
+      ${field('Логин', `<input name="username" autocomplete="username" autocapitalize="off" spellcheck="false" required ${reg ? 'placeholder="латиница, цифры, . _ -"' : ''}>`)}
+      ${field('Пароль', `<input name="password" type="password" autocomplete="${reg ? 'new-password' : 'current-password'}" required ${reg ? 'placeholder="не короче 6 символов"' : ''}>`)}
+      ${reg ? field('Повтори пароль', '<input name="password2" type="password" autocomplete="new-password" required>') : ''}
+      <p class="auth-err" id="auth-err" role="alert">${esc(msg)}</p>
+      <button class="btn btn-primary" type="submit">${reg ? 'Создать аккаунт' : 'Войти'}</button>
+    </form>
+  </section>`;
+  $('#main [name=username]').focus();
+}
+async function loadState() {
+  const r = await apiFetch('/api/state');
+  rev = r.rev; S = normalize(r.state);
+  document.body.classList.remove('auth-mode');
+  route();
+  await migrateLocal();
+}
+// записи из старой версии (localStorage) один раз переносим в аккаунт
+async function migrateLocal() {
+  let d;
+  try { d = JSON.parse(localStorage.getItem(KEY) || 'null'); } catch { return; }
+  if (!d || !(d.meals?.length || d.study?.length || d.workouts?.length || Object.keys(d.days || {}).length)) return;
+  if (!isEmptyStore()) return;
+  if (!confirm(`В этом браузере остались записи из версии без аккаунтов. Перенести их в аккаунт «${me}»?`)) return;
+  S = normalize(d); save(); await flush();
+  if (dirty) return;
+  try { localStorage.removeItem(KEY); } catch { /* не страшно */ }
+  render(); toast('Записи перенесены в аккаунт');
+}
+async function boot() {
+  if (location.protocol === 'file:') {
+    document.body.classList.add('auth-mode');
+    $('#main').innerHTML = `<section class="page auth"><div class="auth-hero">
+      <div class="auth-kicker">Бортжурнал</div><h1>Запусти сервер</h1>
+      <p>Теперь данные хранятся в аккаунтах на локальном сервере. В папке проекта выполни <b>npm start</b> и открой <b>http://localhost:3333</b>.</p></div></section>`;
+    return;
+  }
+  try { me = (await apiFetch('/api/me')).username; }
+  catch (e) { return showAuth(e.status === 401 ? '' : 'Сервер недоступен. Проверь, что он запущен.'); }
+  await loadState();
+}
+boot();
