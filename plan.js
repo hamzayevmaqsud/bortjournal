@@ -8,7 +8,11 @@
      распространённых формул (Frankenfield и др., 2005). Если известен
      процент жира — Katch–McArdle по безжировой массе.
    - Процент жира без замера: Deurenberg (1991) по ИМТ, возрасту и полу.
-   - Расход за день: основной обмен × коэффициент активности.
+   - Расход за день: основной обмен × коэффициент тренировок + ходьба.
+     Коэффициент описывает только тренировки и работу; шаги считаются
+     отдельно по факту: ходьба тратит ≈0,5 ккал на кг веса на км
+     (ACSM, чистые затраты сверх покоя), длина шага ≈0,415 × рост.
+     Первые ~4000 шагов уже заложены в сидячий коэффициент 1,2.
    - 1 кг веса ≈ 7700 ккал. Правило линейное и на длинной дистанции
      завышает потерю (Hall и др., 2011), поэтому прогноз считается по
      неделям с пересчётом расхода под новый вес.
@@ -25,13 +29,16 @@
 
   const KCAL_PER_KG = 7700;
 
+  // только тренировки и работа: шаги добавляются отдельно
   const ACTIVITY = {
-    sed:   { f: 1.2,   name: 'Сидячая',       hint: 'Офис, тренировок нет, до 5 тыс. шагов в день' },
-    light: { f: 1.375, name: 'Лёгкая',        hint: '1–3 тренировки или 5–8 тыс. шагов в день' },
-    mod:   { f: 1.55,  name: 'Средняя',       hint: '3–5 тренировок или 8–12 тыс. шагов в день' },
-    high:  { f: 1.725, name: 'Высокая',       hint: '6–7 тренировок или физическая работа' },
-    ath:   { f: 1.9,   name: 'Очень высокая', hint: 'Две тренировки в день или тяжёлый труд' }
+    sed:   { f: 1.2,  name: 'Без тренировок', hint: 'Сидячая работа, спорта на неделе нет' },
+    light: { f: 1.3,  name: 'Лёгкая',         hint: '1–2 тренировки за неделю' },
+    mod:   { f: 1.4,  name: 'Средняя',        hint: '3–4 тренировки за неделю' },
+    high:  { f: 1.5,  name: 'Высокая',        hint: '5–6 тренировок за неделю' },
+    ath:   { f: 1.65, name: 'Очень высокая',  hint: 'Тренировки каждый день или физическая работа' }
   };
+  const BASE_STEPS = 4000;
+  const STEP_CHOICES = [3000, 6000, 9000, 12000, 15000];
   const GOALS = {
     lose:     { name: 'Похудеть',      hint: 'Сбросить жир и сохранить мышцы' },
     maintain: { name: 'Держать форму', hint: 'Вес на месте, улучшать тело' },
@@ -70,12 +77,16 @@
     return 10 * weight + 6.25 * p.height - 5 * p.age + (p.sex === 'm' ? 5 : -161);
   }
 
+  /* ккал на один шаг: 0,5 ккал/кг/км × вес × длина шага */
+  function kcalPerStep(weight, height) { return 0.5 * weight * (0.415 * height / 100) / 1000; }
+  function stepsKcal(steps, weight, height) { return Math.max(0, (steps || 0) - BASE_STEPS) * kcalPerStep(weight, height); }
+
   function minKcal(p) { return p.sex === 'm' ? 1500 : 1200; }
 
   /* Цели на день для профиля, текущего веса и активности недели */
-  function compute(p, weight, level) {
+  function compute(p, weight, level, steps = p.steps || 6000) {
     const act = ACTIVITY[level] || ACTIVITY.sed;
-    const base = bmr(p, weight), tdee = base * act.f;
+    const base = bmr(p, weight), walk = stepsKcal(steps, weight, p.height), tdee = base * act.f + walk;
     const bf = bodyFat(p, weight), lbm = weight * (1 - bf.value / 100);
     const notes = [];
     let delta = 0;
@@ -93,7 +104,7 @@
     const fat = round(Math.max(kcal * 0.25 / 9, 0.6 * lbm), 5);
     const carbs = Math.max(0, round((kcal - protein * 4 - fat * 9) / 4, 5));
     return {
-      bmr: base, tdee, factor: act.f, level, delta, kcal, protein, fat, carbs,
+      bmr: base, tdee, factor: act.f, level, steps, walk, delta, kcal, protein, fat, carbs,
       weeklyKg: delta * 7 / KCAL_PER_KG,
       bf: bf.value, bfMeasured: bf.measured, lbm, bmi: bmi(weight, p.height),
       muscleMonth: lbm * (EXPERIENCE[p.experience] || EXPERIENCE.new).muscle,
@@ -102,24 +113,24 @@
   }
 
   /* Вес по неделям при постоянных калориях: расход пересчитывается под новый вес */
-  function simulate(p, w0, kcal, level, weeks) {
+  function simulate(p, w0, kcal, level, weeks, steps = p.steps || 6000) {
     const f = (ACTIVITY[level] || ACTIVITY.sed).f, out = [w0];
     let w = w0;
     for (let k = 0; k < weeks; k++) {
-      w += (kcal - bmr(p, w) * f) * 7 / KCAL_PER_KG;
+      w += (kcal - bmr(p, w) * f - stepsKcal(steps, w, p.height)) * 7 / KCAL_PER_KG;
       out.push(w);
     }
     return out;
   }
 
   /* Через сколько недель вес дойдёт до цели; null, если при этих калориях не дойдёт */
-  function weeksTo(p, w0, kcal, level, target, max = 260) {
+  function weeksTo(p, w0, kcal, level, target, steps = p.steps || 6000, max = 260) {
     if (!target) return null;
     const dir = Math.sign(target - w0); if (!dir) return 0;
     const f = (ACTIVITY[level] || ACTIVITY.sed).f;
     let w = w0;
     for (let k = 1; k <= max; k++) {
-      const next = w + (kcal - bmr(p, w) * f) * 7 / KCAL_PER_KG;
+      const next = w + (kcal - bmr(p, w) * f - stepsKcal(steps, w, p.height)) * 7 / KCAL_PER_KG;
       if ((next - w) * dir <= 0.005) return null; // вышли на плато раньше цели
       if ((target - next) * dir <= 0) return k - 1 + (target - w) / (next - w);
       w = next;
@@ -143,7 +154,7 @@
   /* Реальный расход по факту: что съедено минус то, что ушло в вес */
   function factTdee(avgIntake, slopePerDay) { return avgIntake - slopePerDay * KCAL_PER_KG; }
 
-  const api = { KCAL_PER_KG, ACTIVITY, GOALS, PACE, BUILD, EXPERIENCE, bmi, bodyFat, bmr, minKcal, compute, simulate, weeksTo, trend, factTdee };
+  const api = { KCAL_PER_KG, BASE_STEPS, STEP_CHOICES, kcalPerStep, stepsKcal, ACTIVITY, GOALS, PACE, BUILD, EXPERIENCE, bmi, bodyFat, bmr, minKcal, compute, simulate, weeksTo, trend, factTdee };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.Plan = api;
 })(typeof window !== 'undefined' ? window : globalThis);

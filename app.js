@@ -12,7 +12,7 @@ const DEF = {
   profile: null, activity: {}
 };
 let S = structuredClone(DEF);
-let me = null, rev = 0;
+let me = null, rev = 0, photoOn = false;
 
 function normalize(d) {
   const out = Object.assign(structuredClone(DEF), d || {});
@@ -153,6 +153,7 @@ const I = {
   download: '<svg viewBox="0 0 24 24"><path d="M12 4v11m-4-4l4 4 4-4M5 20h14"/></svg>',
   upload: '<svg viewBox="0 0 24 24"><path d="M12 15V4m-4 4l4-4 4 4M5 20h14"/></svg>',
   goal: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r=".9"/></svg>',
+  camera: '<svg viewBox="0 0 24 24"><path d="M4 8.5A1.5 1.5 0 0 1 5.5 7h2l1.5-2h6l1.5 2h2A1.5 1.5 0 0 1 20 8.5v9a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 17.5z"/><circle cx="12" cy="12.5" r="3.5"/></svg>',
   logout: '<svg viewBox="0 0 24 24"><path d="M15 4h3a2 2 0 012 2v12a2 2 0 01-2 2h-3M10 16l-4-4 4-4M6 12h10"/></svg>'
 };
 document.querySelectorAll('[data-ico]').forEach(el => { el.innerHTML = I[el.dataset.ico] || ''; });
@@ -291,7 +292,7 @@ function pageToday() {
   const steps = num(day.steps);
   const stepsBody = `<div class="big big-xl"><b data-count="${steps}">0</b><small>/ ${fmtN(set.steps)}</small></div>
     <div style="margin-top:12px">${bar(steps, set.steps)}</div>
-    <p class="hint">${steps ? (steps >= set.steps ? 'Цель закрыта.' : `Осталось ${fmtN(set.steps - steps)}`) : 'Шаги за день ещё не записаны'}${day.weight ? ` · вес ${fmt1(day.weight)} кг` : ''}</p>`;
+    <p class="hint">${steps ? (steps >= set.steps ? 'Цель закрыта.' : `Осталось ${fmtN(set.steps - steps)}`) : 'Шаги за день ещё не записаны'}${steps && S.profile ? ` · ходьба ≈ ${fmtN(steps * Plan.kcalPerStep(curWeight(), S.profile.height))} ккал` : ''}${day.weight ? ` · вес ${fmt1(day.weight)} кг` : ''}</p>`;
 
   const gymBody = gw.length
     ? `<div class="list">${gw.map(w => `<div class="item"><span class="item-time">${esc(w.time || '')}</span><div class="item-main"><div class="item-title">${esc(w.type)}</div><div class="item-sub">${w.exercises.map(e => esc(e.name)).join(', ') || esc(w.note || '')}</div></div><span class="item-val">${w.minutes ? fmtMin(w.minutes) : ''}</span></div>`).join('')}</div>`
@@ -324,7 +325,7 @@ function pageToday() {
     ${ruler(d)}
     <div class="grid">
       ${onboard}
-      ${card({ domain: 'food', title: 'Еда', i: i++, body: foodBody, action: addBtn('add-meal', 'Приём') })}
+      ${card({ domain: 'food', title: 'Еда', i: i++, body: foodBody, action: `<span class="card-actions">${photoBtn('btn btn-accent btn-sm', 'Фото')}${addBtn('add-meal', 'Приём')}</span>` })}
       ${card({ domain: 'study', title: 'Учёба', i: i++, body: studyBody, cls: 'tile tile-navy', action: addBtn('add-study', 'Занятие') })}
       ${card({ domain: 'steps', title: 'Шаги', i: i++, body: stepsBody, cls: 'tile tile-mustard', action: addBtn('add-steps', 'Записать') })}
       ${card({ domain: 'quiz', title: 'Вопросы дня', span: 7, i: i++, body: quizBody, cls: 'tile tile-orange', action: `<a class="btn btn-accent btn-sm" href="#quiz">Открыть</a>` })}
@@ -365,7 +366,7 @@ function pageFood() {
   const freq = topFoods(8);
   let i = 0;
   return `<section class="page" style="--c:var(--food)">
-    ${topbar('Еда', humanLong(d), { actions: `<button class="btn btn-primary" style="--c:var(--food)" data-action="add-meal">${I.plus}Приём пищи</button>` })}
+    ${topbar('Еда', humanLong(d), { actions: `${photoBtn('btn btn-primary')}<button class="btn ${photoOn ? 'btn-accent' : 'btn-primary'}" style="--c:var(--food)" data-action="add-meal">${I.plus}Приём пищи</button>` })}
     <div class="kpis">
       ${kpi('Калории', `${fmtN(tot.kcal)}<small>/ ${fmtN(set.kcal)}</small>`, 'food', i++, tot.kcal > set.kcal ? `Перебор ${fmtN(tot.kcal - set.kcal)}` : `Осталось ${fmtN(set.kcal - tot.kcal)}`)}
       ${kpi('Белки', `${fmtN(tot.p)}<small>/ ${set.protein} г</small>`, 'food', i++, tot.p >= set.protein ? 'Норма закрыта' : `Ещё ${fmtN(set.protein - tot.p)} г`)}
@@ -416,6 +417,120 @@ function mealForm(m) {
       </div>`,
     submit: m ? 'Сохранить' : 'Записать'
   });
+}
+
+
+/* ============================================================
+   ФОТО ЕДЫ: распознавание через сервер (Gemini) и проверка
+   ============================================================ */
+const SCALE_OPTS = [['', 'Нет'], ['card', 'Карта'], ['fork', 'Вилка'], ['spoon', 'Ложка'], ['phone', 'Телефон'], ['hand', 'Ладонь']];
+const CONF = { high: 'уверенно', medium: 'примерно', low: 'догадка' };
+let ph = null;
+function photoBtn(cls, label = 'Фото еды') {
+  if (!photoOn) return '';
+  return `<label class="${cls}" style="--c:var(--food);cursor:pointer">${I.camera}${label}<input type="file" accept="image/*" data-photo hidden></label>`;
+}
+async function shrinkImage(file) {
+  const bmp = await createImageBitmap(file);
+  const k = Math.min(1, 1280 / Math.max(bmp.width, bmp.height));
+  const cv = document.createElement('canvas');
+  cv.width = Math.round(bmp.width * k); cv.height = Math.round(bmp.height * k);
+  cv.getContext('2d').drawImage(bmp, 0, 0, cv.width, cv.height);
+  bmp.close?.();
+  const url = cv.toDataURL('image/jpeg', 0.85);
+  return { url, b64: url.slice(url.indexOf(',') + 1), mime: 'image/jpeg' };
+}
+async function startPhoto(file) {
+  try {
+    const img = await shrinkImage(file);
+    ph = { ...img, note: '', scale: '', stage: 'setup', rows: [], questions: [], answers: {}, comment: '', time: view.date === ymd() ? nowHM() : '12:00', date: view.date, err: '' };
+    renderPhoto();
+  } catch { toast('Не получилось открыть фото. Попробуй JPEG или PNG.', true); }
+}
+function phTotals() {
+  return ph.rows.reduce((a, r) => ({ kcal: a.kcal + num(r.kcal), p: a.p + num(r.p), f: a.f + num(r.f), c: a.c + num(r.c), g: a.g + num(r.grams) }), { kcal: 0, p: 0, f: 0, c: 0, g: 0 });
+}
+function phTotalsHtml() {
+  const t = phTotals();
+  return `<b>${fmtN(t.kcal)} ккал</b> · Б ${fmt1(t.p)} · Ж ${fmt1(t.f)} · У ${fmt1(t.c)} · ${fmtN(t.g)} г`;
+}
+function renderPhoto() {
+  const root = $('#modal-root'), st = ph.stage;
+  let body = '', foot = '';
+  const img = `<img class="ph-img" src="${ph.url}" alt="Фото еды">`;
+  if (st === 'setup' || st === 'loading') {
+    body = `<div class="ph-top">${img}<div class="ph-side">
+        ${field('Подпись (необязательно)', `<textarea data-ph="note" rows="3" placeholder="Например: гречка 200 г, куриная грудка, соус сметанный" ${st === 'loading' ? 'disabled' : ''}>${esc(ph.note)}</textarea>`)}
+        <div class="field"><label>Что лежит рядом для масштаба</label>
+          <div class="seg seg-wrap">${SCALE_OPTS.map(([k, n]) => `<button type="button" class="${ph.scale === k ? 'on' : ''}" data-action="ph-scale" data-v="${k}" ${st === 'loading' ? 'disabled' : ''}>${n}</button>`).join('')}</div></div>
+        <p class="hint" style="margin:0">Точнее всего — подписать вес с кухонных весов. Без весов положи рядом карту (85,6×54 мм) или вилку. Этикетку упаковки тоже можно сфотографировать.</p>
+      </div></div>`;
+    foot = `<button type="button" class="btn btn-ghost" data-action="close-modal">Отмена</button><button type="button" class="btn btn-primary ${st === 'loading' ? 'busy' : ''}" data-action="ph-go">${st === 'loading' ? 'Распознаю…' : `${I.spark}Распознать`}</button>`;
+  } else {
+    const qs = ph.questions.length ? `<div class="ph-qs">${ph.questions.map((q, qi) => `<div class="ph-q"><div class="ph-q-text">${esc(q.text)}</div><div class="chips">${q.options.map(o => `<button type="button" class="chip chip-btn ${ph.answers[qi] === o ? 'on' : ''}" data-action="ph-ans" data-q="${qi}" data-o="${esc(o)}">${esc(o)}</button>`).join('')}</div></div>`).join('')}
+      <button type="button" class="btn btn-accent btn-sm" data-action="ph-go" ${Object.keys(ph.answers).length ? '' : 'disabled'}>${I.spark}Пересчитать с ответами</button></div>` : '';
+    body = `<div class="ph-top ph-top-sm">${img}<div class="ph-side">
+        ${ph.comment ? `<p class="ph-comment">${esc(ph.comment)}</p>` : ''}
+        <div class="ph-total" id="ph-total">${phTotalsHtml()}</div>
+        <p class="hint" style="margin:0">Проверь вес порций: поменяешь граммы — ккал и БЖУ пересчитаются.</p>
+      </div></div>
+      ${qs}
+      <div class="ph-rows">
+        <div class="ph-row ph-head"><span>Что</span><span>г</span><span>ккал</span><span>Б</span><span>Ж</span><span>У</span><span></span></div>
+        ${ph.rows.map((r, i) => `<div class="ph-row" data-i="${i}">
+          <span class="ph-name"><input data-ph-row="${i}" data-f="name" value="${esc(r.name)}" aria-label="Название">${r.confidence ? `<small class="conf conf-${r.confidence}">${r.source === 'label' ? 'с этикетки' : r.source === 'user' ? 'с подписи' : CONF[r.confidence]}</small>` : ''}</span>
+          ${['grams', 'kcal', 'p', 'f', 'c'].map(f => `<input data-ph-row="${i}" data-f="${f}" type="number" min="0" step="any" inputmode="decimal" value="${r[f]}" aria-label="${f}">`).join('')}
+          <button type="button" class="icon-btn danger" data-action="ph-del" data-i="${i}" aria-label="Убрать">${I.x}</button>
+        </div>`).join('')}
+      </div>
+      <button type="button" class="btn btn-ghost btn-sm" data-action="ph-add">${I.plus}Добавить позицию</button>
+      <div class="row row-2">
+        ${field('Время', `<input data-ph="time" type="time" value="${ph.time}">`)}
+        ${field('Дата', `<input data-ph="date" type="date" value="${ph.date}">`)}
+      </div>`;
+    foot = `<button type="button" class="btn btn-ghost" data-action="ph-back">Другое фото</button><span class="spacer"></span><button type="button" class="btn btn-primary" data-action="ph-save" ${ph.rows.length ? '' : 'disabled'}>${I.check}Согласен, записать</button>`;
+  }
+  const wasOpen = root.classList.contains('open') && root.querySelector('.ph-sheet');
+  root.innerHTML = `<div class="overlay" data-action="close-modal"><div class="sheet ph-sheet" style="--c:var(--food)" role="dialog" aria-modal="true" aria-label="Фото еды">
+    <header class="sheet-head"><h2>${st === 'review' ? 'Проверь, что получилось' : 'Еда по фото'}</h2><button type="button" class="icon-btn" data-action="close-modal" aria-label="Закрыть">${I.x}</button></header>
+    <div class="sheet-form">${body}${ph.err ? `<p class="auth-err" role="alert">${esc(ph.err)}</p>` : ''}<footer class="sheet-foot">${foot}</footer></div>
+  </div></div>`;
+  if (!wasOpen) requestAnimationFrame(() => root.classList.add('open'));
+}
+async function photoGo() {
+  if (!ph || ph.stage === 'loading') return;
+  const answers = ph.questions.map((q, qi) => ph.answers[qi] ? `${q.text} — ${ph.answers[qi]}` : '').filter(Boolean);
+  // ручные правки при пересчёте не теряем: отдаём их модели как факт
+  if (ph.stage === 'review') for (const r of ph.rows) {
+    if (!String(r.name).trim()) continue;
+    if (!r.base) answers.push(`Добавлено вручную: ${r.name}, ${fmtN(r.grams)} г`);
+    else if (num(r.grams) !== r.base.grams) answers.push(`Вес исправлен: ${r.name} — ${fmtN(r.grams)} г`);
+  }
+  const prev = ph.stage;
+  ph.stage = 'loading'; ph.err = ''; renderPhoto();
+  try {
+    const r = await apiFetch('/api/food/photo', { method: 'POST', body: JSON.stringify({ image: ph.b64, mime: ph.mime, note: ph.note, scale: ph.scale, answers }) });
+    if (!ph) return;
+    if (!r.isFood) { ph.stage = 'setup'; ph.err = r.comment || 'На фото не видно еды.'; renderPhoto(); return; }
+    ph.rows = r.items.map(it => ({ ...it, base: { grams: it.grams, kcal: it.kcal, p: it.p, f: it.f, c: it.c } }));
+    ph.questions = answers.length ? [] : r.questions; ph.answers = {};
+    ph.comment = r.comment; ph.stage = 'review';
+  } catch (e) {
+    if (!ph) return;
+    ph.stage = prev === 'review' ? 'review' : 'setup'; ph.err = e.status ? e.message : 'Сервер недоступен.';
+  }
+  renderPhoto();
+}
+function photoSave() {
+  const rows = ph.rows.filter(r => String(r.name).trim() && (num(r.kcal) || num(r.grams)));
+  if (!rows.length) { ph.err = 'Нечего записывать.'; renderPhoto(); return; }
+  for (const r of rows) {
+    const m = { id: uid(), date: ph.date || view.date, time: ph.time || '', name: `${String(r.name).trim()}${num(r.grams) ? `, ${fmtN(r.grams)} г` : ''}`, kcal: Math.round(num(r.kcal)), p: num(r.p), f: num(r.f), c: num(r.c) };
+    S.meals.push(m); rememberFood(m);
+  }
+  const t = rows.reduce((a, r) => a + num(r.kcal), 0);
+  ph = null; save(); closeModal(); render();
+  toast(`Записано: ${rows.length} ${plural(rows.length, 'позиция', 'позиции', 'позиций')}, ${fmtN(t)} ккал`);
 }
 
 /* ============================================================
@@ -800,7 +915,13 @@ function curLevel(d = ymd()) {
   const prev = Object.keys(S.activity).filter(k => k <= m).sort().pop();
   return prev ? S.activity[prev] : 'sed';
 }
-function planNow() { return Plan.compute(profileNow(), curWeight(), curLevel()); }
+/* Шаги для плана: среднее за 7 прошлых дней, если записано хотя бы 3 дня, иначе оценка из анкеты */
+function stepsNow() {
+  const t = ymd(), vals = rangeDays(7, addDays(t, -1)).map(d => num(dayRec(d).steps)).filter(Boolean);
+  if (vals.length >= 3) return { steps: Math.round(vals.reduce((a, b) => a + b, 0) / vals.length), measured: true, days: vals.length };
+  return { steps: num(S.profile?.steps) || 6000, measured: false, days: vals.length };
+}
+function planNow() { return Plan.compute(profileNow(), curWeight(), curLevel(), stepsNow().steps); }
 function applyGoals() { const c = planNow(); S.settings.kcal = c.kcal; S.settings.protein = c.protein; return c; }
 const fmt2 = n => n.toLocaleString('ru-RU', { maximumFractionDigits: 2 });
 const kgWeek = v => Math.abs(v) < 0.005 ? '±0 кг/нед' : `${v > 0 ? '+' : '−'}${fmt2(Math.abs(v))} кг/нед`;
@@ -828,11 +949,11 @@ function factStats() {
   };
 }
 
-function planLines(p, w, lv, c) {
-  const sim = Plan.simulate(p, w, c.kcal, lv, 26), eta = Plan.weeksTo(p, w, c.kcal, lv, p.target);
+function planLines(p, w, lv, c, stepsInfo) {
+  const sim = Plan.simulate(p, w, c.kcal, lv, 26, c.steps), eta = Plan.weeksTo(p, w, c.kcal, lv, p.target, c.steps);
   const act = Plan.ACTIVITY[lv], lines = [];
   lines.push(`Основной обмен <b>${fmtN(c.bmr)} ккал</b> — столько тело тратит в полном покое (${c.bfMeasured ? 'Katch–McArdle по твоему проценту жира' : 'формула Миффлина — Сан Жеора'}).`);
-  lines.push(`С активностью «${act.name}» (×${String(act.f).replace('.', ',')}) расход <b>${fmtN(c.tdee)} ккал</b> в день — при таких калориях вес стоит на месте.`);
+  lines.push(`Тренировки «${act.name.toLowerCase()}» ×${String(act.f).replace('.', ',')} и ходьба ${fmtN(c.steps)} шагов в день${stepsInfo?.measured ? ` (среднее за ${stepsInfo.days} дн. по записям)` : ' (оценка — запиши шаги, и план возьмёт реальные)'}: +${fmtN(c.walk)} ккал. Итого расход <b>${fmtN(c.tdee)} ккал</b> — при таких калориях вес стоит на месте.`);
   if (p.goal === 'maintain') lines.push(`Цель <b>${fmtN(c.kcal)} ккал</b> — поддержка. Вес держится, а с силовыми и белком тело постепенно становится плотнее.`);
   else {
     const dd = Math.round(Math.abs(c.delta));
@@ -845,6 +966,7 @@ function planLines(p, w, lv, c) {
   }
   lines.push(`Белок <b>${c.protein} г</b> (≈2 г на кг безжировой массы — ${fmt1(c.lbm)} кг при жире ≈${Math.round(c.bf)}%${c.bfMeasured ? '' : ', оценка по ИМТ'}), жиры ${c.fat} г, углеводы ${c.carbs} г.`);
   if (p.goal === 'gain') lines.push(`Реально нарастить ≈ <b>${fmt1(c.muscleMonth)} кг мышц в месяц</b> при твоём стаже. Если вес растёт заметно быстрее, лишнее уходит в жир — тогда профицит стоит уменьшить.`);
+  if (p.goal !== 'gain') { const extra = Math.round(Plan.kcalPerStep(w, p.height) * 3000); lines.push(`Каждые +3000 шагов в день — это ещё ≈${extra} ккал расхода, около ${fmt2(extra * 7 / Plan.KCAL_PER_KG)} кг в неделю, если не есть больше.`); }
   if (p.goal === 'lose' && p.experience === 'new') lines.push('Новичку на силовых с таким белком реально не только сохранить, но и немного нарастить мышцы на дефиците.');
   c.notes.forEach(n => lines.push(n));
   return { sim, eta, lines };
@@ -874,8 +996,8 @@ function pageGoal() {
   if (!S.profile) return `<section class="page">${topbar('Цель', 'план и прогноз', { date: false })}
     <div class="quiz-empty"><b>План ещё не составлен.</b> Ответь на пару вопросов о себе, и журнал посчитает калории, белок и прогноз веса.
     <div class="btns"><button class="btn btn-accent" data-action="edit-profile">${I.goal}Составить план</button></div></div></section>`;
-  const p = profileNow(), w = curWeight(), lv = curLevel(), c = Plan.compute(p, w, lv), g = Plan.GOALS[p.goal];
-  const { sim, lines } = planLines(p, w, lv, c);
+  const p = profileNow(), w = curWeight(), lv = curLevel(), si = stepsNow(), c = Plan.compute(p, w, lv, si.steps), g = Plan.GOALS[p.goal];
+  const { sim, lines } = planLines(p, w, lv, c, si);
   const f = factStats(), t = ymd();
   let i = 0;
 
@@ -912,7 +1034,7 @@ function pageGoal() {
   // график: история, план от старта, факт вперёд
   const start = S.profile.start || t;
   const hist = weightSeries().filter(x => x.d >= addDays(t, -120));
-  const planSim = Plan.simulate(p, S.profile.startWeight || w, c.kcal, lv, Math.max(12, Math.ceil(diffDays(start, t) / 7) + 8));
+  const planSim = Plan.simulate(p, S.profile.startWeight || w, c.kcal, lv, Math.max(12, Math.ceil(diffDays(start, t) / 7) + 8), c.steps);
   const planPts = planSim.map((v, k) => ({ d: addDays(start, k * 7), v })).filter(x => x.d <= addDays(t, 56));
   const factPts = f.tr ? [{ d: t, v: f.now }, { d: addDays(t, 56), v: f.now + f.weekly * 8 }] : [];
   const chart = forecastChart([
@@ -934,7 +1056,8 @@ function pageGoal() {
       ${card({ domain: 'study', title: 'По факту', span: 6, i: i++, cls: 'tile tile-navy', body: factBody })}
       ${card({ domain: 'paper', title: 'Вес и прогноз', span: 12, i: i++, body: chart })}
       ${card({ domain: 'gym', title: 'Активность на этой неделе', span: 6, i: i++, body: `<div class="seg seg-wrap">${Object.entries(Plan.ACTIVITY).map(([k, a]) => `<button class="${k === lv ? 'on' : ''}" data-action="set-level" data-v="${k}">${a.name}</button>`).join('')}</div>
-        <p class="hint">${Plan.ACTIVITY[lv].hint}. Неделя с ${human(mondayOf(t))}; в понедельник спрошу снова.</p>` })}
+        <p class="hint">${Plan.ACTIVITY[lv].hint}. Неделя с ${human(mondayOf(t))}; в понедельник спрошу снова.</p>
+        <p class="hint">Шаги: ${si.measured ? `в среднем <b>${fmtN(si.steps)}</b> за ${si.days} дн. — это +${fmtN(c.walk)} ккал к расходу` : `пока оценка ${fmtN(si.steps)} в день. Записывай шаги хотя бы 3 дня в неделю — план подстроится`}.</p>` })}
       ${card({ domain: 'paper', title: 'Профиль', span: 6, i: i++, body: `<div class="chips">
         <span class="chip"><b>${p.sex === 'm' ? 'Мужчина' : 'Женщина'}</b></span><span class="chip"><b>${p.age}</b> лет</span><span class="chip"><b>${p.height}</b> см</span>
         <span class="chip">ИМТ <b>${fmt1(c.bmi)}</b></span><span class="chip">жир <b>${Math.round(c.bf)}%</b>${c.bfMeasured ? '' : ' (оценка)'}</span>
@@ -954,13 +1077,13 @@ function startWizard(edit = false) {
   const p = S.profile ? profileNow() : null;
   view.wizard = {
     step: 0, edit, err: '',
-    d: p ? { sex: p.sex, age: p.age, height: p.height, weight: curWeight(), build: p.build, bodyFat: p.bodyFat || '', experience: p.experience, level: curLevel(), goal: p.goal, pace: p.pace, target: p.target || '' }
-         : { sex: 'm', age: '', height: '', weight: '', build: 'mid', bodyFat: '', experience: 'new', level: 'sed', goal: 'lose', pace: 'mid', target: '' }
+    d: p ? { sex: p.sex, age: p.age, height: p.height, weight: curWeight(), build: p.build, bodyFat: p.bodyFat || '', experience: p.experience, level: curLevel(), steps: String(p.steps || 6000), goal: p.goal, pace: p.pace, target: p.target || '' }
+         : { sex: 'm', age: '', height: '', weight: '', build: 'mid', bodyFat: '', experience: 'new', level: 'sed', steps: '6000', goal: 'lose', pace: 'mid', target: '' }
   };
   closeModal(); render();
 }
 function wizProfile(d) {
-  return { sex: d.sex, age: num(d.age), height: num(d.height), build: d.build, bodyFat: num(d.bodyFat) || null, experience: d.experience, goal: d.goal, pace: d.pace, target: d.goal === 'maintain' ? null : num(d.target) || null };
+  return { sex: d.sex, age: num(d.age), height: num(d.height), build: d.build, bodyFat: num(d.bodyFat) || null, experience: d.experience, steps: num(d.steps) || 6000, goal: d.goal, pace: d.pace, target: d.goal === 'maintain' ? null : num(d.target) || null };
 }
 function wizCheck(step, d) {
   if (step === 'about') {
@@ -1002,8 +1125,10 @@ function pageWizard() {
       <h3 class="wiz-sub">Опыт силовых тренировок</h3>
       <div class="opts opts-3">${Object.entries(Plan.EXPERIENCE).map(([k, e]) => opt('experience', k, d.experience, e.name, e.hint)).join('')}</div>`;
   } else if (step === 'activity') {
-    head = ['Активность на этой неделе', 'Буду спрашивать каждый понедельник: от неё зависят калории на неделю.'];
-    body = `<div class="opts">${Object.entries(Plan.ACTIVITY).map(([k, a]) => opt('level', k, d.level, a.name, a.hint)).join('')}</div>`;
+    head = ['Активность на этой неделе', 'Тренировки спрошу каждый понедельник. Шаги план возьмёт из твоих записей, а пока — по оценке.'];
+    body = `<div class="opts">${Object.entries(Plan.ACTIVITY).map(([k, a]) => opt('level', k, d.level, a.name, a.hint)).join('')}</div>
+      <h3 class="wiz-sub">Сколько обычно шагов в день</h3>
+      <div class="opts opts-5">${Plan.STEP_CHOICES.map(n => opt('steps', n, d.steps, `~${fmtN(n)}`, n <= 3000 ? 'почти не хожу' : n >= 15000 ? 'очень много' : '')).join('')}</div>`;
   } else if (step === 'goal') {
     head = ['Чего хочешь добиться', 'Темп можно поменять в любой момент.'];
     const p = wizProfile(d), wt = num(d.weight);
@@ -1239,6 +1364,7 @@ function openModal({ title, accent, body, submit = 'Сохранить', form })
   setTimeout(() => first && first.focus(), 60);
 }
 function closeModal() {
+  ph = null;
   const root = $('#modal-root'); if (!root.innerHTML) return;
   root.classList.remove('open');
   setTimeout(() => { root.innerHTML = ''; }, reduceMotion ? 0 : 220);
@@ -1303,6 +1429,13 @@ const ACTIONS = {
   },
   'auth-mode': el => { authMode = el.dataset.mode; showAuth(); },
   'edit-profile': () => startWizard(!!S.profile),
+  'ph-scale': el => { ph.scale = el.dataset.v; renderPhoto(); },
+  'ph-go': () => photoGo(),
+  'ph-ans': el => { const q = +el.dataset.q; ph.answers[q] = ph.answers[q] === el.dataset.o ? undefined : el.dataset.o; if (!ph.answers[q]) delete ph.answers[q]; renderPhoto(); },
+  'ph-del': el => { ph.rows.splice(+el.dataset.i, 1); renderPhoto(); },
+  'ph-add': () => { ph.rows.push({ name: '', grams: 0, kcal: 0, p: 0, f: 0, c: 0 }); renderPhoto(); const ins = document.querySelectorAll('.ph-name input'); ins[ins.length - 1]?.focus(); },
+  'ph-back': () => { ph.stage = 'setup'; ph.err = ''; renderPhoto(); },
+  'ph-save': () => photoSave(),
   'wiz-set': el => { const w = view.wizard; w.d[el.dataset.k] = el.dataset.v; w.err = ''; render(); },
   'wiz-next': () => { const w = view.wizard; w.err = wizCheck(WIZ[w.step], w.d); if (!w.err) w.step++; render(); },
   'wiz-back': () => { const w = view.wizard; w.err = ''; w.step--; render(); },
@@ -1372,6 +1505,7 @@ const FORMS = {
     err.textContent = ''; btn.classList.add('busy');
     try {
       me = (await apiFetch(`/api/${authMode}`, { method: 'POST', body: JSON.stringify({ username, password }) })).username;
+      photoOn = !!(await apiFetch('/api/me').catch(() => ({}))).photo;
       await loadState();
     } catch (e) { me = null; err.textContent = e.status ? e.message : 'Сервер недоступен.'; }
     finally { btn.classList.remove('busy'); }
@@ -1389,6 +1523,23 @@ document.addEventListener('submit', e => {
 let noteTimer;
 document.addEventListener('input', e => {
   const t = e.target;
+  if (ph && t.dataset.ph) ph[t.dataset.ph] = t.value;
+  if (ph && t.dataset.phRow !== undefined) {
+    const r = ph.rows[+t.dataset.phRow], f = t.dataset.f;
+    if (f === 'name') r.name = t.value;
+    else {
+      r[f] = num(t.value);
+      // поменяли вес — пропорционально пересчитываем ккал и БЖУ от оценки
+      if (f === 'grams' && r.base && r.base.grams > 0) {
+        const k = r.grams / r.base.grams, row = t.closest('.ph-row');
+        for (const x of ['kcal', 'p', 'f', 'c']) {
+          r[x] = x === 'kcal' ? Math.round(r.base[x] * k) : Math.round(r.base[x] * k * 10) / 10;
+          const inp = row.querySelector(`[data-f="${x}"]`); if (inp) inp.value = r[x];
+        }
+      }
+    }
+    const tot = $('#ph-total'); if (tot) tot.innerHTML = phTotalsHtml();
+  }
   if (t.dataset.wiz && view.wizard) {
     view.wizard.d[t.dataset.wiz] = t.value;
     const live = $('#wiz-live'); if (live) live.innerHTML = wizLive();
@@ -1401,6 +1552,7 @@ document.addEventListener('input', e => {
 });
 document.addEventListener('change', e => {
   const t = e.target;
+  if (t.dataset.photo !== undefined && t.files[0]) { startPhoto(t.files[0]); t.value = ''; return; }
   if (t.dataset.import !== undefined && t.files[0]) {
     const r = new FileReader();
     r.onload = () => {
@@ -1486,7 +1638,7 @@ async function boot() {
       <p>Теперь данные хранятся в аккаунтах на локальном сервере. В папке проекта выполни <b>npm start</b> и открой <b>http://localhost:3333</b>.</p></div></section>`;
     return;
   }
-  try { me = (await apiFetch('/api/me')).username; }
+  try { const r = await apiFetch('/api/me'); me = r.username; photoOn = !!r.photo; }
   catch (e) { return showAuth(e.status === 401 ? '' : 'Сервер недоступен. Проверь, что он запущен.'); }
   await loadState();
 }

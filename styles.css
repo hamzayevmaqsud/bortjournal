@@ -566,6 +566,30 @@ details.theses li{margin:3px 0}
 .seg-wrap{flex-wrap:wrap;border-radius:18px}
 .kpi-val{overflow-wrap:anywhere}
 
+/* ---------- фото еды ---------- */
+.card-actions{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.opts-5{grid-template-columns:repeat(5,1fr)}
+.chip.on{background:var(--orange);border-color:var(--orange);color:var(--cream)}
+.ph-sheet{width:min(760px,100%)}
+.ph-top{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.1fr);gap:16px;align-items:start}
+.ph-top-sm{grid-template-columns:150px minmax(0,1fr)}
+.ph-img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:18px;display:block;background:var(--ink-3)}
+.ph-side{display:flex;flex-direction:column;gap:12px;min-width:0}
+.ph-comment{margin:0;font-size:13px;color:var(--paper-2);line-height:1.5}
+.ph-total{padding:12px 14px;border-radius:14px;background:var(--navy);color:rgba(251,244,230,.75);font-size:13px}
+.ph-total b{color:var(--cream);font:800 20px var(--display);letter-spacing:-.01em;margin-right:4px}
+.ph-qs{display:flex;flex-direction:column;gap:10px;padding:14px;border-radius:16px;background:var(--peach)}
+.ph-q-text{font-weight:700;font-size:14px;margin-bottom:6px;color:var(--brick)}
+.ph-qs .btn{align-self:flex-start}
+.ph-rows{display:flex;flex-direction:column;gap:6px;overflow-x:auto}
+.ph-row{display:grid;grid-template-columns:minmax(150px,1fr) 64px 70px 52px 52px 52px 36px;gap:6px;align-items:center;min-width:520px}
+.ph-row input{padding:8px 9px;font-size:14px;border-radius:11px}
+.ph-head{font:700 10px var(--sans);letter-spacing:.12em;text-transform:uppercase;color:var(--paper-3);padding:0 4px}
+.ph-name{display:flex;flex-direction:column;gap:3px;min-width:0}
+.conf{font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding-left:4px}
+.conf-high{color:var(--gym)}.conf-medium{color:var(--quiz)}.conf-low{color:var(--bad)}
+.ph-sheet .sheet-foot .spacer{flex:1}
+
 /* ---------- модалка ---------- */
 #modal-root:empty{display:none}
 .overlay{
@@ -646,6 +670,10 @@ details.theses li{margin:3px 0}
   .wiz{padding-top:44px}
   .wiz-card{padding:22px 18px 20px;border-radius:24px}
   .opts-3{grid-template-columns:1fr}
+  .opts-5{grid-template-columns:repeat(3,1fr)}
+  .ph-top,.ph-top-sm{grid-template-columns:1fr}
+  .ph-top .ph-img{max-height:240px;aspect-ratio:auto}
+  .ph-top-sm .ph-img{max-height:160px}
   .auth-hero{min-height:240px;padding:28px 24px}
   .account-pw input{flex:1 1 140px;width:auto}
 }

@@ -11,6 +11,14 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const os = require('node:os');
 
+// .env в папке проекта: KEY=value построчно (не попадает в git)
+try {
+  for (const line of fs.readFileSync(path.join(__dirname, '.env'), 'utf8').split(/\r?\n/)) {
+    const m = /^\s*([A-Z0-9_]+)\s*=\s*(.*?)\s*$/.exec(line);
+    if (m && !line.trim().startsWith('#') && process.env[m[1]] === undefined) process.env[m[1]] = m[2].replace(/^(['"])(.*)\1$/, '$2');
+  }
+} catch (e) { if (e.code !== 'ENOENT') throw e; }
+
 const PORT = +process.env.PORT || 3333;
 const HOST = process.env.HOST || '0.0.0.0';
 const ROOT = __dirname;
@@ -91,6 +99,109 @@ function failed(ip) {
   else a.n++;
 }
 
+
+/* ---------- распознавание еды по фото (Google Gemini) ---------- */
+const GEMINI_KEY = process.env.GEMINI_API_KEY || '';
+const GEMINI_BASE = process.env.GEMINI_BASE_URL || 'https://generativelanguage.googleapis.com';
+const GEMINI_MODELS = (process.env.GEMINI_MODEL || 'gemini-3.8-flash,gemini-3.5-flash-lite').split(',').map(s => s.trim()).filter(Boolean);
+const SCALES = {
+  card: 'Рядом с едой лежит банковская или ID-карта: 85,6 × 54 мм. Используй её как эталон размера.',
+  fork: 'Рядом с едой лежит обычная столовая вилка длиной около 19–20 см. Используй её как эталон размера.',
+  spoon: 'Рядом с едой лежит столовая ложка длиной около 18–20 см. Используй её как эталон размера.',
+  phone: 'Рядом с едой лежит смартфон около 15 × 7 см. Используй его как эталон размера.',
+  hand: 'Рядом с едой ладонь взрослого человека: длина ладони без пальцев около 10 см. Используй её как эталон размера.'
+};
+const FOOD_PROMPT = `Ты нутрициолог. По фото оцени, что съедено, и посчитай калории и БЖУ.
+Правила:
+- Разбей на отдельные позиции: каждый продукт, соус, масло, напиток — отдельной строкой. Названия по-русски, коротко.
+- Для каждой позиции: вес порции в граммах и калории, белки, жиры, углеводы на ВСЮ порцию (не на 100 г). Округляй: граммы до 5, ккал до целых, БЖУ до 0,5.
+- Размер порции оценивай по эталону, если он указан, иначе по тарелке (обычно 24–27 см), приборам и упаковке.
+- Если пользователь в подписи указал вес или состав, это главнее твоей оценки: бери его цифры, source = "user".
+- Если на фото видна этикетка с пищевой ценностью, считай по ней, source = "label". Иначе source = "estimate".
+- Учитывай скрытые калории: масло при жарке, заправки, соусы. Если они вероятны, но не видны, добавь их отдельной позицией с confidence = "low".
+- confidence: "high" — продукт и вес очевидны, "medium" — продукт ясен, вес примерный, "low" — догадка.
+- questions: до 3 уточнений, только если ответ меняет итог больше чем на 15% (например, «на чём жарили?», «майонез обычный или лёгкий?»). У каждого 2–4 коротких варианта ответа. Если всё ясно — пустой массив.
+- Если на фото нет еды, is_food = false и пустой items.
+- comment: одно короткое предложение по-русски — что учтено или в чём главная неопределённость.`;
+const FOOD_SCHEMA = {
+  type: 'OBJECT',
+  properties: {
+    is_food: { type: 'BOOLEAN' },
+    items: { type: 'ARRAY', items: { type: 'OBJECT', properties: {
+      name: { type: 'STRING' }, grams: { type: 'NUMBER' }, kcal: { type: 'NUMBER' },
+      protein: { type: 'NUMBER' }, fat: { type: 'NUMBER' }, carbs: { type: 'NUMBER' },
+      confidence: { type: 'STRING', enum: ['high', 'medium', 'low'] },
+      source: { type: 'STRING', enum: ['estimate', 'label', 'user'] }
+    }, required: ['name', 'grams', 'kcal', 'protein', 'fat', 'carbs', 'confidence', 'source'] } },
+    questions: { type: 'ARRAY', items: { type: 'OBJECT', properties: {
+      text: { type: 'STRING' }, options: { type: 'ARRAY', items: { type: 'STRING' } }
+    }, required: ['text', 'options'] } },
+    comment: { type: 'STRING' }
+  },
+  required: ['is_food', 'items', 'questions', 'comment']
+};
+// мягкий лимит на пользователя, чтобы один не выел общую бесплатную квоту
+const photoUse = new Map();
+function photoQuota(user) {
+  const day = new Date().toISOString().slice(0, 10), k = `${user}:${day}`;
+  const n = (photoUse.get(k) || 0) + 1; photoUse.set(k, n);
+  return n <= (+process.env.PHOTO_DAILY_LIMIT || 60);
+}
+const numClamp = (v, max) => Math.max(0, Math.min(max, Math.round((+v || 0) * 2) / 2));
+
+async function recognizeFood({ image, mime, note, scale, answers }) {
+  const text = [
+    FOOD_PROMPT,
+    SCALES[scale] || 'Эталона размера в кадре нет.',
+    note ? `Подпись пользователя: ${note}` : '',
+    answers && answers.length ? `Ответы пользователя на уточнения:\n${answers.map(a => `- ${a}`).join('\n')}` : ''
+  ].filter(Boolean).join('\n\n');
+  const body = JSON.stringify({
+    contents: [{ role: 'user', parts: [{ inline_data: { mime_type: mime, data: image } }, { text }] }],
+    generationConfig: { responseMimeType: 'application/json', responseSchema: FOOD_SCHEMA }
+  });
+  let lastErr;
+  for (const model of GEMINI_MODELS) {
+    let r;
+    try {
+      r = await fetch(`${GEMINI_BASE}/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': GEMINI_KEY }, body,
+        signal: AbortSignal.timeout(60e3)
+      });
+    } catch (err) {
+      lastErr = { status: 502, message: err.name === 'TimeoutError' ? 'Gemini не ответил за минуту.' : 'Нет связи с Gemini.' };
+      continue;
+    }
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      lastErr = { status: r.status, message: data.error?.message || `HTTP ${r.status}` };
+      // лимит, модель недоступна или перегружена — пробуем следующую
+      if ([404, 429, 500, 503].includes(r.status)) continue;
+      break;
+    }
+    const part = data.candidates?.[0]?.content?.parts?.find(p => typeof p.text === 'string' && !p.thought);
+    let out;
+    try { out = JSON.parse(part?.text || ''); } catch { lastErr = { status: 502, message: 'Модель вернула непонятный ответ.' }; continue; }
+    const items = (Array.isArray(out.items) ? out.items : []).slice(0, 20).map(it => ({
+      name: String(it.name || 'Без названия').slice(0, 80),
+      grams: numClamp(it.grams, 3000), kcal: Math.round(numClamp(it.kcal, 6000)),
+      p: numClamp(it.protein, 500), f: numClamp(it.fat, 500), c: numClamp(it.carbs, 1000),
+      confidence: ['high', 'medium', 'low'].includes(it.confidence) ? it.confidence : 'medium',
+      source: ['estimate', 'label', 'user'].includes(it.source) ? it.source : 'estimate'
+    }));
+    const questions = (Array.isArray(out.questions) ? out.questions : []).slice(0, 3).map(q => ({
+      text: String(q.text || '').slice(0, 160), options: (Array.isArray(q.options) ? q.options : []).slice(0, 4).map(o => String(o).slice(0, 60))
+    })).filter(q => q.text && q.options.length);
+    return { isFood: out.is_food !== false && items.length > 0, items, questions, comment: String(out.comment || '').slice(0, 300), model };
+  }
+  const e = new Error(
+    lastErr?.status === 429 ? 'Бесплатный лимит Gemini на сейчас исчерпан. Попробуй через минуту или завтра.' :
+    lastErr?.status === 400 || lastErr?.status === 403 ? `Gemini отклонил запрос: ${lastErr.message}` :
+    lastErr?.message || 'Gemini недоступен.');
+  e.code = lastErr?.status === 429 ? 429 : 502;
+  throw e;
+}
+
 /* ---------- HTTP ---------- */
 function send(res, code, body, headers = {}) {
   const isJson = typeof body !== 'string' && !Buffer.isBuffer(body);
@@ -149,7 +260,22 @@ async function api(req, res, url) {
     if (m) { delete sessions[sha(m[1])]; await writeJson(SESSIONS_FILE, sessions); }
     return send(res, 200, { ok: true }, { 'Set-Cookie': sessionCookie('', 0) });
   }
-  if (route === 'GET /api/me') return send(res, 200, { username: user });
+  if (route === 'GET /api/me') return send(res, 200, { username: user, photo: !!GEMINI_KEY });
+  if (route === 'POST /api/food/photo') {
+    if (!GEMINI_KEY) return send(res, 503, { error: 'Распознавание не настроено: на сервере нет GEMINI_API_KEY.' });
+    if (!photoQuota(user)) return send(res, 429, { error: 'На сегодня лимит фото исчерпан.' });
+    const body = await readBody(req);
+    const mime = String(body.mime || '');
+    if (!/^image\/(jpeg|png|webp)$/.test(mime)) return send(res, 400, { error: 'Нужна картинка JPEG, PNG или WebP.' });
+    if (typeof body.image !== 'string' || body.image.length < 100 || body.image.length > 8e6) return send(res, 400, { error: 'Фото пустое или слишком большое.' });
+    const out = await recognizeFood({
+      image: body.image, mime,
+      note: String(body.note || '').slice(0, 300),
+      scale: String(body.scale || ''),
+      answers: (Array.isArray(body.answers) ? body.answers : []).slice(0, 5).map(a => String(a).slice(0, 200))
+    });
+    return send(res, 200, out);
+  }
   if (route === 'GET /api/state') {
     const rec = readJson(stateFile(user), { rev: 0, state: null });
     return send(res, 200, rec);
@@ -201,4 +327,5 @@ server.listen(PORT, HOST, () => {
       for (const a of list || []) if (a.family === 'IPv4' && !a.internal) console.log(`  в локальной сети: http://${a.address}:${PORT}`);
   }
   console.log(`Данные: ${DATA}`);
+  console.log(GEMINI_KEY ? `Фото еды: Gemini (${GEMINI_MODELS.join(' → ')})` : 'Фото еды выключено: добавь GEMINI_API_KEY в файл .env');
 });
