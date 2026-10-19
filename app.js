@@ -2049,10 +2049,10 @@ function planLines(p, w, lv, c, stepsInfo) {
   return { sim, eta, lines };
 }
 
-function forecastChart(series) {
+function forecastChart(series, size = {}) {
   const all = series.flatMap(s => s.pts);
   if (all.length < 2) return empty('Запиши вес хотя бы пару раз, и здесь появится график.');
-  const W = 1000, H = 300, pt = 22, pb = 28, pl = 40, pr = 12;
+  const W = size.W || 1000, H = size.H || 300, pt = 22, pb = 28, pl = 40, pr = 12;
   const d0 = all.reduce((a, x) => x.d < a ? x.d : a, all[0].d), d1 = all.reduce((a, x) => x.d > a ? x.d : a, all[0].d);
   const span = Math.max(1, diffDays(d0, d1));
   const vals = all.map(x => x.v), lo = Math.min(...vals) - 0.5, hi = Math.max(...vals) + 0.5;
@@ -2069,81 +2069,129 @@ function forecastChart(series) {
     <div class="heat-legend">${series.filter(s => s.pts.length).map(s => `<span><i style="background:${s.color}"></i>${s.name}</span>`).join('')}</div>`;
 }
 
+const MONP = ['январе', 'феврале', 'марте', 'апреле', 'мае', 'июне', 'июле', 'августе', 'сентябре', 'октябре', 'ноябре', 'декабре'];
+const whenNom = weeks => { if (weeks === null || !isFinite(weeks)) return null; const d = parseYmd(addDays(ymd(), Math.round(weeks * 7))); return `${MONTHS[d.getMonth()]} ${d.getFullYear()}`; };
+const whenText = weeks => { if (weeks === null || !isFinite(weeks)) return null; const d = parseYmd(addDays(ymd(), Math.round(weeks * 7))); return `${MONP[d.getMonth()]} ${d.getFullYear()}`; };
+const kg = v => `${fmt1(v)} кг`;
+
 function pageGoal() {
   if (!S.profile) return `<section class="page">${topbar('Цель', 'план и прогноз', { date: false })}
     <div class="quiz-empty"><b>План ещё не составлен.</b> Ответь на пару вопросов о себе, и журнал посчитает калории, белок и прогноз веса.
     <div class="btns"><button class="btn btn-accent" data-action="edit-profile">${I.goal}Составить план</button></div></div></section>`;
   const p = profileNow(), w = curWeight(), lv = curLevel(), si = stepsNow(), c = Plan.compute(p, w, lv, si.steps), g = Plan.GOALS[p.goal];
-  const { sim, lines } = planLines(p, w, lv, c, si);
+  const { lines } = planLines(p, w, lv, c, si);
   const f = factStats(), t = ymd();
+  const start = S.profile.startWeight || w, target = p.target, dir = p.goal === 'gain' ? 1 : -1;
+  const now = f.tr ? f.now : w;
+  // реальный темп важнее расчётного: если есть тренд в нужную сторону — срок по нему
+  const factOk = f.tr && Math.sign(f.weekly) === dir && Math.abs(f.weekly) > 0.03;
+  const weeksBy = m => factOk ? (m - now) / f.weekly : Plan.weeksTo(p, now, c.kcal, lv, m, c.steps);
   let i = 0;
 
-  // факт
-  let factBody;
-  if (f.tr) {
-    const proj4 = f.now + f.weekly * 4, proj12 = f.now + f.weekly * 12;
-    const etaF = p.target && f.weekly && Math.sign(p.target - f.now) === Math.sign(f.weekly) ? etaText((p.target - f.now) / f.weekly) : null;
-    const cmp = p.goal === 'maintain' ? (Math.abs(f.weekly) < 0.15 ? 'Вес держится — как и задумано.' : `Вес ${f.weekly > 0 ? 'растёт' : 'снижается'}, хотя цель — держать. Поправь калории.`)
-      : Math.abs(c.weeklyKg) < 0.01 ? '' : (() => {
-        const r = f.weekly / c.weeklyKg;
-        if (r < 0) return p.goal === 'lose' ? 'Вес пока растёт, а не снижается. Проверь, всё ли съеденное записано.' : 'Вес пока снижается, а не растёт. Нужно есть больше.';
-        if (r < 0.7) return `Идёшь медленнее плана (${Math.round(r * 100)}% от расчёта).`;
-        if (r > 1.4) return p.goal === 'lose' ? `Худеешь быстрее плана (${Math.round(r * 100)}%). Следи, чтобы не уходили мышцы.` : `Набираешь быстрее плана (${Math.round(r * 100)}%) — часть уходит в жир.`;
-        return 'Идёшь по плану.';
-      })();
-    const muscle = p.goal === 'gain' && f.weekly > 0 ? `<p class="hint">За месяц ≈ +${fmt1(f.weekly * 30 / 7)} кг, из них мышц реально до ${fmt1(Math.min(c.muscleMonth, f.weekly * 30 / 7))} кг.</p>` : '';
-    factBody = `<div class="big"><b>${kgWeek(f.weekly).replace(' кг/нед', '')}</b><small>кг в неделю по тренду</small></div>
-      <p class="goal-cmp">${cmp}</p>
-      <ul class="goal-lines">
-        <li>Сейчас по тренду ≈ <b>${fmt1(f.now)} кг</b> (${f.tr.n} ${plural(f.tr.n, 'замер', 'замера', 'замеров')} за ${f.tr.span} дн.).</li>
-        <li>Если так пойдёт дальше: через 4 недели ≈ <b>${fmt1(proj4)} кг</b>, через 12 — ≈ <b>${fmt1(proj12)} кг</b>.</li>
-        ${etaF ? `<li>До ${fmt1(p.target)} кг: ${etaF}.</li>` : ''}
-        ${f.intakeDays ? `<li>В среднем съедено <b>${fmtN(f.intake)} ккал</b> (еда записана ${f.intakeDays} из 27 дней).</li>` : '<li>Еда за последние недели не записана — без неё не понять, сколько ты реально тратишь.</li>'}
-        ${f.tdee ? `<li>Твой реальный расход ≈ <b>${fmtN(f.tdee)} ккал</b> (по расчёту ${fmtN(c.tdee)}).${Math.abs(f.tdee - c.tdee) > 200 ? ` Чтобы идти по плану, ешь ≈ ${fmtN(Math.round((f.tdee + c.delta) / 10) * 10)} ккал.` : ''}</li>` : ''}
-      </ul>${muscle}`;
+  /* 1. путь к цели */
+  let hero;
+  if (p.goal === 'maintain' || !target) {
+    const ref = p.goal === 'maintain' ? start : w, dev = now - ref;
+    hero = `<div class="path">
+      <div class="path-top"><div><span class="path-k">${g.name}</span><h2 class="path-h">${p.goal === 'maintain' ? `Держим ≈ ${kg(ref)}` : `${kg(start)} → ?`}</h2></div>
+        <div class="path-now"><b>${kg(now)}</b><span>сейчас${f.tr ? ' по тренду' : ''}</span></div></div>
+      <p class="path-eta">${p.goal === 'maintain' ? (Math.abs(dev) <= 1.5 ? `Вес в коридоре ±1,5 кг — всё как задумано.` : `Вес ушёл на ${kgDiff(dev)} кг от цели — поправь калории.`) : 'Желаемый вес не указан — задай его, и появится срок и вехи.'}</p>
+      ${p.goal !== 'maintain' ? `<button class="btn btn-sm" data-action="edit-profile">${I.goal}Указать желаемый вес</button>` : ''}
+    </div>`;
   } else {
-    const n = weightSeries().filter(x => x.d >= f.start).length;
-    factBody = `<p class="goal-cmp">Пока мало данных.</p><ul class="goal-lines">
-      <li>Нужно минимум 3 замера веса за 7+ дней — сейчас ${n}. Взвешивайся утром натощак, 2–3 раза в неделю.</li>
-      <li>Записывай еду: по съеденному и динамике веса журнал посчитает твой настоящий расход и поправит прогноз.</li></ul>`;
+    const total = Math.abs(target - start), passed = Math.max(0, Math.min(total, (now - start) * dir)), pct = total ? passed / total * 100 : 0;
+    const etaW = weeksBy(target), eta = whenText(etaW), planEta = whenText(Plan.weeksTo(p, now, c.kcal, lv, target, c.steps));
+    const step = total > 12 ? 5 : total > 5 ? 2 : 1, ms = [];
+    for (let m = dir < 0 ? Math.floor((now - 0.01) / step) * step : Math.ceil((now + 0.01) / step) * step; dir < 0 ? m > target : m < target; m += dir * step) ms.push(m);
+    ms.push(target);
+    const miles = ms.slice(0, 4).map(m => ({ m, when: whenNom(weeksBy(m)) }));
+    hero = `<div class="path">
+      <div class="path-top">
+        <div><span class="path-k">${g.name}</span><h2 class="path-h">${fmt1(start)} → ${fmt1(target)} кг</h2></div>
+        <div class="path-now"><b>${kg(now)}</b><span>сейчас${f.tr ? ' по тренду' : ''}</span></div>
+      </div>
+      <div class="path-track" role="img" aria-label="Пройдено ${fmt1(passed)} из ${fmt1(total)} кг">
+        <i class="path-fill" style="width:${pct}%"></i>
+        <span class="path-me" style="left:${pct}%"><b>ты здесь</b></span>
+        ${ms.slice(0, -1).map(m => `<span class="path-tick" style="left:${Math.abs(m - start) / total * 100}%"><em>${fmt1(m)}</em></span>`).join('')}
+      </div>
+      <div class="path-ends"><span>старт ${fmt1(start)}</span><b>пройдено ${fmt1(passed)} из ${fmt1(total)} кг · ${Math.round(pct)}%</b><span>цель ${fmt1(target)}</span></div>
+      <p class="path-eta">${eta ? `Дойдёшь примерно в <b>${eta}</b>` : 'При текущем темпе цель не приближается'}${factOk && planEta && planEta !== eta ? ` <span class="muted">· по расчёту — в ${planEta}</span>` : ''}${!f.tr ? ' <span class="muted">· по расчёту, уточнится, когда накопятся замеры веса</span>' : ''}</p>
+      <div class="miles">${miles.map((x, k) => `<div class="mile ${k === miles.length - 1 && x.m === target ? 'goal' : ''}"><b>${fmt1(x.m)} кг</b><span>${x.when ? `≈ ${x.when}` : '—'}</span></div>`).join('')}</div>
+    </div>`;
   }
 
-  // график: история, план от старта, факт вперёд
-  const start = S.profile.start || t;
+  /* 2. что делать каждый день */
+  const eaten = sumMeals(mealsOn(t)).kcal, left = c.kcal - eaten;
+  const stepGoal = Math.max(si.steps, num(S.settings.steps) || 0);
+  const todaySteps = num(dayRec(t).steps);
+  const daily = `<div class="dos">
+    <a class="do do-kcal" href="#food"><span class="do-k">Ешь до</span><b>${fmtN(c.kcal)}</b><span class="do-u">ккал в день</span>
+      <span class="do-today">${eaten ? (left >= 0 ? `сегодня осталось ${fmtN(left)}` : `сегодня перебор ${fmtN(-left)}`) : 'сегодня ещё ничего не записано'}</span></a>
+    <a class="do do-prot" href="#food"><span class="do-k">Белок</span><b>${c.protein}</b><span class="do-u">граммов в день</span>
+      <span class="do-today">сегодня ${fmtN(sumMeals(mealsOn(t)).p)} г</span></a>
+    <a class="do do-steps" href="#steps"><span class="do-k">Шаги</span><b>${fmtN(stepGoal)}+</b><span class="do-u">в день</span>
+      <span class="do-today">${todaySteps ? `сегодня ${fmtN(todaySteps)}` : 'сегодня не записаны'}</span></a>
+  </div>
+  <p class="hint">Калории посчитаны так, чтобы ${p.goal === 'lose' ? `терять ≈ ${fmt2(Math.abs(c.weeklyKg))} кг в неделю` : p.goal === 'gain' ? `набирать ≈ ${fmt2(c.weeklyKg)} кг в неделю` : 'вес стоял на месте'}. Каждые +3 000 шагов — ещё ≈ ${fmtN(Plan.kcalPerStep(w, p.height) * 3000)} ккал расхода.</p>`;
+
+  /* 3. как идёшь */
+  let status;
+  if (!f.tr) {
+    const n = weightSeries().filter(x => x.d >= f.start).length;
+    status = `<div class="verdict v-wait"><b>Пока мало данных</b><span>Нужно 3 взвешивания за неделю — сейчас ${n}. Взвешивайся утром натощак 2–3 раза в неделю, и журнал покажет реальный темп.</span></div>`;
+  } else {
+    const plan = c.weeklyKg, fact = f.weekly, r = plan ? fact / plan : 0;
+    const v = p.goal === 'maintain' ? (Math.abs(fact) < 0.15 ? ['good', 'Вес держится'] : ['warn', fact > 0 ? 'Вес растёт' : 'Вес снижается'])
+      : r < 0 ? ['bad', p.goal === 'lose' ? 'Вес растёт, а не снижается' : 'Вес снижается, а не растёт']
+      : r < 0.7 ? ['warn', 'Медленнее плана'] : r > 1.4 ? ['warn', p.goal === 'lose' ? 'Быстрее плана — слишком быстро' : 'Быстрее плана — лишнее уходит в жир'] : r > 1.05 ? ['good', 'Чуть быстрее плана'] : ['good', 'Идёшь по плану'];
+    const mx = Math.max(Math.abs(plan), Math.abs(fact), 0.1);
+    const why = f.tdee ? (Math.abs(f.tdee - c.tdee) > 150 ? `Твой реальный расход ≈ ${fmtN(f.tdee)} ккал — ${f.tdee > c.tdee ? 'выше' : 'ниже'} расчёта (${fmtN(c.tdee)}), поэтому темп ${f.tdee > c.tdee === (p.goal === 'lose') ? 'быстрее' : 'медленнее'}.${v[0] !== 'good' || r > 1.4 ? ` Чтобы идти ровно по плану, ешь ≈ ${fmtN(Math.round((f.tdee + c.delta) / 10) * 10)} ккал.` : ''}` : `Реальный расход ≈ ${fmtN(f.tdee)} ккал — совпадает с расчётом.`) : 'Записывай еду каждый день — тогда журнал посчитает твой реальный расход.';
+    status = `<div class="verdict v-${v[0]}"><b>${v[1]}</b><span>За ${f.tr.span} дн. ${dir < 0 ? (f.weekly < 0 ? 'ушло' : 'прибавилось') : (f.weekly > 0 ? 'прибавилось' : 'ушло')} ≈ ${kg(Math.abs(f.weekly * f.tr.span / 7))}.</span></div>
+      <div class="pace">
+        <div class="pace-row"><span>План</span><i class="pace-bar"><b style="width:${Math.abs(plan) / mx * 100}%;background:var(--orange)"></b></i><em>${kgWeek(plan)}</em></div>
+        <div class="pace-row"><span>Факт</span><i class="pace-bar"><b style="width:${Math.abs(fact) / mx * 100}%;background:var(--navy)"></b></i><em>${kgWeek(fact)}</em></div>
+      </div>
+      <p class="pace-why">${why}</p>`;
+  }
+
+  /* 4. график */
+  const st = S.profile.start || t;
   const hist = weightSeries().filter(x => x.d >= addDays(t, -120));
-  const planSim = Plan.simulate(p, S.profile.startWeight || w, c.kcal, lv, Math.max(12, Math.ceil(diffDays(start, t) / 7) + 8), c.steps);
-  const planPts = planSim.map((v, k) => ({ d: addDays(start, k * 7), v })).filter(x => x.d <= addDays(t, 56));
+  const planSim = Plan.simulate(p, start, c.kcal, lv, Math.max(12, Math.ceil(diffDays(st, t) / 7) + 8), c.steps);
+  const planPts = planSim.map((v, k) => ({ d: addDays(st, k * 7), v })).filter(x => x.d <= addDays(t, 56));
   const factPts = f.tr ? [{ d: t, v: f.now }, { d: addDays(t, 56), v: f.now + f.weekly * 8 }] : [];
   const chart = forecastChart([
-    { name: 'план', pts: p.goal === 'maintain' ? [] : planPts, color: 'var(--orange)', dash: '6 6', w: 2 },
-    { name: 'тренд дальше', pts: factPts, color: 'var(--gym)', dash: '2 5', w: 3 },
-    { name: 'вес', pts: hist, color: 'var(--navy)', dots: true }
-  ]);
+    { name: 'по плану', pts: p.goal === 'maintain' ? [] : planPts, color: 'var(--orange)', dash: '6 6', w: 2 },
+    { name: 'если так пойдёт дальше', pts: factPts, color: 'var(--gym)', dash: '2 5', w: 3 },
+    { name: 'твой вес', pts: hist, color: 'var(--navy)', dots: true }
+  ], { W: 620, H: 330 });
 
-  return `<section class="page" style="--c:var(--orange)">
-    ${topbar('Цель', `${g.name.toLowerCase()}${p.target ? ` · ${fmt1(p.target)} кг` : ''}`, { date: false, actions: `<button class="btn" data-action="edit-profile">${I.edit}Изменить данные</button>` })}
-    <div class="kpis">
-      ${kpi('Калории в день', fmtN(c.kcal), 'paper', i++, `поддержка ${fmtN(c.tdee)}`)}
-      ${kpi('Белок', `${c.protein}<small>г</small>`, 'food', i++, `жиры ${c.fat} · углеводы ${c.carbs}`)}
-      ${kpi('Темп по плану', kgWeek(c.weeklyKg).replace(' кг/нед', '') + '<small>кг/нед</small>', 'gym', i++, p.goal === 'maintain' ? 'держим вес' : `${Plan.PACE[p.goal][p.pace].name.toLowerCase()} темп`)}
-      ${kpi('Вес сейчас', `${fmt1(w)}<small>кг</small>`, 'quiz', i++, S.profile.startWeight ? `старт ${fmt1(S.profile.startWeight)} · ${kgDiff(w - S.profile.startWeight)} кг` : '')}
-    </div>
+  /* 5. активность недели */
+  const acts = Object.entries(Plan.ACTIVITY).map(([k, a]) => {
+    const kc = Plan.compute(p, w, k, si.steps).kcal;
+    return `<button class="act ${k === lv ? 'on' : ''}" data-action="set-level" data-v="${k}"><b>${a.name}</b><span>${a.hint}</span><em>${fmtN(kc)} ккал</em></button>`;
+  }).join('');
+
+  return `<section class="page goal-page" style="--c:var(--orange)">
+    ${topbar('Цель', `${g.name.toLowerCase()} · ${Plan.PACE[p.goal]?.[p.pace]?.name.toLowerCase() || 'поддержка'} темп`, { date: false, actions: `<button class="btn" data-action="edit-profile">${I.edit}Изменить цель</button>` })}
     <div class="grid">
-      ${card({ domain: 'food', title: 'План', span: 6, i: i++, cls: 'tile tile-orange', body: `${p.goal === 'maintain' ? `<div class="big"><b>${fmt1(w)}</b><small>кг держим</small></div>` : `<div class="big"><b>${fmt1(sim[12])}</b><small>кг через 12 недель</small></div>`}<ul class="goal-lines">${lines.slice(2, p.target ? 5 : 4).map(l => `<li>${l}</li>`).join('')}</ul>` })}
-      ${card({ domain: 'study', title: 'По факту', span: 6, i: i++, cls: 'tile tile-navy', body: factBody })}
-      ${card({ domain: 'paper', title: 'Вес и прогноз', span: 12, i: i++, body: chart })}
-      ${card({ domain: 'gym', title: 'Активность на этой неделе', span: 6, i: i++, body: `<div class="seg seg-wrap">${Object.entries(Plan.ACTIVITY).map(([k, a]) => `<button class="${k === lv ? 'on' : ''}" data-action="set-level" data-v="${k}">${a.name}</button>`).join('')}</div>
-        <p class="hint">${Plan.ACTIVITY[lv].hint}. Неделя с ${human(mondayOf(t))}; в понедельник спрошу снова.</p>
-        <p class="hint">Шаги: ${si.measured ? `в среднем <b>${fmtN(si.steps)}</b> за ${si.days} дн. — это +${fmtN(c.walk)} ккал к расходу` : `пока оценка ${fmtN(si.steps)} в день. Записывай шаги хотя бы 3 дня в неделю — план подстроится`}.</p>` })}
-      ${card({ domain: 'paper', title: 'Профиль', span: 6, i: i++, body: `<div class="chips">
-        <span class="chip"><b>${p.sex === 'm' ? 'Мужчина' : 'Женщина'}</b></span><span class="chip"><b>${p.age}</b> лет</span><span class="chip"><b>${p.height}</b> см</span>
-        <span class="chip">ИМТ <b>${fmt1(c.bmi)}</b></span><span class="chip">жир <b>${Math.round(c.bf)}%</b>${c.bfMeasured ? '' : ' (оценка)'}</span>
-        <span class="chip">${Plan.BUILD[p.build].name}</span><span class="chip">стаж: ${Plan.EXPERIENCE[p.experience].name.toLowerCase()}</span></div>` })}
-      ${card({ domain: 'paper', title: 'Как считается', span: 12, i: i++, body: `<ul class="goal-lines goal-how">${lines.map(l => `<li>${l}</li>`).join('')}</ul>
-        <p class="hint">Это оценка: формулы ошибаются на ±10% для конкретного человека. Поэтому через 2–4 недели записей журнал сверяет план с фактом и показывает твой реальный расход.
-        Источники: <a href="https://pubmed.ncbi.nlm.nih.gov/15883556/" target="_blank" rel="noopener">Frankenfield 2005 (точность формул обмена)</a>,
-        <a href="https://pmc.ncbi.nlm.nih.gov/articles/PMC3859816/" target="_blank" rel="noopener">Hall и Chow 2013 (почему 7700 ккал/кг работает только в начале)</a>,
-        <a href="https://pmc.ncbi.nlm.nih.gov/articles/PMC5477153/" target="_blank" rel="noopener">ISSN 2017 (белок)</a>.</p>` })}
+      ${card({ domain: 'paper', title: 'Путь к цели', span: 12, i: i++, body: hero })}
+      ${card({ domain: 'food', title: 'Что делать каждый день', span: 12, i: i++, body: daily })}
+      ${card({ domain: 'paper', title: 'Как идёшь', span: 5, i: i++, body: status })}
+      ${card({ domain: 'paper', title: 'Вес', span: 7, i: i++, body: chart })}
+      ${card({ domain: 'gym', title: `Активность на этой неделе · с ${human(mondayOf(t))}`, span: 12, i: i++, body: `<div class="acts">${acts}</div>
+        <p class="hint">Выбери, сколько тренировок будет на неделе — калории пересчитаются. Шаги учитываются отдельно: ${si.measured ? `в среднем ${fmtN(si.steps)} в день за ${si.days} дн.`.replace(/\.$/, '') : `пока оценка ${fmtN(si.steps)} в день — записывай шаги, и план возьмёт реальные`}. В понедельник спрошу снова.</p>` })}
+      ${card({ domain: 'paper', title: 'Подробнее', span: 12, i: i++, body: `
+        <details class="more-block"><summary>Почему такие цифры</summary><ul class="goal-lines goal-how">${lines.map(l => `<li>${l}</li>`).join('')}</ul>
+          <p class="hint">Формулы ошибаются на ±10% для конкретного человека, поэтому журнал сверяет расчёт с твоими замерами веса и записями еды.
+          Источники: <a href="https://pubmed.ncbi.nlm.nih.gov/15883556/" target="_blank" rel="noopener">Frankenfield 2005</a>, <a href="https://pmc.ncbi.nlm.nih.gov/articles/PMC3859816/" target="_blank" rel="noopener">Hall и Chow 2013</a>, <a href="https://pmc.ncbi.nlm.nih.gov/articles/PMC5477153/" target="_blank" rel="noopener">ISSN 2017</a>.</p></details>
+        <details class="more-block"><summary>Профиль</summary><div class="chips" style="margin-top:10px">
+          <span class="chip"><b>${p.sex === 'm' ? 'Мужчина' : 'Женщина'}</b></span><span class="chip"><b>${p.age}</b> лет</span><span class="chip"><b>${p.height}</b> см</span>
+          <span class="chip">ИМТ <b>${fmt1(c.bmi)}</b></span><span class="chip">жир <b>${Math.round(c.bf)}%</b>${c.bfMeasured ? '' : ' (оценка)'}</span>
+          <span class="chip">${Plan.BUILD[p.build].name}</span><span class="chip">стаж: ${Plan.EXPERIENCE[p.experience].name.toLowerCase()}</span>
+          <span class="chip">обмен в покое <b>${fmtN(c.bmr)}</b> ккал</span><span class="chip">расход в день <b>${fmtN(c.tdee)}</b> ккал</span></div>
+          <button class="btn btn-sm" style="margin-top:12px" data-action="edit-profile">${I.edit}Изменить данные</button></details>` })}
     </div>
   </section>`;
 }

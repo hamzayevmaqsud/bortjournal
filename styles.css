@@ -1051,6 +1051,61 @@ mark.hit{background:#F6D96B;color:inherit;border-radius:3px;padding:0 1px}
 .opt-goal select{max-width:200px}
 .comp-note{min-height:60px;font-size:14px}
 
+/* ---------- цель: путь, действия, темп ---------- */
+.path-top{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap}
+.path-k{font:700 11px var(--sans);letter-spacing:.14em;text-transform:uppercase;color:var(--orange)}
+.path-h{margin:4px 0 0;font:800 clamp(34px,5vw,52px)/1 var(--display);letter-spacing:-.03em}
+.path-now{text-align:right;display:flex;flex-direction:column}
+.path-now b{font:800 28px/1 var(--display);color:var(--navy)}
+.path-now span{font-size:12px;color:var(--paper-3);font-weight:600;margin-top:3px}
+.path-track{position:relative;height:16px;border-radius:8px;background:var(--ink-3);margin:44px 0 10px}
+.path-fill{position:absolute;left:0;top:0;bottom:0;border-radius:8px;background:linear-gradient(90deg,var(--mustard),var(--orange))}
+.path-me{position:absolute;top:50%;width:26px;height:26px;margin:-13px 0 0 -13px;border-radius:50%;background:var(--navy);border:4px solid var(--ink-1);box-shadow:0 2px 8px rgba(46,58,78,.3);z-index:2}
+.path-me b{position:absolute;bottom:calc(100% + 8px);left:50%;transform:translateX(-50%);white-space:nowrap;font:700 11px var(--sans);color:var(--cream);background:var(--navy);padding:3px 8px;border-radius:999px}
+.path-tick{position:absolute;top:0;bottom:0;width:2px;margin-left:-1px;background:rgba(251,244,230,.9)}
+.path-tick em{position:absolute;top:calc(100% + 6px);left:50%;transform:translateX(-50%);font:600 10.5px var(--sans);font-style:normal;color:var(--paper-3);white-space:nowrap}
+.path-ends{display:flex;justify-content:space-between;gap:10px;font-size:12px;color:var(--paper-3);margin-top:22px}
+.path-ends b{color:var(--paper);font-size:13px;text-align:center}
+.path-eta{margin:18px 0 0;font-size:18px}
+.path-eta b{font:800 22px var(--display);color:var(--orange)}
+.path-eta .muted{font-size:13px}
+.miles{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+.mile{flex:1 1 120px;padding:10px 14px;border-radius:14px;background:var(--ink-2);border:1px solid var(--line);display:flex;flex-direction:column;gap:2px}
+.mile b{font:800 18px var(--display)}
+.mile span{font-size:12.5px;color:var(--paper-2)}
+.mile.goal{background:var(--peach);border-color:var(--orange)}
+.mile.goal b{color:var(--brick)}
+.dos{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.do{display:flex;flex-direction:column;padding:18px 20px;border-radius:20px;text-decoration:none;color:var(--cream);transition:transform .15s var(--ease)}
+.do:hover{transform:translateY(-2px)}
+.do-kcal{background:var(--navy)}.do-prot{background:#3F6FB5}.do-steps{background:var(--steps)}
+.do-k{font:700 11px var(--sans);letter-spacing:.14em;text-transform:uppercase;opacity:.75}
+.do b{font:800 44px/1.05 var(--display);letter-spacing:-.03em;margin-top:6px}
+.do-u{font-size:13px;opacity:.8}
+.do-today{margin-top:12px;padding-top:10px;border-top:1px solid rgba(255,255,255,.18);font-size:13px;font-weight:600}
+.verdict{display:flex;flex-direction:column;gap:4px;padding:14px 16px;border-radius:16px;border-left:5px solid}
+.verdict b{font:800 22px var(--display);letter-spacing:-.01em}
+.verdict span{font-size:13.5px;color:var(--paper-2);line-height:1.45}
+.v-good{background:color-mix(in srgb,var(--st-good) 12%,var(--ink-2));border-color:var(--st-good)}.v-good b{color:var(--st-good)}
+.v-warn{background:color-mix(in srgb,var(--st-warn) 12%,var(--ink-2));border-color:var(--st-warn)}.v-warn b{color:var(--st-warn)}
+.v-bad{background:color-mix(in srgb,var(--st-bad) 10%,var(--ink-2));border-color:var(--st-bad)}.v-bad b{color:var(--st-bad)}
+.v-wait{background:var(--ink-2);border-color:var(--paper-3)}
+.pace{display:flex;flex-direction:column;gap:10px;margin-top:16px}
+.pace-row{display:grid;grid-template-columns:44px 1fr 100px;gap:10px;align-items:center;font-size:13px;font-weight:700;color:var(--paper-2)}
+.pace-bar{display:block;height:12px;border-radius:6px;background:var(--ink-3);overflow:hidden}
+.pace-bar b{display:block;height:100%;border-radius:6px}
+.pace-row em{font-style:normal;text-align:right;color:var(--paper);font-weight:800}
+.pace-why{margin:14px 0 0;font-size:13.5px;line-height:1.5;color:var(--paper-2)}
+.acts{display:grid;grid-template-columns:repeat(5,1fr);gap:8px}
+.act{display:flex;flex-direction:column;gap:4px;text-align:left;padding:12px 14px;border-radius:16px;border:2px solid var(--line);background:var(--ink-2);cursor:pointer;font:inherit;color:inherit}
+.act:hover{border-color:var(--line-2)}
+.act.on{border-color:var(--gym);background:var(--sage)}
+.act b{font-size:14px}
+.act span{font-size:12px;color:var(--paper-2);line-height:1.35;flex:1}
+.act em{font-style:normal;font:800 15px var(--display);color:var(--gym);margin-top:4px}
+.more-block summary{cursor:pointer;font:700 14px var(--sans);padding:6px 0}
+.more-block+.more-block{margin-top:6px;padding-top:6px;border-top:1px dashed var(--line-2)}
+
 /* ---------- календарь питания ---------- */
 .cal-head{display:flex;align-items:center;justify-content:space-between;margin:-6px 0 8px}
 .cal-head b{font:800 17px var(--display)}
@@ -1184,6 +1239,12 @@ mark.hit{background:#F6D96B;color:inherit;border-radius:3px;padding:0 1px}
   .meters{grid-template-columns:repeat(2,1fr);gap:18px 10px}
   .wk{gap:2px}
   .add-tiles{grid-template-columns:1fr 1fr;gap:10px}
+  .dos{grid-template-columns:1fr}
+  .do b{font-size:38px}
+  .acts{grid-template-columns:1fr 1fr}
+  .path-eta{font-size:16px}
+  .path-ends{font-size:11px}
+  .path-tick em{font-size:9.5px}
   .dtabs{display:flex;overflow-x:auto;scrollbar-width:none;gap:5px;margin:0 -16px;padding:4px 16px 0}
   .dtabs::-webkit-scrollbar{display:none}
   .dtab{flex:0 0 58px;padding:8px 2px 10px}
@@ -1246,6 +1307,7 @@ mark.hit{background:#F6D96B;color:inherit;border-radius:3px;padding:0 1px}
   .onboard::after{width:120px;height:120px;right:-50px;top:-50px}
 }
 @media (min-width:861px) and (max-width:1100px){
+  .acts{grid-template-columns:repeat(3,1fr)}
   .week{grid-template-columns:repeat(2,minmax(0,1fr))}
   .card{grid-column:span 6}
   .card-wide{grid-column:1/-1}
