@@ -714,6 +714,31 @@ details.theses li{margin:3px 0}
 .nudge>span{flex:1;min-width:0}
 .nudge .icon-btn{color:#123A57}
 
+/* ---------- еда: вкладки и сводка дня ---------- */
+.food-tabs button{padding:8px 18px;font-size:13px}
+.summary{display:grid;grid-template-columns:auto 1fr;gap:28px;align-items:center}
+.summary-ring{display:flex;flex-direction:column;align-items:center;gap:8px}
+.summary-k{font-size:14px;color:var(--paper-2)}
+.summary-k b{font:800 20px var(--display);color:var(--paper)}
+.summary-bars{display:flex;flex-direction:column;gap:13px;min-width:0}
+.sb-top{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-bottom:5px}
+.sb-name{display:flex;align-items:center;gap:7px;font-weight:700;font-size:13.5px}
+.sb-name i{width:9px;height:9px;border-radius:3px}
+.sb-val{font-size:13px;color:var(--paper-2);white-space:nowrap}
+.sb-val b{color:var(--paper);font-size:14px}
+.sb-val em{font-style:normal;font-weight:700;color:var(--st-bad);margin-left:4px}
+.sb-track{height:10px;border-radius:5px;background:var(--ink-3);overflow:hidden}
+.sb-track i{display:block;height:100%;width:0;border-radius:5px;transition:width .9s var(--ease)}
+.link-btn{align-self:flex-start;border:0;background:none;padding:2px 0;cursor:pointer;font:700 13px var(--sans);color:var(--orange)}
+.link-btn:hover{text-decoration:underline}
+.quick{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:-4px 0 16px;padding-bottom:14px;border-bottom:1px dashed var(--line-2)}
+.quick-label{font:700 11px var(--sans);letter-spacing:.14em;text-transform:uppercase;color:var(--paper-3);margin-right:4px}
+.quick .fav-use{padding:7px 4px 7px 11px;font-size:12px}
+.quick .fav-use b{font-size:13px}
+.slot-quick{margin-left:auto;display:flex;gap:2px}
+.slot-quick .slot-btn{margin-left:0;color:#2A7FB8}
+.meters-2{grid-template-columns:repeat(2,1fr)}
+
 /* ---------- календарь питания ---------- */
 .cal-head{display:flex;align-items:center;justify-content:space-between;margin:-6px 0 8px}
 .cal-head b{font:800 17px var(--display)}
@@ -847,6 +872,12 @@ details.theses li{margin:3px 0}
   .meters{grid-template-columns:repeat(2,1fr);gap:18px 10px}
   .wk{gap:2px}
   .add-tiles{grid-template-columns:1fr 1fr;gap:10px}
+  .summary{grid-template-columns:1fr;gap:18px}
+  .food-tabs{width:100%}
+  .quick{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;margin-left:-4px;padding-left:4px}
+  .quick>*{flex:none}
+  .quick::-webkit-scrollbar{display:none}
+  .food-tabs button{flex:1}
   .opts-drinks{grid-template-columns:repeat(2,1fr)}
   .report-kpis{grid-template-columns:repeat(2,1fr)}
   .report-cols{grid-template-columns:1fr}
