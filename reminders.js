@@ -62,6 +62,9 @@ function due(st, tz, sent = {}, now = Date.now()) {
     if (ml < expect - 400 && (last < 0 || L.min - last > 120) && since > 150) out.push({ key: 'water', title: 'Пора выпить воды', body: `Выпито ${fmtL(ml)} из ${fmtL(norm)} л.`, url: '/#today', every: true });
   }
 
+  // итог недели: воскресенье, 19:00
+  if (R.review !== false && L.wd === 0 && [0, 1, 2, 3, 4, 5, 6].some(k => hasAny(st, addDays(t, -k))) && inWindow(L.min, 19 * 60)) push('review', 'Итог недели готов', 'Что получилось, что нет и лучший день — загляни на минуту.', '/#review');
+
   // серия под угрозой: вечером, если сегодня ничего не записано
   const sk = streakBefore(st, t);
   if (R.streak && sk >= 2 && !hasAny(st, t) && inWindow(L.min, 21 * 60)) push('streak', `Серия ${sk} дн. под угрозой`, 'Запиши что-нибудь до полуночи — приём пищи, шаги или занятие.', '/#today');

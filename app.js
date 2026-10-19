@@ -236,6 +236,7 @@ const I = {
   camera: '<svg viewBox="0 0 24 24"><path d="M4 8.5A1.5 1.5 0 0 1 5.5 7h2l1.5-2h6l1.5 2h2A1.5 1.5 0 0 1 20 8.5v9a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 17.5z"/><circle cx="12" cy="12.5" r="3.5"/></svg>',
   budget: '<svg viewBox="0 0 24 24"><path d="M4 7.5A2.5 2.5 0 0 1 6.5 5H17v3"/><rect x="4" y="8" width="16" height="11" rx="2.5"/><path d="M15.5 13.5h1"/></svg>',
   books: '<svg viewBox="0 0 24 24"><path d="M5 4.5h4v15H5zM10 4.5h4v15h-4z"/><path d="M15 5.4l3.7-1 3.3 14.6-3.7 1z"/></svg>',
+  review: '<svg viewBox="0 0 24 24"><rect x="4" y="4.5" width="16" height="16" rx="3"/><path d="M4 9.5h16M8 14l2.5 2.5L16 12"/><path d="M8 3v3M16 3v3"/></svg>',
   awards: '<svg viewBox="0 0 24 24"><circle cx="12" cy="9" r="5.5"/><path d="M8.5 13.5L7 21l5-2.5 5 2.5-1.5-7.5"/></svg>',
   logout: '<svg viewBox="0 0 24 24"><path d="M15 4h3a2 2 0 012 2v12a2 2 0 01-2 2h-3M10 16l-4-4 4-4M6 12h10"/></svg>'
 };
@@ -243,9 +244,9 @@ document.querySelectorAll('[data-ico]').forEach(el => { el.innerHTML = I[el.data
 
 /* ---------- состояние представления ---------- */
 const view = { page: 'today', date: ymd(), range: 30, lastPage: null };
-const PAGES = ['today', 'plans', 'food', 'budget', 'study', 'books', 'quiz', 'gym', 'steps', 'goal', 'stats', 'awards', 'settings', 'more'];
+const PAGES = ['today', 'plans', 'food', 'budget', 'study', 'books', 'quiz', 'gym', 'steps', 'goal', 'stats', 'awards', 'review', 'settings', 'more'];
 // на телефоне внизу 5 вкладок; эти разделы — в «Ещё»
-const MORE_PAGES = ['study', 'budget', 'books', 'awards', 'quiz', 'goal', 'gym', 'steps', 'stats', 'settings'];
+const MORE_PAGES = ['study', 'budget', 'books', 'awards', 'review', 'quiz', 'goal', 'gym', 'steps', 'stats', 'settings'];
 
 function route() {
   const [h, sub] = (decodeURIComponent(location.hash.replace('#', '')) || 'today').split('/');
@@ -269,7 +270,7 @@ function render() {
   document.body.classList.toggle('setup-mode', !!view.wizard);
   if (view.wizard) { $('#main').innerHTML = pageWizard(); window.scrollTo({ top: 0, behavior: 'instant' }); return; }
   document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.page === view.page || (t.dataset.page === 'more' && MORE_PAGES.includes(view.page))));
-  const pages = { more: pageMoreList, today: pageToday, plans: pagePlans, food: pageFood, budget: pageBudget, books: pageBooks, awards: pageAwards, study: pageStudy, quiz: pageQuiz, gym: pageGym, steps: pageSteps, goal: pageGoal, stats: pageStats, settings: pageSettings };
+  const pages = { more: pageMoreList, today: pageToday, plans: pagePlans, food: pageFood, budget: pageBudget, books: pageBooks, awards: pageAwards, review: pageReview, study: pageStudy, quiz: pageQuiz, gym: pageGym, steps: pageSteps, goal: pageGoal, stats: pageStats, settings: pageSettings };
   const y = window.scrollY;
   MEMO = new Map();
   $('#main').innerHTML = pages[view.page]() + (S.gymLive && !S.gymLive.past && view.page !== 'gym' ? `<a class="gym-pill" id="gym-pill" href="#gym">${gymIcon('dumbbell')}<span>Тренировка</span><b>${liveClock()}</b></a>` : '');
@@ -1332,6 +1333,9 @@ function nudges() {
   const sinceLast = last === undefined ? Infinity : now.getHours() * 60 + now.getMinutes() - last;
   if (!view.nudgeOff.water && hyd < expect - 400 && sinceLast > 120)
     out.push({ k: 'water', icon: I.drop, text: `${last === undefined ? 'Сегодня воды ещё не было' : `Воды не было ${Math.floor(sinceLast / 60)} ч`} — выпито ${fmt1(hyd / 1000)} из ${fmt1(norm / 1000)} л.`, btn: `<button class="btn btn-sm btn-primary" style="--c:#2A7FB8" data-action="quick-drink" data-type="water" data-ml="250">${I.plus}Стакан воды</button>` });
+  const dow = now.getDay();
+  if (!view.nudgeOff.review && ((dow === 0 && h >= 17) || dow === 1) && [0, 1, 2, 3, 4, 5, 6].some(k => hasAny(addDays(t, -k))))
+    out.push({ k: 'review', icon: I.review, text: `Итог недели готов: что получилось, что нет и лучший день.`, btn: `<a class="btn btn-sm btn-primary" style="--c:var(--orange)" href="#review">Смотреть</a>` });
   const meals = S.meals.filter(m => m.date === t);
   if (!view.nudgeOff.food && h >= 13 && !meals.length)
     out.push({ k: 'food', icon: I.food, text: 'Еды за сегодня ещё не записано. Запиши, пока помнишь — хватит фото или пары слов.', btn: `<a class="btn btn-sm btn-primary" href="#food">Записать</a>` });
@@ -3389,6 +3393,7 @@ function pageMoreList() {
       ['steps', 'Шаги и вес', num(dayRec(ymd()).steps) ? `сегодня ${fmtN(dayRec(ymd()).steps)}` : 'шаги за день', 'var(--steps)']
     ]],
     ['Итоги', [
+      ['review', 'Итог недели', (() => { const w = reviewWeek(); return `${human(w)} — ${human(addDays(w, 6))}`; })(), 'var(--orange)'],
       ['stats', 'Статистика', 'оценка дня, календарь, графики', 'var(--navy)'],
       ['awards', 'Достижения', `${achState().reduce((a, x) => a + x.tier, 0)} ступеней открыто`, 'var(--mustard)'],
       ['goal', 'Цель', S.profile ? `${fmt1(curWeight())} кг → ${S.profile.target ? fmt1(S.profile.target) + ' кг' : 'держать'}` : 'составить план', 'var(--orange)']
@@ -3404,7 +3409,7 @@ function pageMoreList() {
    НАПОМИНАНИЯ: Web Push. Сервер сам решает, когда написать, —
    по данным аккаунта; телефон показывает уведомление, даже если журнал закрыт.
    ============================================================ */
-const REMIND_KINDS = [['water', 'Вода', 'если отстаёшь от нормы и давно не пил (10–21 ч)'], ['food', 'Еда', 'в 13:30, если за день ничего не записано'],
+const REMIND_KINDS = [['review', 'Итог недели', 'в воскресенье в 19:00'], ['water', 'Вода', 'если отстаёшь от нормы и давно не пил (10–21 ч)'], ['food', 'Еда', 'в 13:30, если за день ничего не записано'],
   ['tasks', 'Задачи', 'в назначенное время'], ['gym', 'Тренировки', 'по плану тренировок в разделе «Зал»'], ['quiz', 'Вопросы', 'в 10:00, если есть повторение'], ['streak', 'Серия', 'в 21:00, если сегодня ещё пусто']];
 const pushSupport = () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window && window.isSecureContext;
 const isIOS = () => /iPhone|iPad|iPod/.test(navigator.userAgent);
@@ -3445,6 +3450,80 @@ async function pushRefresh() {
 function remindHints() {
   const h = { date: ymd(), quizDue: (() => { const q = S.quizzes[ymd()]; return q ? q.items.filter(i => !i.result).length : Math.min(dueCards(ymd()).length, QUIZ_SIZE); })(), waterNorm: waterNorm() };
   if (!same(h, S.remindHints)) S.remindHints = h;
+}
+
+/* ============================================================
+   ИТОГ НЕДЕЛИ: что получилось, что нет, лучший день, фокус
+   По умолчанию — прошедшая неделя; в воскресенье — текущая.
+   ============================================================ */
+const reviewWeek = () => { const t = ymd(), m = mondayOf(t); return parseYmd(t).getDay() === 0 ? m : addDays(m, -7); };
+const weekDays = mon => Array.from({ length: 7 }, (_, k) => addDays(mon, k));
+function weekStats(mon) {
+  const days = weekDays(mon).filter(d => d <= ymd()), A = trackedAreas(), nm = norms(), wn = waterNorm();
+  const logged = days.filter(hasAny), food = days.map(d => ({ d, t: sumMeals(mealsOn(d)) })).filter(x => x.t.kcal);
+  const inNorm = food.filter(x => judge('kcal', x.t.kcal, nm.kcal, false).lvl === 'good').length;
+  const steps = days.map(d => num(dayRec(d).steps)), stepDays = steps.filter(Boolean);
+  const ws = weightSeries().filter(w => w.d >= addDays(mon, -3) && w.d <= addDays(mon, 6));
+  const tasks = S.tasks.filter(x => x.date >= mon && x.date <= addDays(mon, 6));
+  const planned = S.gymPlans.reduce((a, p) => a + days.filter(d => (p.days || []).includes(parseYmd(d).getDay())).length, 0);
+  const spent = msum(S.money.filter(x => x.kind !== 'in' && x.date >= mon && x.date <= addDays(mon, 6)));
+  const ach = Object.entries(S.achieved).filter(([, d]) => d >= mon && d <= addDays(mon, 6));
+  return {
+    days, n: days.length, logged: logged.length, A,
+    score: avgOf(logged.map(dayScore)), scores: weekDays(mon).map(d => d <= ymd() ? dayScore(d) : null),
+    foodDays: food.length, inNorm, avgKcal: avgOf(food.map(x => x.t.kcal)),
+    protein: food.filter(x => nm.p && x.t.p >= nm.p * 0.9).length,
+    water: days.filter(d => drinkDay(d).hyd >= wn).length, waterAvg: avgOf(days.map(d => drinkDay(d).hyd).filter(Boolean)),
+    stepsAvg: avgOf(stepDays), stepsHit: steps.filter(v => v >= (num(S.settings.steps) || 10000)).length, stepsTot: steps.reduce((a, b) => a + b, 0),
+    gym: S.workouts.filter(w => w.date >= mon && w.date <= addDays(mon, 6)).length, planned,
+    study: days.reduce((a, d) => a + studyMin(d), 0),
+    tasksAll: tasks.length, tasksDone: tasks.filter(x => x.done).length,
+    pages: days.reduce((a, d) => a + readOn(d), 0), booksDone: S.books.filter(b => b.status === 'done' && b.finished >= mon && b.finished <= addDays(mon, 6)),
+    spent, budget: num(S.budget.amount) ? budgetDay(addDays(mon, 6) <= ymd() ? addDays(mon, 6) : ymd()).base * 7 : 0,
+    weight: ws.length > 1 ? ws[ws.length - 1].v - ws[0].v : null,
+    ach: ach.map(([k]) => { const [key, t] = k.split(':'); const a = ACH.find(x => x.k === key); return a ? `${a.n} · ${TIERS[+t][0]}` : null; }).filter(Boolean)
+  };
+}
+function pageReview() {
+  const mon = view.reviewMon || reviewWeek(), sun = addDays(mon, 6), W = weekStats(mon), P = weekStats(addDays(mon, -7));
+  const goalSteps = num(S.settings.steps) || 10000, goalStudy = (num(S.settings.study) || 60) * 7;
+  const wins = [], misses = [], focus = [];
+  const add = (ok, win, miss, tip) => { if (ok === true) wins.push(win); else if (ok === false) { misses.push(miss); if (tip) focus.push(tip); } };
+  if (W.A.food || W.foodDays) add(W.inNorm >= Math.ceil(W.n * 0.6) ? true : W.foodDays ? false : null, `Калории в норме ${W.inNorm} из ${W.n} дней`, `Калории в норме только ${W.inNorm} из ${W.n} дней${W.foodDays < W.n ? ` (записано ${W.foodDays})` : ''}`, W.foodDays < W.n - 1 ? 'Записывать еду каждый день — хотя бы фото или пару слов' : 'Держать калории в коридоре: план ужина заранее помогает больше всего');
+  if (W.foodDays && norms().p) add(W.protein >= Math.ceil(W.n * 0.6), `Белок закрыт ${W.protein} из ${W.n} дней`, `Белка не хватало: закрыт ${W.protein} из ${W.n} дней`, 'Белок в каждый приём: творог, яйца, курица — так проще добрать норму');
+  if (W.A.water || W.waterAvg) add(W.water >= Math.ceil(W.n * 0.6), `Норма воды ${W.water} из ${W.n} дней`, `Воды мало: норма закрыта ${W.water} из ${W.n} дней, в среднем ${fmt1(W.waterAvg / 1000)} л`, 'Стакан воды к каждому приёму пищи — и норма набирается сама');
+  if (W.A.steps || W.stepsAvg) add(W.stepsAvg >= goalSteps * 0.9, `${fmtN(W.stepsAvg)} шагов в день — цель держится`, `Шагов в среднем ${fmtN(W.stepsAvg)} при цели ${fmtN(goalSteps)}`, `Добавить прогулку 20 минут — это ≈ +2 500 шагов`);
+  if (W.planned || W.gym || P.gym) add(W.planned ? W.gym >= W.planned : W.gym >= Math.max(1, P.gym), `${W.gym} ${plural(W.gym, 'тренировка', 'тренировки', 'тренировок')}${W.planned ? ` из ${W.planned} по плану` : ''}`, W.planned ? `Тренировок ${W.gym} из ${W.planned} по плану` : `Тренировок меньше, чем неделей раньше: ${W.gym} против ${P.gym}`, 'Поставить тренировки в план «Зала» — придёт напоминание в нужный день');
+  if (W.A.study || W.study) add(W.study >= goalStudy * 0.7, `Учёба: ${hoursStr(W.study)} ч`, `Учёбы ${hoursStr(W.study)} ч при цели ${hoursStr(goalStudy)} ч`, 'Короткие занятия по 20–30 минут каждый день вместо одного длинного');
+  if (W.tasksAll) add(W.tasksDone / W.tasksAll >= 0.7, `Задачи: сделано ${W.tasksDone} из ${W.tasksAll}`, `Задачи: сделано только ${W.tasksDone} из ${W.tasksAll}`, 'Не больше трёх главных задач на день — остальное в «без даты»');
+  if (W.pages || W.booksDone.length) wins.push(`Прочитано ${W.pages} стр.${W.booksDone.length ? `, дочитано: ${W.booksDone.map(b => `«${b.title}»`).join(', ')}` : ''}`);
+  if (W.budget) add(W.spent <= W.budget * 1.05, `Траты в рамках: ${fmtM(W.spent)} при лимите ≈ ${fmtM(W.budget)}`, `Перерасход: ${fmtM(W.spent)} при лимите ≈ ${fmtM(W.budget)}`, 'Посмотреть в «Бюджете», куда ушло больше всего, — и урезать одну категорию');
+  if (W.weight !== null && S.profile) { const dir = S.profile.goal === 'lose' ? -1 : S.profile.goal === 'gain' ? 1 : 0; const good = dir ? W.weight * dir > 0.05 : Math.abs(W.weight) < 0.5; add(good, `Вес ${W.weight > 0 ? '+' : ''}${fmt1(W.weight)} кг за неделю — в нужную сторону`, `Вес ${W.weight > 0 ? '+' : ''}${fmt1(W.weight)} кг за неделю`, dir < 0 ? 'Проверить, всё ли записывается: соусы, напитки и перекусы часто теряются' : ''); }
+  if (W.ach.length) wins.push(`Новые достижения: ${W.ach.slice(0, 3).join(', ')}${W.ach.length > 3 ? ` и ещё ${W.ach.length - 3}` : ''}`);
+  const best = W.scores.map((s, k) => [s, k]).filter(x => x[0] !== null && hasAny(addDays(mon, x[1]))).sort((a, b) => b[0] - a[0])[0];
+  const WDL = ['понедельник', 'вторник', 'среда', 'четверг', 'пятница', 'суббота', 'воскресенье'];
+  const d = W.score - P.score, R = 54, C = 2 * Math.PI * R;
+  const motto = !W.logged ? 'На этой неделе записей не было — следующая начнётся с чистого листа.' : W.score >= 0.8 ? 'Сильная неделя. Так держать.' : d > 0.05 ? `Лучше прошлой недели на ${Math.round(d * 100)} п. Растёшь.` : d < -0.05 ? `Чуть слабее прошлой недели. Возьми одну вещь из фокуса — и вернёшься.` : 'Ровная неделя. Одна маленькая привычка — и станет лучше.';
+  const kpis = [['Дней с записями', `${W.logged}<small>из ${W.n}</small>`, P.logged, W.logged], ['Тренировок', `${W.gym}`, P.gym, W.gym], ['Учёба', `${hoursStr(W.study)}<small>ч</small>`, P.study, W.study], ['Шагов', fmtBig(W.stepsTot), P.stepsTot, W.stepsTot]];
+  return `<section class="page page-review">
+    ${topbar('Итог недели', `${human(mon)} — ${human(sun)}`, { date: false, actions: `<div class="datenav"><button class="icon-btn" data-action="review-week" data-n="-7" aria-label="Неделя раньше">${I.chevL}</button><button class="datenav-cur" data-action="review-week" data-n="0">${mon === mondayOf(ymd()) ? 'эта неделя' : mon === addDays(mondayOf(ymd()), -7) ? 'прошлая неделя' : `${human(mon)}`}</button><button class="icon-btn" data-action="review-week" data-n="7" aria-label="Неделя позже" ${mon >= mondayOf(ymd()) ? 'disabled' : ''}>${I.chevR}</button></div>` })}
+    <div class="rv-hero">
+      <div class="bud-ring" style="width:136px;height:136px"><svg viewBox="0 0 136 136" width="136" height="136" role="img" aria-label="Средняя оценка ${Math.round(W.score * 100)}%"><circle cx="68" cy="68" r="${R}" class="ring-bg" stroke-width="13"/><circle cx="68" cy="68" r="${R}" fill="none" stroke="${scoreColor(Math.max(W.score, 0.01))}" stroke-width="13" stroke-linecap="round" stroke-dasharray="${C}" stroke-dashoffset="${C * (1 - W.score)}" transform="rotate(-90 68 68)"/></svg><div class="bud-ring-c"><b>${Math.round(W.score * 100)}%</b><small>в среднем</small></div></div>
+      <div class="rv-main">
+        <p class="rv-motto">${motto}</p>
+        ${P.logged && W.logged ? `<p class="hint" style="margin:0">Прошлая неделя — ${Math.round(P.score * 100)}% ${delta(W.score, P.score)}</p>` : ''}
+        <div class="rv-days">${W.scores.map((s, k) => { const dd = addDays(mon, k), b = best && best[1] === k; return `<button type="button" class="rv-day ${b ? 'best' : ''} ${s === null ? 'fut' : ''}" ${s === null ? 'disabled' : `data-action="stat-day" data-d="${dd}"`} title="${human(dd)}${s !== null ? `: ${Math.round(s * 100)}%` : ''}">
+          <span>${WD[parseYmd(dd).getDay()]}</span>${s === null ? '<i></i>' : `<svg viewBox="0 0 36 36"><circle cx="18" cy="18" r="15" fill="none" stroke="var(--ink-3)" stroke-width="4"/>${s > 0 ? `<circle cx="18" cy="18" r="15" fill="none" stroke="${scoreColor(s)}" stroke-width="4" stroke-linecap="round" stroke-dasharray="${2 * Math.PI * 15}" stroke-dashoffset="${2 * Math.PI * 15 * (1 - s)}" transform="rotate(-90 18 18)"/>` : ''}</svg>`}<b>${s === null ? '' : Math.round(s * 100)}</b>${b ? '<em>★</em>' : ''}</button>`; }).join('')}</div>
+        ${best && best[0] > 0 ? `<p class="rv-best">★ Лучший день — <b>${WDL[best[1]]}</b>, ${Math.round(best[0] * 100)}%${dayParts(addDays(mon, best[1])).filter(p => p[1] >= 0.99).length ? `: ${dayParts(addDays(mon, best[1])).filter(p => p[1] >= 0.99).map(p => AREA_NAMES[p[0]]).join(', ')}` : ''}</p>` : ''}
+      </div>
+    </div>
+    <div class="kpis">${kpis.map(([n, v, pv, cv], i) => kpi(n, v, 'paper', i, !P.logged ? '' : Math.round(cv * 10) === Math.round(pv * 10) ? 'как на прошлой' : pv ? `${delta(cv, pv)} к прошлой` : 'на прошлой не было')).join('')}</div>
+    <div class="grid">
+      ${card({ domain: 'gym', title: `Получилось · ${wins.length}`, span: 6, body: wins.length ? `<ul class="rv-list ok">${wins.map(x => `<li>${I.check}<span>${x}</span></li>`).join('')}</ul>` : empty('Пока нечем похвастаться — всё впереди.') })}
+      ${card({ domain: 'bad', title: `Не получилось · ${misses.length}`, span: 6, body: misses.length ? `<ul class="rv-list miss">${misses.map(x => `<li>${I.x}<span>${x}</span></li>`).join('')}</ul>` : empty('Всё, что ведёшь, — в норме. Отличная неделя.') })}
+      ${focus.length ? card({ domain: 'paper', title: 'Фокус на следующую неделю', span: 12, body: `<ol class="rv-focus">${focus.slice(0, 2).map(x => `<li>${x}</li>`).join('')}</ol><p class="hint">Одна-две вещи, а не всё сразу, — так привычки приживаются.</p>` }) : ''}
+    </div>
+  </section>`;
 }
 
 /* ============================================================
@@ -3984,6 +4063,7 @@ function toast(msg, err = false) {
    ДЕЙСТВИЯ
    ============================================================ */
 const ACTIONS = {
+  'review-week': el => { const n = +el.dataset.n, cur = view.reviewMon || reviewWeek(); view.reviewMon = n ? (addDays(cur, n) > mondayOf(ymd()) ? mondayOf(ymd()) : addDays(cur, n)) : reviewWeek(); render(); },
   'fs-add': el => { const sel = view.fsel = view.fsel || [];
     if (el.dataset.src === 'd') { const x = FoodDB.FOODS.find(y => y.id === el.dataset.k); if (x) sel.push({ name: x.name, per: { kcal: x.kcal, p: x.p, f: x.f, c: x.c }, g: +el.dataset.g || x.g }); }
     else { const f = S.foods[el.dataset.k]; if (f) sel.push({ name: f.name, unit: { kcal: num(f.kcal), p: num(f.p), f: num(f.f), c: num(f.c) }, n: 1 }); }
