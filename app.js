@@ -10,7 +10,7 @@ const DEF = {
   settings: { kcal: 2200, protein: 140, steps: 10000, study: 60, name: '', booksGoal: 12 },
   meals: [], study: [], workouts: [], days: {}, srs: {}, quizzes: {}, foods: {},
   profile: null, activity: {}, drinks: [], sets: [], studyTime: {},
-  tasks: [], goals: [], money: [], budget: {}, books: [], readLog: [], achieved: {}
+  tasks: [], goals: [], money: [], budget: {}, books: [], readLog: [], achieved: {}, exercises: [], gymLive: null
 };
 let S = structuredClone(DEF);
 let me = null, rev = 0, photoOn = false;
@@ -271,7 +271,7 @@ function render() {
   const pages = { more: pageMore, today: pageToday, plans: pagePlans, food: pageFood, budget: pageBudget, books: pageBooks, awards: pageAwards, study: pageStudy, quiz: pageQuiz, gym: pageGym, steps: pageSteps, goal: pageGoal, stats: pageStats, settings: pageSettings };
   const y = window.scrollY;
   MEMO = new Map();
-  $('#main').innerHTML = pages[view.page]();
+  $('#main').innerHTML = pages[view.page]() + (S.gymLive && !S.gymLive.past && view.page !== 'gym' ? `<a class="gym-pill" id="gym-pill" href="#gym">${gymIcon('dumbbell')}<span>Тренировка</span><b>${liveClock()}</b></a>` : '');
   afterRender();
   if (view.lastPage !== view.page) window.scrollTo({ top: 0, behavior: 'instant' });
   else window.scrollTo({ top: y, behavior: 'instant' });
@@ -389,9 +389,9 @@ function pageToday() {
     <div style="margin-top:12px">${bar(steps, set.steps)}</div>
     <p class="hint">${steps ? (steps >= set.steps ? 'Цель закрыта.' : `Осталось ${fmtN(set.steps - steps)}`) : 'Шаги за день ещё не записаны'}${steps && S.profile ? ` · ходьба ≈ ${fmtN(steps * Plan.kcalPerStep(curWeight(), S.profile.height))} ккал` : ''}${day.weight ? ` · вес ${fmt1(day.weight)} кг` : ''}</p>`;
 
-  const gymBody = gw.length
-    ? `<div class="list">${gw.map(w => `<div class="item"><span class="item-time">${esc(w.time || '')}</span><div class="item-main"><div class="item-title">${esc(w.type)}</div><div class="item-sub">${w.exercises.map(e => esc(e.name)).join(', ') || esc(w.note || '')}</div></div><span class="item-val">${w.minutes ? fmtMin(w.minutes) : ''}</span></div>`).join('')}</div>`
-    : `<p class="empty">${d === ymd() ? 'Сегодня зал ещё впереди' : 'Без тренировки'}</p>`;
+  const gymBody = (S.gymLive && !S.gymLive.past && d === ymd() ? `<a class="gym-now" href="#gym"><b>Тренировка идёт</b><span>${S.gymLive.ex.length} упр. · ${S.gymLive.ex.reduce((a, x) => a + x.sets.filter(st => st.done).length, 0)} подх. — продолжить →</span></a>` : '') + (gw.length
+    ? `<div class="list">${gw.map(w => `<button type="button" class="item gym-today" data-action="edit-gym" data-id="${w.id}"><span class="item-time">${esc(w.time || '')}</span><div class="item-main"><div class="item-title">${esc(w.type)}</div><div class="gym-today-ics">${(w.exercises || []).slice(0, 6).map(e => exIcon(exOf(e), 'sm')).join('')}${(w.exercises || []).length > 6 ? `<small>+${w.exercises.length - 6}</small>` : ''}</div></div><span class="item-val">${w.minutes ? fmtMin(w.minutes) : ''}</span></button>`).join('')}</div>`
+    : S.gymLive && d === ymd() ? '' : `<p class="empty">${d === ymd() ? 'Сегодня зал ещё впереди' : 'Без тренировки'}</p>`);
 
   const quizBody = quiz
     ? `<div class="big"><b>${quiz.items.filter(i => i.result).length}</b><small>/ ${quiz.items.length} отвечено</small></div>
@@ -1953,98 +1953,399 @@ function quizHistory(n) {
 /* ============================================================
    ЗАЛ
    ============================================================ */
-const GYM_TYPES = ['Силовая', 'Кардио', 'Верх тела', 'Низ тела', 'Full body', 'Растяжка', 'Бокс', 'Плавание', 'Бег'];
-function parseExercises(t) {
-  return parseLines(t).map(line => {
-    const m = line.match(/^(.+?)\s+(\d+\s*[x×х]\s*\d+.*)$/i);
-    if (!m) return { name: line, sets: [] };
-    const name = m[1].trim(), sets = [];
-    const re = /(\d+)\s*[x×х]\s*(\d+)(?:\s*(?:@|по|\*)?\s*(\d+(?:[.,]\d+)?)\s*(?:кг|kg)?)?/gi;
-    let g;
-    while ((g = re.exec(m[2]))) { const n = +g[1], reps = +g[2], kg = g[3] ? num(g[3]) : 0; for (let i = 0; i < Math.min(n, 20); i++) sets.push({ reps, kg }); }
-    return { name, sets };
-  });
+
+/* ---------- иконки упражнений: человечек (цвет текста) + снаряд (цвет группы) ---------- */
+const GI = (() => {
+  const h = (x, y) => `<circle class="gi-h" cx="${x}" cy="${y}" r="3.6"/>`;
+  const f = d => `<path class="gi-f" d="${d}"/>`;
+  const e = d => `<path class="gi-e" d="${d}"/>`;
+  const disc = (x, y, r = 5) => `<circle class="gi-e" cx="${x}" cy="${y}" r="${r}"/><circle class="gi-ef" cx="${x}" cy="${y}" r="1.4"/>`;
+  const bar = (x1, y, x2) => e(`M${x1} ${y}H${x2}M${x1 + 2} ${y - 5}v10M${x1 + 5} ${y - 4}v8M${x2 - 2} ${y - 5}v10M${x2 - 5} ${y - 4}v8`);
+  const dbh = (x, y) => e(`M${x - 4} ${y}h8M${x - 4} ${y - 3}v6M${x + 4} ${y - 3}v6`);
+  const dbv = (x, y) => e(`M${x} ${y - 4}v8M${x - 3} ${y - 4}h6M${x - 3} ${y + 4}h6`);
+  const kb = (x, y) => `<circle class="gi-e" cx="${x}" cy="${y + 1}" r="4.5"/>` + e(`M${x - 3} ${y - 3}a3 3 0 0 1 6 0`);
+  const floor = e('M3 44.5h42');
+  const bench = (x1, x2, y = 33) => e(`M${x1} ${y}H${x2}M${x1 + 4} ${y}v10M${x2 - 4} ${y}v10`);
+  const stand = (x = 24, y = 8) => h(x, y) + f(`M${x} ${y + 4}V${y + 20}M${x} ${y + 20}l-5 ${36 - y - 20 + 8}M${x} ${y + 20}l5 ${36 - y - 20 + 8}`);
+  return {
+    bench: bench(6, 36) + h(8.5, 27.5) + f('M12 30H27l7 2 1 11M16 30V17') + disc(16, 13),
+    incline: e('M7 43l7-7M14 36l16-12M14 36v7') + h(31, 19) + f('M28 24l-12 9-6-1-1 11M25 26V13') + disc(25, 10),
+    dbpress: bench(6, 36) + h(8.5, 27.5) + f('M12 30H27l7 2 1 11M16 30V17M21 30V17') + dbh(18.5, 14),
+    dbfly: bench(6, 36) + h(8.5, 27.5) + f('M12 30H27l7 2 1 11M16 30l-7-9M20 30l8-10') + dbh(8, 18) + dbh(29, 17),
+    pecdeck: e('M11 5v16M37 5v16M18 31h12M20 31v12M28 31v12') + h(24, 9) + f('M24 13v18M24 16h-9V8M24 16h9V8'),
+    chestpress: e('M13 10v24h13M38 5v39M35 14v10') + h(17, 9) + f('M17 13v19h11v11M17 18h17'),
+    crossover: e('M4 2v42M44 2v42M5 4l13 22M43 4L30 26') + h(24, 9) + f('M24 13v17M24 30l-5 14M24 30l5 14M24 16l-5 10M24 16l5 10'),
+    pushup: floor + h(9, 21.5) + f('M12 24l30 16M16 26v18'),
+    dip: e('M7 22h12M29 22h12M10 22v22M38 22v22') + h(24, 9) + f('M24 13v17M24 16h-6v6M24 16h6v6M24 30l-3 8M24 30l3 8'),
+    deadlift: floor + h(26, 13) + f('M23 17l-11 9 4 8-2 10M23 18l1 16') + disc(24, 37, 6),
+    rdl: floor + h(32, 19) + f('M28 21H14l2 23M27 22v11') + disc(27, 35, 5),
+    pullup: e('M4 5h40') + h(24, 13) + f('M14 5l4 11 6 2M34 5l-4 11-6 2M24 18v14M24 32l-2 9M24 32l3 8'),
+    latpull: e('M24 2v8M10 12q14-4 28 0M16 35h16M18 35v9M30 35v9') + h(24, 16) + f('M12 11l4 9 8 1M36 11l-4 9-8 1M24 21v14M24 35l-6 2v7M24 35l6 2v7'),
+    row: floor + h(29, 15) + f('M26 18l-12 6 4 9-2 11M25 19l-1 9') + disc(24, 31, 5),
+    dbrow: e('M27 31h17M30 31v13M41 31v13') + h(33, 19) + f('M30 22H13v22M30 23l4 8M23 23l-1 8') + dbv(22, 34),
+    cablerow: e('M44 26v18M43 30l-12-2M40 34v10M8 38h20') + h(14, 15) + f('M14 19v17h24M14 23l14 4h3'),
+    hyper: e('M8 43l20-17M24 30v14') + h(41, 15) + f('M8 41l18-15 12-8M30 22l-3-5'),
+    shrug: stand(24, 8) + f('M24 14l-6 2-1 11M24 14l6 2 1 11') + dbv(17, 31) + dbv(31, 31) + e('M15 4v-3l-2 2M15 1l2 2M33 4v-3l-2 2M33 1l2 2'),
+    squat: floor + h(23, 10) + f('M21 14l-5 13h12l-3 17M21 15l5-2') + disc(17, 14, 5),
+    legpress: e('M5 30l8 13M16 44l28-26M31 12l8 11') + h(7, 26) + f('M9 29l7 11 8-12 11-8'),
+    legext: e('M12 14v18h14M38 30a3 3 0 1 0 0.1 0') + h(16, 9) + f('M15 13v18h12l9-4'),
+    legcurl: e('M6 30h28M10 30v14M30 30v14M31 14a3 3 0 1 0 0.1 0') + h(9, 24.5) + f('M12 27h22l-4-11'),
+    calf: e('M22 40h18v4M38 30V18l-3 3M38 18l3 3') + h(28, 6) + f('M28 10v17M28 27v13h4M28 13l-4 12M28 13l4 12'),
+    lunge: floor + h(24, 7) + f('M24 11v15M24 26l9 4v14M24 26l-6 14-8 3M24 14l-2 11') + dbv(22, 28),
+    bulgarian: e('M2 30h11v14') + floor + h(25, 7) + f('M25 11v15M25 26l9 4v14M25 26l-6 12-9-8M25 14l-2 11') + dbv(23, 28),
+    hipthrust: e('M3 24h13v20') + floor + h(8, 19.5) + f('M12 23l16-1 8 2 2 20') + disc(26, 17, 5),
+    goblet: floor + h(24, 8) + f('M24 12v14M24 26l-9 6 1 12M24 26l9 6-1 12M24 15l-4 5 4 1') + kb(24, 22),
+    ohp: e('M7 5h34M9 0v10M12 1v8M39 0v10M36 1v8') + h(24, 12) + f('M24 16v15M24 31l-4 13M24 31l4 13M24 18l-8-5V5M24 18l8-5V5'),
+    dbohp: e('M16 33h16M18 33v11M30 33v11') + h(24, 12) + f('M24 16v17M24 18l-9-1V7M24 18l9-1V7') + dbh(15, 5) + dbh(33, 5),
+    lateral: stand(24, 8) + f('M24 15l12 3M24 15l-12 3') + dbv(38, 18) + dbv(10, 18),
+    frontraise: stand(20, 8) + f('M20 15h15') + dbv(37, 15),
+    reardelt: floor + h(31, 17) + f('M28 20l-13 5 3 8-2 11M26 22l-3-10M26 22l5-8') + dbh(23, 10) + dbh(32, 12),
+    facepull: e('M44 3v41M43 14H33') + stand(17, 8) + f('M17 15l9 5 6-6'),
+    bbcurl: stand(20, 8) + f('M20 15v10l8-8') + disc(29, 15, 4),
+    curl: stand(20, 8) + f('M20 15v10l8-8M20 15l-3 11') + dbv(29, 15),
+    pushdown: e('M42 2v42M41 6l-12 22') + stand(18, 8) + f('M18 15l2 9 8 5'),
+    skull: bench(6, 36) + h(8.5, 27.5) + f('M12 30H27l7 2 1 11M16 30V18l-6 4') + disc(9, 22, 4),
+    ohext: stand(24, 10) + f('M24 17l3-13-6 6') + dbv(19, 12),
+    plank: floor + h(9, 29) + f('M12 32l29 7M14 33v8h6'),
+    crunch: floor + h(11, 29) + f('M14 32l10 9 8-11 6 11M16 33l6-6'),
+    legraise: e('M8 4h32') + h(18, 11) + f('M22 4v10M22 14v14h14'),
+    abwheel: floor + `<circle class="gi-e" cx="38" cy="39.5" r="4.5"/>` + h(35, 25) + f('M6 44h6l6-11 13-2 6 7'),
+    treadmill: e('M5 40h33l6-10M38 40l-3-26h8') + h(22, 8) + f('M21 12l-2 12M19 24l7 6-2 7M19 24l-5 6-5 0M21 15l5 4 3-4M21 15l-5 4'),
+    bike: e('M10 43h26M14 43l4-12M30 43l-2-17h8M13 21h9') + `<circle class="gi-e" cx="22" cy="34" r="4"/>` + h(31, 8) + f('M18 21l10-9M27 13l7 11M18 21l6 9-2 7'),
+    rower: e('M3 41h41M14 36h9') + `<circle class="gi-e" cx="40" cy="32" r="5"/>` + h(13, 17) + f('M18 35l-4-14M18 35l10-7 6 8M15 25l19 5'),
+    elliptical: e('M8 43h30M14 43l8-8 10 8M16 28l6-22M34 28l-4-22') + h(25, 8) + f('M25 12v13M25 25l-4 10M25 25l5 9M25 15l-4 6-1-6M25 15l4 6 1-6'),
+    stairs: e('M4 44h10v-8h10v-8h10v-8h10') + h(21, 8) + f('M21 12v12M21 24l8 4M21 24l-2 12M21 15l-4 7M21 15l5 6'),
+    rope: e('M13 24C13 52 35 52 35 24M13 24C13 -2 35 -2 35 24') + stand(24, 9) + f('M24 16l-9 6M24 16l9 6'),
+    swim: e('M3 36q5-4 10 0t10 0 10 0 10 0') + h(38, 25) + f('M34 27l-21 3H4M31 27l-9-9-10 4'),
+    walk: floor + h(24, 7) + f('M24 11l-1 14M23 25l6 8 1 11M23 25l-5 9-5 10M24 14l5 9M24 14l-6 8'),
+    boxing: e('M38 2v6M34 8h8v26h-8z') + h(15, 9) + f('M15 13v16M15 29l-4 15M15 29l5 15M15 16h17M15 16l5 5-1-8'),
+    kbswing: floor + h(21, 8) + f('M21 12v15M21 27l-4 17M21 27l4 17M21 15l13 6') + kb(37, 23),
+    burpee: e('M8 44h8M32 44h8') + h(24, 10) + f('M24 14v14M24 28l-5 12M24 28l5 12M24 16l-8-12M24 16l8-12'),
+    farmer: floor + h(24, 7) + f('M24 11v14M24 25l5 9 1 10M24 25l-5 9-4 10M24 14l-6 3v11M24 14l6 3v11') + dbv(18, 31) + dbv(30, 31),
+    stretch: floor + h(34, 24) + f('M14 41l17-12M14 41h26M29 30l11 9'),
+    dumbbell: e('M10 24h28M10 14v20M15 16v16M38 14v20M33 16v16M6 20v8M42 20v8'),
+    barbell: e('M3 24h42M8 13v22M12 16v16M40 13v22M36 16v16'),
+    machine: e('M10 4v40M38 4v40M10 8h28M14 14h20v6H14zM14 24h20v6H14zM14 34h20v6H14z'),
+    cable: e('M40 3v41M39 7L22 30') + `<circle class="gi-e" cx="38" cy="7" r="3"/>` + e('M18 30h8'),
+    body: stand(24, 8) + f('M24 15l-8 7M24 15l8 7'),
+    heart: e('M24 40S7 29 7 17a8 8 0 0 1 17-3 8 8 0 0 1 17 3c0 12-17 23-17 23zM12 24h7l3-6 4 11 3-5h7')
+  };
+})();
+function gymIcon(key, cls = '') {
+  return `<svg class="gi ${cls}" viewBox="0 0 48 48" aria-hidden="true">${GI[key] || GI.dumbbell}</svg>`;
 }
+
+/* ============================================================
+   ЗАЛ: каталог упражнений, живая тренировка по подходам, рекорды
+   kind: w — вес × повторы, bw — свой вес (повторы, можно с отягощением),
+         t — на время (секунды), c — кардио (минуты, км)
+   ============================================================ */
+const GYM_GROUPS = {
+  chest: ['Грудь', '#D9622B'], back: ['Спина', '#2F3B4F'], legs: ['Ноги', '#3C5B38'], shoulders: ['Плечи', '#B5891E'],
+  arms: ['Руки', '#8E2F22'], abs: ['Пресс', '#4D7B78'], cardio: ['Кардио', '#2A7FB8'], full: ['Всё тело', '#7A4B2A']
+};
+const EQUIP = { bar: 'Штанга', db: 'Гантели', mach: 'Тренажёр', cable: 'Блок', bw: 'Свой вес', kb: 'Гиря', cardio: 'Кардио' };
+// id, название, группа, тип, иконка, снаряд
+const EX = [
+  ['bench', 'Жим штанги лёжа', 'chest', 'w', 'bench', 'bar'], ['incline', 'Жим штанги на наклонной', 'chest', 'w', 'incline', 'bar'],
+  ['dbpress', 'Жим гантелей лёжа', 'chest', 'w', 'dbpress', 'db'], ['dbincline', 'Жим гантелей на наклонной', 'chest', 'w', 'incline', 'db'],
+  ['dbfly', 'Разводка гантелей', 'chest', 'w', 'dbfly', 'db'], ['pecdeck', 'Бабочка (пек-дек)', 'chest', 'w', 'pecdeck', 'mach'],
+  ['chestpress', 'Жим в тренажёре', 'chest', 'w', 'chestpress', 'mach'], ['crossover', 'Сведение в кроссовере', 'chest', 'w', 'crossover', 'cable'],
+  ['pushup', 'Отжимания', 'chest', 'bw', 'pushup', 'bw'], ['dip', 'Отжимания на брусьях', 'chest', 'bw', 'dip', 'bw'],
+  ['deadlift', 'Становая тяга', 'back', 'w', 'deadlift', 'bar'], ['pullup', 'Подтягивания', 'back', 'bw', 'pullup', 'bw'],
+  ['latpull', 'Тяга верхнего блока', 'back', 'w', 'latpull', 'cable'], ['row', 'Тяга штанги в наклоне', 'back', 'w', 'row', 'bar'],
+  ['dbrow', 'Тяга гантели одной рукой', 'back', 'w', 'dbrow', 'db'], ['cablerow', 'Тяга нижнего блока', 'back', 'w', 'cablerow', 'cable'],
+  ['hyper', 'Гиперэкстензия', 'back', 'bw', 'hyper', 'mach'], ['shrug', 'Шраги', 'back', 'w', 'shrug', 'db'],
+  ['squat', 'Приседания со штангой', 'legs', 'w', 'squat', 'bar'], ['legpress', 'Жим ногами', 'legs', 'w', 'legpress', 'mach'],
+  ['rdl', 'Румынская тяга', 'legs', 'w', 'rdl', 'bar'], ['lunge', 'Выпады', 'legs', 'w', 'lunge', 'db'],
+  ['bulgarian', 'Болгарские сплит-приседания', 'legs', 'w', 'bulgarian', 'db'], ['legext', 'Разгибание ног', 'legs', 'w', 'legext', 'mach'],
+  ['legcurl', 'Сгибание ног', 'legs', 'w', 'legcurl', 'mach'], ['calf', 'Подъём на носки', 'legs', 'w', 'calf', 'mach'],
+  ['hipthrust', 'Ягодичный мост', 'legs', 'w', 'hipthrust', 'bar'], ['goblet', 'Гоблет-присед', 'legs', 'w', 'goblet', 'kb'],
+  ['ohp', 'Жим штанги стоя', 'shoulders', 'w', 'ohp', 'bar'], ['dbohp', 'Жим гантелей сидя', 'shoulders', 'w', 'dbohp', 'db'],
+  ['lateral', 'Махи в стороны', 'shoulders', 'w', 'lateral', 'db'], ['frontraise', 'Махи перед собой', 'shoulders', 'w', 'frontraise', 'db'],
+  ['reardelt', 'Разводка в наклоне', 'shoulders', 'w', 'reardelt', 'db'], ['facepull', 'Тяга к лицу', 'shoulders', 'w', 'facepull', 'cable'],
+  ['bbcurl', 'Подъём штанги на бицепс', 'arms', 'w', 'bbcurl', 'bar'], ['curl', 'Сгибания с гантелями', 'arms', 'w', 'curl', 'db'],
+  ['hammer', 'Молотки', 'arms', 'w', 'curl', 'db'], ['pushdown', 'Разгибание на блоке', 'arms', 'w', 'pushdown', 'cable'],
+  ['skull', 'Французский жим', 'arms', 'w', 'skull', 'bar'], ['ohext', 'Разгибание из-за головы', 'arms', 'w', 'ohext', 'db'],
+  ['plank', 'Планка', 'abs', 't', 'plank', 'bw'], ['crunch', 'Скручивания', 'abs', 'bw', 'crunch', 'bw'],
+  ['legraise', 'Подъём ног в висе', 'abs', 'bw', 'legraise', 'bw'], ['abwheel', 'Ролик для пресса', 'abs', 'bw', 'abwheel', 'bw'],
+  ['treadmill', 'Беговая дорожка', 'cardio', 'c', 'treadmill', 'cardio'], ['bike', 'Велотренажёр', 'cardio', 'c', 'bike', 'cardio'],
+  ['rower', 'Гребной тренажёр', 'cardio', 'c', 'rower', 'cardio'], ['elliptical', 'Эллипс', 'cardio', 'c', 'elliptical', 'cardio'],
+  ['stairs', 'Степпер / лестница', 'cardio', 'c', 'stairs', 'cardio'], ['rope', 'Скакалка', 'cardio', 'c', 'rope', 'cardio'],
+  ['swim', 'Плавание', 'cardio', 'c', 'swim', 'cardio'], ['walk', 'Ходьба', 'cardio', 'c', 'walk', 'cardio'],
+  ['boxing', 'Бокс / груша', 'cardio', 'c', 'boxing', 'cardio'], ['run', 'Бег', 'cardio', 'c', 'treadmill', 'cardio'],
+  ['kbswing', 'Махи гирей', 'full', 'w', 'kbswing', 'kb'], ['burpee', 'Бёрпи', 'full', 'bw', 'burpee', 'bw'],
+  ['farmer', 'Прогулка фермера', 'full', 'w', 'farmer', 'db'], ['stretch', 'Растяжка', 'full', 't', 'stretch', 'bw']
+].map(([id, name, group, kind, icon, equip]) => ({ id, name, group, kind, icon, equip }));
+// как ещё называют упражнения — чтобы старые записи и свои названия узнавались
+const EX_AKA = {
+  bench: ['жим лёжа', 'жим лежа', 'жим штанги', 'жим на горизонтальной'], incline: ['жим на наклонной', 'наклонный жим'], dbpress: ['жим гантелей'],
+  dbfly: ['разводка', 'разводки'], pecdeck: ['бабочка', 'пек дек', 'пек-дек'], crossover: ['кроссовер'], pushup: ['отжимания от пола'], dip: ['брусья'],
+  deadlift: ['становая', 'становая тяга'], pullup: ['подтягивание', 'подтягивания'], latpull: ['тяга верхнего', 'верхний блок', 'тяга блока'],
+  row: ['тяга в наклоне', 'тяга штанги'], dbrow: ['тяга гантели'], cablerow: ['нижний блок', 'горизонтальная тяга'], hyper: ['гиперэкстензия'],
+  squat: ['присед', 'приседания', 'приседания со штангой'], legpress: ['жим ногами', 'платформа'], rdl: ['румынская', 'мертвая тяга', 'мёртвая тяга'],
+  lunge: ['выпады'], legext: ['разгибания ног'], legcurl: ['сгибания ног'], calf: ['икры', 'подъём на носки', 'подъем на носки'], hipthrust: ['ягодичный мост', 'хип траст'],
+  ohp: ['армейский жим', 'жим стоя', 'жим над головой'], dbohp: ['жим гантелей сидя', 'жим гантелей над головой'], lateral: ['махи', 'махи гантелями', 'разведения в стороны'],
+  bbcurl: ['бицепс', 'подъём на бицепс', 'подъем на бицепс'], curl: ['сгибания на бицепс'], pushdown: ['трицепс на блоке', 'разгибания на блоке'],
+  skull: ['французский'], plank: ['планка'], crunch: ['скручивания', 'пресс'], run: ['бег', 'пробежка'], treadmill: ['дорожка'], bike: ['велик', 'велосипед'],
+  rower: ['гребля'], rope: ['скакалка'], swim: ['плавание', 'бассейн'], walk: ['ходьба', 'прогулка'], boxing: ['бокс'], stretch: ['растяжка', 'стретчинг']
+};
+const KIND_NAMES = { w: 'Вес и повторы', bw: 'Свой вес', t: 'На время', c: 'Кардио: минуты и км' };
+const exAll = () => [...EX, ...(S.exercises || [])];
+const exById = id => exAll().find(x => x.id === id);
+const exByName = n => { const k = String(n || '').trim().toLowerCase().replace(/ё/g, 'е'), norm = t => t.toLowerCase().replace(/ё/g, 'е'); return exAll().find(x => norm(x.name) === k) || exById(Object.keys(EX_AKA).find(id => EX_AKA[id].some(a => norm(a) === k))); };
+// запись упражнения в тренировке → карточка каталога (для старых записей — по названию)
+function exOf(e) {
+  const c = (e.ex && exById(e.ex)) || exByName(e.name);
+  if (c) return c;
+  const cardio = (e.sets || []).some(s => s.min || s.km);
+  return { id: null, name: e.name, group: cardio ? 'cardio' : 'full', kind: cardio ? 'c' : (e.sets || []).some(s => num(s.kg)) ? 'w' : (e.sets || []).length ? 'bw' : 'w', icon: cardio ? 'heart' : 'dumbbell', equip: '' };
+}
+const exKey = e => { const c = (e.ex && exById(e.ex)) || exByName(e.name); return c ? c.id : 'n:' + String(e.name || '').trim().toLowerCase(); };
+const e1rm = s => num(s.kg) && num(s.reps) ? num(s.kg) * (1 + Math.min(num(s.reps), 12) / 30) : 0;
+const fmtKg = v => fmt1(v).replace(/\s/g, ' ');
+function setText(s, kind) {
+  if (kind === 'c') return [num(s.min) && `${fmtN(s.min)} мин`, num(s.km) && `${fmt1(s.km)} км`].filter(Boolean).join(' · ') || '—';
+  if (kind === 't') return num(s.sec) ? (num(s.sec) >= 60 ? `${Math.floor(s.sec / 60)}:${z(Math.round(s.sec % 60))}` : `${fmtN(s.sec)} с`) : '—';
+  if (kind === 'bw') return `${fmtN(num(s.reps))}${num(s.kg) ? ` +${fmtKg(s.kg)}` : ''}`;
+  return `${fmtKg(num(s.kg))}×${fmtN(num(s.reps))}`;
+}
+// история упражнения: [{w, sets}] от новых к старым
+function exHistory(key, skipId) {
+  return S.workouts.filter(w => w.id !== skipId).flatMap(w => (w.exercises || []).filter(e => exKey(e) === key && e.sets?.length).map(e => ({ w, sets: e.sets })))
+    .sort((a, b) => (b.w.date + (b.w.time || '')).localeCompare(a.w.date + (a.w.time || '')));
+}
+function exBest(key, skipId) {
+  let kg = 0, rm = 0, reps = 0, sec = 0, km = 0;
+  for (const { sets } of exHistory(key, skipId)) for (const s of sets) { kg = Math.max(kg, num(s.kg)); rm = Math.max(rm, e1rm(s)); reps = Math.max(reps, num(s.reps)); sec = Math.max(sec, num(s.sec)); km = Math.max(km, num(s.km)); }
+  return { kg, rm, reps, sec, km };
+}
+function volume(w) { return (w.exercises || []).reduce((a, e) => a + (e.sets || []).reduce((b, s) => b + num(s.reps) * num(s.kg), 0), 0); }
 function setsStr(e) {
-  if (!e.sets.length) return '';
-  const groups = [];
-  for (const s of e.sets) { const last = groups[groups.length - 1]; if (last && last.reps === s.reps && last.kg === s.kg) last.n++; else groups.push({ ...s, n: 1 }); }
-  return groups.map(g => `<b>${g.n}×${g.reps}</b>${g.kg ? ` ${fmt1(g.kg)} кг` : ''}`).join(', ');
+  if (!e.sets?.length) return '';
+  const kind = exOf(e).kind, groups = [];
+  for (const s of e.sets) { const t = setText(s, kind), last = groups[groups.length - 1]; if (last && last.t === t) last.n++; else groups.push({ t, n: 1 }); }
+  return groups.map(g => g.n > 1 ? `<b>${g.n}×</b> ${g.t}` : g.t).join(', ');
 }
-function volume(w) { return w.exercises.reduce((a, e) => a + e.sets.reduce((b, s) => b + s.reps * (s.kg || 0), 0), 0); }
 function prs() {
   const map = {};
-  for (const w of S.workouts) for (const e of w.exercises) for (const s of e.sets) {
-    if (!s.kg) continue;
-    const k = e.name.trim().toLowerCase();
-    const cur = map[k];
-    if (!cur || s.kg > cur.kg || (s.kg === cur.kg && s.reps > cur.reps)) map[k] = { name: e.name.trim(), kg: s.kg, reps: s.reps, date: w.date };
+  for (const w of S.workouts) for (const e of w.exercises || []) for (const s of e.sets || []) {
+    if (!num(s.kg)) continue;
+    const k = exKey(e), cur = map[k];
+    if (!cur || num(s.kg) > cur.kg || (num(s.kg) === cur.kg && num(s.reps) > cur.reps)) map[k] = { key: k, name: exOf(e).name, kg: num(s.kg), reps: num(s.reps), date: w.date };
   }
   return Object.values(map).sort((a, b) => b.kg - a.kg);
 }
+function workoutTitle(exs) {
+  const cnt = {};
+  for (const e of exs) { const g = exOf(e).group; cnt[g] = (cnt[g] || 0) + Math.max(1, (e.sets || []).length); }
+  const top = Object.entries(cnt).sort((a, b) => b[1] - a[1]).slice(0, 2).map(([g]) => GYM_GROUPS[g][0]);
+  return top.length ? top.join(' + ') : 'Тренировка';
+}
+const exIcon = (c, cls = '') => `<span class="gx-ic ${cls}" style="--gc:${GYM_GROUPS[c.group]?.[1] || 'var(--gym)'}">${gymIcon(c.icon)}</span>`;
+
+/* ---------- живая тренировка ---------- */
+const newLive = (o = {}) => ({ id: uid(), start: new Date().toISOString(), date: ymd(), time: nowHM(), title: '', note: '', editing: null, past: false, minutes: '', ex: [], ...o });
+const blankSet = kind => kind === 'c' ? { min: '', km: '', done: false } : kind === 't' ? { sec: '', done: false } : { kg: '', reps: '', done: false };
+function liveFromWorkout(w, opts) {
+  return newLive({ ...opts, ex: (w.exercises || []).map(e => ({ ex: exOf(e).id, name: exOf(e).name, sets: (opts.editing ? e.sets.map(s => ({ ...s, done: true })) : e.sets.map(() => blankSet(exOf(e).kind))) })) });
+}
+function liveClock() {
+  const L = S.gymLive; if (!L || L.past) return '';
+  const sec = Math.max(0, Math.floor((Date.now() - Date.parse(L.start)) / 1000));
+  return `${Math.floor(sec / 3600) ? Math.floor(sec / 3600) + ':' : ''}${z(Math.floor(sec / 60) % 60)}:${z(sec % 60)}`;
+}
+function liveExCard(x, i) {
+  const c = exOf(x), key = c.id || exKey(x), hist = exHistory(key, S.gymLive.editing), prev = hist[0];
+  const cols = c.kind === 'c' ? [['min', 'мин', 'numeric'], ['km', 'км', 'decimal']] : c.kind === 't' ? [['sec', 'сек', 'numeric']] : c.kind === 'bw' ? [['kg', '+кг', 'decimal'], ['reps', 'повт.', 'numeric']] : [['kg', 'кг', 'decimal'], ['reps', 'повт.', 'numeric']];
+  const best = exBest(key, S.gymLive.editing);
+  return `<article class="gx" style="--gc:${GYM_GROUPS[c.group]?.[1]}">
+    <header class="gx-head">
+      <button type="button" class="gx-ic-btn" data-action="ex-open" data-k="${esc(key)}" aria-label="История упражнения">${exIcon(c)}</button>
+      <div class="gx-name"><b>${esc(c.name)}</b><span>${GYM_GROUPS[c.group]?.[0] || ''}${c.equip ? ' · ' + EQUIP[c.equip] : ''}${best.kg ? ` · рекорд ${fmtKg(best.kg)} кг` : ''}</span></div>
+      <button type="button" class="icon-btn" data-action="gx-del" data-i="${i}" aria-label="Убрать упражнение">${I.trash}</button>
+    </header>
+    ${prev ? `<p class="gx-prev">Прошлый раз · ${human(prev.w.date)}: ${prev.sets.map(s => setText(s, c.kind)).join(', ')}</p>` : ''}
+    <div class="gs-grid gs-${cols.length}">
+      <span class="gs-h">№</span><span class="gs-h">Прошлый</span>${cols.map(([, n]) => `<span class="gs-h">${n}</span>`).join('')}<span class="gs-h"></span><span class="gs-h"></span>
+      ${x.sets.map((s, j) => { const own = j ? x.sets[j - 1] : null, hp = prev?.sets[j] || prev?.sets[prev.sets.length - 1], p = hp || (own && Object.entries(own).some(([k, v]) => k !== 'done' && num(v)) ? Object.fromEntries(Object.entries(own).map(([k, v]) => [k, num(v)])) : null); return `
+        <span class="gs-n ${s.done ? 'done' : ''}">${j + 1}</span>
+        <span class="gs-prev">${hp ? setText(hp, c.kind) : '—'}</span>
+        ${cols.map(([f, n, im]) => `<input class="gs-in ${s.done ? 'done' : ''}" data-gs="${i}:${j}:${f}" inputmode="${im}" autocomplete="off" aria-label="${n}, подход ${j + 1}" placeholder="${p && num(p[f]) ? (f === 'kg' || f === 'km' ? fmtKg(num(p[f])) : num(p[f])) : ''}" value="${esc(s[f] ?? '')}">`).join('')}
+        <button type="button" class="gs-ok ${s.done ? 'on' : ''}" data-action="gs-done" data-i="${i}" data-j="${j}" aria-label="Подход ${j + 1} сделан" aria-pressed="${!!s.done}">${I.check}</button>
+        <button type="button" class="gs-x" data-action="gs-del" data-i="${i}" data-j="${j}" aria-label="Убрать подход">${I.x}</button>`; }).join('')}
+    </div>
+    <button type="button" class="btn btn-ghost btn-sm gx-addset" data-action="gs-add" data-i="${i}">${I.plus}Подход</button>
+  </article>`;
+}
+function pageGymLive() {
+  const L = S.gymLive, done = L.ex.reduce((a, x) => a + x.sets.filter(s => s.done).length, 0), all = L.ex.reduce((a, x) => a + x.sets.length, 0);
+  const vol = L.ex.reduce((a, x) => a + x.sets.filter(s => s.done).reduce((b, s) => b + num(s.kg) * num(s.reps), 0), 0);
+  return `<section class="page page-gym-live" style="--c:var(--gym)">
+    <div class="gl-top">
+      <div class="gl-title">
+        <span class="bud-k">${L.editing ? 'Правка тренировки' : L.past ? 'Прошедшая тренировка' : 'Тренировка идёт'}</span>
+        <input class="gl-name" data-gl="title" maxlength="60" placeholder="${esc(workoutTitle(L.ex))}" value="${esc(L.title)}" aria-label="Название тренировки">
+      </div>
+      ${L.past ? '' : `<div class="gl-clock" id="gx-clock" aria-label="Время тренировки">${liveClock()}</div>`}
+      <div class="gl-actions">
+        <button class="btn btn-ghost" data-action="gym-cancel">${L.editing ? 'Отмена' : 'Отменить'}</button>
+        <button class="btn btn-primary" style="--c:var(--gym)" data-action="gym-finish">${I.check}${L.editing ? 'Сохранить' : 'Завершить'}</button>
+      </div>
+    </div>
+    ${L.past ? `<div class="gl-past">
+      ${field('Дата', `<input type="date" data-gl="date" value="${L.date}" max="${ymd()}">`)}
+      ${field('Начало', `<input type="time" data-gl="time" value="${esc(L.time)}">`)}
+      ${field('Длилась, мин', `<input type="number" min="0" step="5" inputmode="numeric" data-gl="minutes" placeholder="60" value="${esc(L.minutes)}">`)}
+    </div>` : ''}
+    <div class="gl-sum"><span><b>${L.ex.length}</b> ${plural(L.ex.length, 'упражнение', 'упражнения', 'упражнений')}</span><span><b>${done}</b> из ${all} подходов</span>${vol ? `<span><b>${fmtN(vol)}</b> кг объём</span>` : ''}</div>
+    ${L.ex.map(liveExCard).join('')}
+    <button type="button" class="gx-add" data-action="gx-add">${I.plus}Добавить упражнение</button>
+    ${field('Заметка', `<textarea class="note-area" data-gl="note" placeholder="Самочувствие, что улучшить в следующий раз">${esc(L.note)}</textarea>`)}
+    ${restBar()}
+  </section>`;
+}
+
+/* таймер отдыха после отмеченного подхода */
+function restBar() {
+  if (!view.rest) return '';
+  const left = Math.max(0, Math.ceil((view.rest.until - Date.now()) / 1000));
+  return `<div class="rest-bar" id="rest-bar"><span>Отдых</span><b id="rest-left">${Math.floor(left / 60)}:${z(left % 60)}</b>
+    <button type="button" data-action="rest-adj" data-n="-15">−15</button><button type="button" data-action="rest-adj" data-n="15">+15</button>
+    <button type="button" class="icon-btn" data-action="rest-stop" aria-label="Закончить отдых">${I.x}</button></div>`;
+}
+setInterval(() => {
+  const c = $('#gx-clock'); if (c) c.textContent = liveClock();
+  const p = $('#gym-pill b'); if (p) p.textContent = liveClock();
+  if (view.rest) {
+    const left = Math.ceil((view.rest.until - Date.now()) / 1000), el = $('#rest-left');
+    if (left <= 0) { view.rest = null; $('#rest-bar')?.remove(); try { navigator.vibrate?.([200, 100, 200]); } catch {} toast('Отдых закончен — следующий подход'); }
+    else if (el) el.textContent = `${Math.floor(left / 60)}:${z(left % 60)}`;
+  }
+}, 1000);
+
+/* выбор упражнений */
+function pickerList() {
+  const q = String(view.gxQ || '').trim().toLowerCase(), g = view.gxGroup || '', sel = view.gxSel || [];
+  const used = {}; S.workouts.forEach(w => (w.exercises || []).forEach(e => { const k = exKey(e); used[k] = Math.max(used[k] || 0, Date.parse(w.date)); }));
+  let list = exAll().filter(x => (!g || x.group === g) && (!q || x.name.toLowerCase().includes(q)));
+  list.sort((a, b) => (used[b.id] || 0) - (used[a.id] || 0));
+  if (!list.length) return `<p class="hint">Не нашёл. Создай своё упражнение — кнопка ниже.</p>`;
+  return `<div class="gp-grid">${list.map(x => `<button type="button" class="gp-i ${sel.includes(x.id) ? 'on' : ''}" data-action="gx-pick" data-id="${x.id}" aria-pressed="${sel.includes(x.id)}">
+      ${exIcon(x)}<b>${esc(x.name)}</b><span>${GYM_GROUPS[x.group][0]}${used[x.id] ? ' · было' : ''}</span>${sel.includes(x.id) ? `<i class="gp-n">${sel.indexOf(x.id) + 1}</i>` : ''}</button>`).join('')}</div>`;
+}
+function pickerBody() {
+  const g = view.gxGroup || '', n = (view.gxSel || []).length;
+  return `<div class="search-box">${I.search}<input data-gx-search placeholder="Найти упражнение" value="${esc(view.gxQ || '')}" autocomplete="off"></div>
+    <div class="chips gp-groups"><button type="button" class="chip chip-btn ${!g ? 'on' : ''}" data-action="gx-group" data-v="">Все</button>${Object.entries(GYM_GROUPS).map(([k, [nm, c]]) => `<button type="button" class="chip chip-btn ${g === k ? 'on' : ''}" style="--dot:${c}" data-action="gx-group" data-v="${k}"><i class="m-dot" style="--dot:${c}"></i>${nm}</button>`).join('')}</div>
+    <div id="gx-list">${pickerList()}</div>
+    <footer class="sheet-foot gp-foot"><button type="button" class="btn btn-ghost" data-action="gx-new">${I.plus}Своё упражнение</button><button type="button" class="btn btn-primary" style="--c:var(--gym)" data-action="gx-pick-add" id="gx-pick-add" ${n ? '' : 'disabled'}>${n ? `Добавить (${n})` : 'Выбери упражнения'}</button></footer>`;
+}
+function customExForm() {
+  return `<form data-form="gx-custom" class="form-stack">
+    ${field('Название', `<input name="name" required maxlength="60" placeholder="Например: Жим Смита" value="${esc(view.gxQ || '')}">`)}
+    <div class="row row-2">
+      ${field('Группа мышц', `<select name="group">${Object.entries(GYM_GROUPS).map(([k, [n]]) => `<option value="${k}" ${view.gxGroup === k ? 'selected' : ''}>${n}</option>`).join('')}</select>`)}
+      ${field('Что записывать', `<select name="kind">${Object.entries(KIND_NAMES).map(([k, n]) => `<option value="${k}">${n}</option>`).join('')}</select>`)}
+    </div>
+    ${field('Снаряд', `<select name="equip">${Object.entries(EQUIP).map(([k, n]) => `<option value="${k}">${n}</option>`).join('')}</select>`)}
+    <div class="field"><label>Иконка</label><div class="gp-icons">${Object.keys(GI).map((k, n) => `<label class="gp-icon"><input type="radio" name="icon" value="${k}" ${n === 0 ? 'checked' : ''}><span>${gymIcon(k)}</span></label>`).join('')}</div></div>
+    <footer class="sheet-foot"><button type="button" class="btn btn-ghost" data-action="gx-add">Назад</button><button class="btn btn-primary" style="--c:var(--gym)" type="submit">Создать и добавить</button></footer>
+  </form>`;
+}
+
+/* карточка упражнения: рекорды, график, история */
+function exSheet(key) {
+  const sample = exById(key) || (() => { for (const w of S.workouts) for (const e of w.exercises || []) if (exKey(e) === key) return exOf(e); return null; })();
+  if (!sample) return;
+  const c = sample, hist = exHistory(key), best = exBest(key), sets = hist.reduce((a, h) => a + h.sets.length, 0);
+  const metric = c.kind === 'w' ? s => num(s.kg) : c.kind === 'bw' ? s => num(s.reps) : c.kind === 't' ? s => num(s.sec) : s => num(s.km) || num(s.min);
+  const unit = c.kind === 'w' ? 'кг' : c.kind === 'bw' ? 'повт.' : c.kind === 't' ? 'с' : (hist.some(h => h.sets.some(s => num(s.km))) ? 'км' : 'мин');
+  const pts = hist.slice(0, 24).reverse().map(h => ({ label: human(h.w.date), v: Math.max(...h.sets.map(metric)) })).filter(p => p.v);
+  const kpis = c.kind === 'w' ? [['Рекорд веса', best.kg ? `${fmtKg(best.kg)} кг` : '—'], ['Расчётный максимум', best.rm ? `${fmtKg(Math.round(best.rm * 2) / 2)} кг` : '—']]
+    : c.kind === 'bw' ? [['Больше всего повторов', best.reps || '—'], ['С отягощением', best.kg ? `+${fmtKg(best.kg)} кг` : '—']]
+    : c.kind === 't' ? [['Дольше всего', best.sec ? setText({ sec: best.sec }, 't') : '—'], ['', '']] : [['Дальше всего', best.km ? `${fmt1(best.km)} км` : '—'], ['', '']];
+  openSheet({ title: 'Упражнение', accent: 'var(--gym)', cls: 'sheet-wide', body: `
+    <div class="ex-hero">${exIcon(c, 'xl')}<div><h3>${esc(c.name)}</h3><span>${GYM_GROUPS[c.group]?.[0] || ''}${c.equip ? ' · ' + EQUIP[c.equip] : ''} · ${KIND_NAMES[c.kind]}</span></div></div>
+    <div class="ex-kpis">${[...kpis, ['Тренировок', hist.length], ['Подходов', sets]].filter(k => k[0]).map(([n, v]) => `<div><span>${n}</span><b>${v}</b></div>`).join('')}</div>
+    ${pts.length > 1 ? `<div><h4 class="ex-h">Лучший подход по тренировкам, ${unit}</h4>${lineChart(pts, { color: GYM_GROUPS[c.group]?.[1] || 'var(--gym)', unit })}</div>` : '<p class="hint">После двух тренировок с этим упражнением здесь появится график прогресса.</p>'}
+    ${c.kind === 'w' ? '<p class="hint">Расчётный максимум — вес на один раз по формуле Эпли из твоих подходов до 12 повторов.</p>' : ''}
+    <h4 class="ex-h">История</h4>
+    ${hist.length ? `<ul class="ex-hist">${hist.slice(0, 15).map(h => `<li><span>${human(h.w.date)}</span><b>${h.sets.map(s => setText(s, c.kind)).join(', ')}</b></li>`).join('')}</ul>` : empty('Ещё не делал.')}
+    ${S.gymLive && !S.gymLive.ex.some(x => (x.ex || exKey(x)) === key) && c.id ? `<button class="btn btn-primary" style="--c:var(--gym)" data-action="gx-add-one" data-id="${c.id}">${I.plus}Добавить в тренировку</button>` : ''}` });
+}
+
+/* страница зала */
 function pageGym() {
-  const week = rangeDays(7).reduce((a, d) => a + gymOn(d).length, 0);
-  const month = rangeDays(30).reduce((a, d) => a + gymOn(d).length, 0);
-  const minutes = S.workouts.reduce((a, w) => a + num(w.minutes), 0);
-  const recent = [...S.workouts].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 40);
-  const weeks = weeklyCounts(12, d => gymOn(d).length);
-  const pr = prs();
+  if (S.gymLive) return pageGymLive();
+  const week = rangeDays(7).reduce((a, d) => a + gymOn(d).length, 0), month = rangeDays(30).reduce((a, d) => a + gymOn(d).length, 0);
+  const from30 = addDays(ymd(), -29), w30 = S.workouts.filter(w => w.date >= from30), w7 = S.workouts.filter(w => w.date >= addDays(ymd(), -6));
+  const recent = [...S.workouts].sort((a, b) => (b.date + (b.time || '')).localeCompare(a.date + (a.time || ''))).slice(0, 30);
+  const groups = {}; w30.forEach(w => (w.exercises || []).forEach(e => { const g = exOf(e).group; groups[g] = (groups[g] || 0) + Math.max(1, (e.sets || []).length); }));
+  const gl = Object.entries(groups).sort((a, b) => b[1] - a[1]), gmax = gl[0]?.[1] || 1;
+  // упражнения, которые делал
+  const mine = {}; for (const w of S.workouts) for (const e of w.exercises || []) { const k = exKey(e); if (!mine[k] || mine[k].date < w.date) mine[k] = { key: k, c: exOf(e), date: w.date }; }
+  const myEx = Object.values(mine).sort((a, b) => b.date.localeCompare(a.date));
+  // рекорды за 30 дней: подход тяжелее всего, что было раньше
+  // рекорды за 30 дней: тренировки, где лучший вес выше всего, что было до неё
+  const newPr = myEx.filter(m => m.c.kind === 'w').reduce((a, m) => {
+    let best = 0; for (const h of exHistory(m.key).reverse()) { const top = Math.max(0, ...h.sets.map(st => num(st.kg))); if (best && top > best && h.w.date >= from30) a++; best = Math.max(best, top); }
+    return a; }, 0);
+  const repeat = []; for (const w of recent) { const t = w.type || workoutTitle(w.exercises || []); if ((w.exercises || []).length && !repeat.some(r => (r.type || workoutTitle(r.exercises)) === t)) repeat.push(w); if (repeat.length >= 3) break; }
   let i = 0;
   return `<section class="page" style="--c:var(--gym)">
-    ${topbar('Зал', `${S.workouts.length} ${plural(S.workouts.length, 'тренировка', 'тренировки', 'тренировок')}`, { date: false, actions: `<button class="btn btn-primary" style="--c:var(--gym)" data-action="add-gym">${I.plus}Тренировка</button>` })}
+    ${topbar('Зал', `${S.workouts.length} ${plural(S.workouts.length, 'тренировка', 'тренировки', 'тренировок')}`, { date: false, actions: `<button class="btn btn-ghost" data-action="gym-past">${I.plus}Записать прошедшую</button>` })}
+    <div class="gym-hero">
+      <button class="gym-start" data-action="gym-start">${GI.dumbbell ? gymIcon('dumbbell') : ''}<span><b>Начать тренировку</b><small>подходы, вес и отдых — по ходу</small></span></button>
+      ${repeat.length ? `<div class="gym-repeat"><span class="bud-k">Повторить</span>${repeat.map(w => `<button class="gym-rep" data-action="gym-repeat" data-id="${w.id}"><span class="gym-rep-ics">${(w.exercises || []).slice(0, 4).map(e => exIcon(exOf(e), 'sm')).join('')}</span><b>${esc(w.type || workoutTitle(w.exercises))}</b><small>${human(w.date)} · ${(w.exercises || []).length} упр.</small></button>`).join('')}</div>` : ''}
+    </div>
     <div class="kpis">
       ${kpi('За 7 дней', `${week}`, 'gym', i++, plural(week, 'тренировка', 'тренировки', 'тренировок'))}
-      ${kpi('За 30 дней', `${month}`, 'gym', i++)}
-      ${kpi('Часов в зале', `${hoursStr(minutes)}<small>ч</small>`, 'paper', i++, 'за всё время')}
-      ${kpi('Рекордов', `${pr.length}`, 'paper', i++, 'упражнений с весом')}
+      ${kpi('За 30 дней', `${month}`, 'gym', i++, `${fmt1(month / 30 * 7)} в неделю`)}
+      ${kpi('Объём недели', `${fmt1(w7.reduce((a, w) => a + volume(w), 0) / 1000)}<small>т</small>`, 'paper', i++, 'вес × повторы')}
+      ${kpi('Новых рекордов', `${newPr}`, 'paper', i++, 'за 30 дней')}
     </div>
     <div class="grid">
-      ${card({ domain: 'gym', title: 'Тренировок в неделю, 12 недель', span: 7, i: i++, body: barChart(weeks, { color: 'var(--gym)', unit: 'тр.', max: 7, labelEvery: 1 }) })}
-      ${card({ domain: 'gym', title: 'Личные рекорды', span: 5, i: i++, body: pr.length ? `<table class="table"><thead><tr><th>Упражнение</th><th class="num">Вес</th><th class="num">Повт.</th></tr></thead><tbody>${pr.slice(0, 8).map(p => `<tr><td>${esc(p.name)}</td><td class="num">${fmt1(p.kg)} кг</td><td class="num">${p.reps}</td></tr>`).join('')}</tbody></table>` : empty('Запиши подходы с весом в формате «Жим лёжа 3x8 60», и рекорды посчитаются сами.') })}
-      ${card({ domain: 'gym', title: 'Журнал тренировок', span: 12, i: i++, body: recent.length ? groupBy(recent, w => w.date).map(([d, arr]) => `<div class="group-date"><span>${relDay(d)} · ${human(d)}</span></div><div class="list">${arr.map(gymItem).join('')}</div>`).join('') : empty('Пока без тренировок.') })}
+      ${card({ domain: 'gym', title: 'Тренировок в неделю', span: 7, i: i++, body: barChart(weeklyCounts(12, d => gymOn(d).length), { color: 'var(--gym)', unit: 'тр.', max: 7, labelEvery: 1, values: true }) })}
+      ${card({ domain: 'gym', title: 'Мышцы за 30 дней · подходы', span: 5, i: i++, body: gl.length ? `<div class="hbars">${gl.map(([g, n]) => `<div class="hbar" style="--c:${GYM_GROUPS[g][1]}"><span class="hbar-label">${GYM_GROUPS[g][0]}</span><span class="hbar-track"><i data-w="${n / gmax * 100}"></i></span><span class="hbar-val">${n}</span></div>`).join('')}</div>${Object.keys(GYM_GROUPS).filter(g => g !== 'cardio' && g !== 'full' && !groups[g]).length ? `<p class="hint">Не было: ${Object.keys(GYM_GROUPS).filter(g => g !== 'cardio' && g !== 'full' && !groups[g]).map(g => GYM_GROUPS[g][0].toLowerCase()).join(', ')}.</p>` : ''}` : empty('Тренировок за месяц не было.') })}
+      ${card({ domain: 'gym', title: 'Мои упражнения', span: 12, i: i++, body: myEx.length ? `<div class="gym-ex">${myEx.slice(0, 24).map(m => { const b = exBest(m.key), h = exHistory(m.key); return `<button class="gym-ex-i" data-action="ex-open" data-k="${esc(m.key)}">${exIcon(m.c)}<span><b>${esc(m.c.name)}</b><small>${m.c.kind === 'w' && b.kg ? `рекорд ${fmtKg(b.kg)} кг` : m.c.kind === 'bw' && b.reps ? `до ${b.reps} повт.` : m.c.kind === 'c' && b.km ? `до ${fmt1(b.km)} км` : ''}${h.length ? ` · ${h.length}×` : ''} · ${human(m.date)}</small></span></button>`; }).join('')}</div>` : empty('Начни тренировку — здесь появятся твои упражнения с рекордами и прогрессом.') })}
+      ${card({ domain: 'gym', title: 'Журнал', span: 12, i: i++, body: recent.length ? recent.map(gymItem).join('') : empty('Пока без тренировок.') })}
     </div>
   </section>`;
 }
 function gymItem(w) {
   const vol = volume(w);
-  return `<div class="item" style="align-items:flex-start">
-    <span class="item-time">${esc(w.time || '—')}</span>
-    <div class="item-main">
-      <div class="item-title">${esc(w.type)}</div>
-      ${w.exercises.length ? `<div class="item-sub" style="display:flex;flex-direction:column;gap:3px;margin-top:6px">${w.exercises.map(e => `<span class="sets">${esc(e.name)}${e.sets.length ? ' — ' + setsStr(e) : ''}</span>`).join('')}</div>` : ''}
-      ${w.note ? `<div class="item-sub">${esc(w.note)}</div>` : ''}
-    </div>
-    <span class="item-val">${w.minutes ? fmtMin(w.minutes) : ''}${vol ? `<small>${fmtN(vol)} кг объём</small>` : ''}</span>
-    ${itemActions('gym', w.id)}
-  </div>`;
+  return `<article class="gw">
+    <header class="gw-head"><div><b>${esc(w.type || workoutTitle(w.exercises || []))}</b><span>${relDay(w.date)} · ${human(w.date)}${w.time ? ` · ${esc(w.time)}` : ''}${w.minutes ? ` · ${fmtMin(w.minutes)}` : ''}${vol ? ` · ${fmtN(vol)} кг` : ''}</span></div>
+      <div class="gw-act"><button class="btn btn-ghost btn-sm" data-action="gym-repeat" data-id="${w.id}">${I.repeat}Повторить</button><button class="icon-btn" data-action="edit-gym" data-id="${w.id}" aria-label="Изменить">${I.edit}</button><button class="icon-btn" data-action="del-gym" data-id="${w.id}" aria-label="Удалить">${I.trash}</button></div></header>
+    ${(w.exercises || []).length ? `<ul class="gw-ex">${w.exercises.map(e => { const c = exOf(e); return `<li><button type="button" data-action="ex-open" data-k="${esc(exKey(e))}">${exIcon(c, 'sm')}<span>${esc(c.name)}</span></button><em>${setsStr(e) || '—'}</em></li>`; }).join('')}</ul>` : ''}
+    ${w.note ? `<p class="hint">${esc(w.note)}</p>` : ''}
+  </article>`;
 }
-function gymForm(w) {
-  const text = w ? w.exercises.map(e => e.name + (e.sets.length ? ' ' + exToText(e) : '')).join('\n') : '';
-  openModal({
-    title: w ? 'Изменить тренировку' : 'Тренировка', accent: 'var(--gym)', form: 'gym',
-    body: `<input type="hidden" name="id" value="${w ? w.id : ''}">
-      <div class="row">
-        ${field('Тип', `<input name="type" list="gymtypes" required autocomplete="off" placeholder="Силовая" value="${esc(w?.type || '')}">${datalist('gymtypes', [...GYM_TYPES, ...S.workouts.map(x => x.type)])}`)}
-        ${field('Минут', `<input name="minutes" type="number" min="0" step="5" inputmode="numeric" placeholder="60" value="${w?.minutes ?? ''}">`)}
-        ${field('Время', `<input name="time" type="time" value="${w ? w.time : defTime('18:00')}">`)}
-        ${field('Дата', `<input name="date" type="date" value="${w ? w.date : view.date}">`)}
-      </div>
-      ${field('Упражнения', `<textarea name="exercises" data-live="exercises" placeholder="Жим лёжа 3x8 60&#10;Присед 4x6 80, 1x4 90&#10;Подтягивания 3x10&#10;Бег 20 мин">${esc(text)}</textarea>`)}
-      <div class="preview" id="ex-preview">${exPreview(text)}</div>
-      <p class="hint">Формат: название, затем подходы×повторы и вес. «3x8 60» — три подхода по 8 на 60 кг. Несколько групп через запятую. Без цифр — просто название.</p>
-      ${field('Заметка', `<input name="note" placeholder="Самочувствие, что улучшить" value="${esc(w?.note || '')}">`)}`,
-    submit: w ? 'Сохранить' : 'Записать'
-  });
+function finishLive() {
+  const L = S.gymLive; if (!L) return;
+  const exercises = L.ex.map(x => {
+    const kind = exOf(x).kind;
+    const sets = x.sets.filter(s => s.done || num(s.reps) || num(s.sec) || num(s.min) || num(s.km)).map(s => kind === 'c' ? { min: num(s.min), km: num(s.km) } : kind === 't' ? { sec: num(s.sec) } : { kg: num(s.kg), reps: num(s.reps) }).filter(s => Object.values(s).some(Boolean));
+    return { ex: x.ex || null, name: x.name, sets };
+  }).filter(x => x.sets.length);
+  if (!exercises.length) { toast('Отметь хотя бы один подход', true); return; }
+  // рекорды: сравниваем с историей до этой тренировки
+  const prs = [];
+  for (const e of exercises) { const c = exOf(e); if (c.kind !== 'w') continue; const before = exBest(exKey(e), L.editing).kg, now = Math.max(...e.sets.map(s => num(s.kg))); if (before && now > before) prs.push(`${c.name} ${fmtKg(now)} кг`); }
+  const minutes = L.past ? num(L.minutes) : Math.max(1, Math.round((Date.now() - Date.parse(L.start)) / 60000));
+  const w = { id: L.editing || L.id, date: L.date || ymd(), time: L.time || '', type: L.title.trim() || workoutTitle(exercises), minutes, exercises, note: L.note.trim() };
+  const idx = S.workouts.findIndex(x => x.id === w.id);
+  if (idx >= 0) S.workouts[idx] = w; else S.workouts.push(w);
+  S.gymLive = null; view.rest = null;
+  save(); render();
+  const vol = volume(w), sets = exercises.reduce((a, e) => a + e.sets.length, 0);
+  toast(prs.length ? `Новый рекорд: ${prs.slice(0, 2).join(', ')}!` : L.editing ? 'Сохранено' : `Готово: ${sets} ${plural(sets, 'подход', 'подхода', 'подходов')}${vol ? `, ${fmtN(vol)} кг` : ''}${minutes ? `, ${fmtMin(minutes)}` : ''}`);
 }
-function exToText(e) {
-  const groups = [];
-  for (const s of e.sets) { const last = groups[groups.length - 1]; if (last && last.reps === s.reps && last.kg === s.kg) last.n++; else groups.push({ ...s, n: 1 }); }
-  return groups.map(g => `${g.n}x${g.reps}${g.kg ? ' ' + g.kg : ''}`).join(', ');
-}
-function exPreview(text) {
-  const ex = parseExercises(text);
-  if (!ex.length) return '';
-  return ex.map(e => `${esc(e.name)}${e.sets.length ? ` — ${e.sets.length} ${plural(e.sets.length, 'подход', 'подхода', 'подходов')}, ${setsStr(e)}` : ''}`).join('\n');
+function startLive(o) {
+  if (S.gymLive && !o?.force) { location.hash = '#gym'; toast('Уже идёт тренировка — заверши или отмени её'); return; }
+  S.gymLive = newLive(o); view.rest = null; save();
+  if (location.hash.replace('#', '').split('/')[0] !== 'gym') location.hash = '#gym'; else render();
 }
 
 /* ============================================================
@@ -3442,7 +3743,7 @@ const ACTIONS = {
   'drink-ml': el => { const i = $('#modal-root [name=ml]'); i.value = el.dataset.v; drinkPreview(); },
   'drink-step': el => { const i = $('#modal-root [name=ml]'); i.value = Math.max(10, num(i.value) + +el.dataset.n); drinkPreview(); },
   'add-study': () => studyForm(),
-  'add-gym': () => gymForm(),
+  'add-gym': () => view.date === ymd() ? startLive() : startLive({ past: true, date: view.date, time: '18:00', minutes: 60 }),
   'add-steps': () => openModal({
     title: 'Шаги и вес', accent: 'var(--steps)', form: 'steps',
     body: `<input class="big-input" name="steps" type="number" min="0" step="100" inputmode="numeric" placeholder="сколько шагов" value="${dayRec(view.date).steps || ''}">
@@ -3450,7 +3751,39 @@ const ACTIONS = {
   }),
   'edit-meal': el => mealForm(S.meals.find(m => m.id === el.dataset.id)),
   'edit-study': el => studyForm(S.study.find(s => s.id === el.dataset.id)),
-  'edit-gym': el => gymForm(S.workouts.find(w => w.id === el.dataset.id)),
+  'edit-gym': el => { const w = S.workouts.find(x => x.id === el.dataset.id); if (!w) return;
+    if (S.gymLive) { location.hash = '#gym'; toast('Сначала заверши текущую тренировку'); return; }
+    S.gymLive = { ...liveFromWorkout(w, { editing: w.id }), past: true, date: w.date, time: w.time || '', minutes: w.minutes || '', title: w.type || '', note: w.note || '' }; save(); location.hash = '#gym'; render(); },
+  'gym-start': () => startLive(),
+  'gym-past': () => startLive({ past: true, date: view.date < ymd() ? view.date : ymd(), time: '18:00', minutes: 60 }),
+  'gym-repeat': el => { const w = S.workouts.find(x => x.id === el.dataset.id); if (!w) return; if (S.gymLive) { location.hash = '#gym'; toast('Уже идёт тренировка'); return; }
+    S.gymLive = { ...liveFromWorkout(w, {}), title: w.type || '' }; view.rest = null; save(); location.hash = '#gym'; render(); },
+  'gym-cancel': () => { const L = S.gymLive; if (!L) return; S.gymLive = null; view.rest = null; save(); render();
+    if (!L.editing) undoToast('Тренировка отменена', () => { S.gymLive = L; }); },
+  'gym-finish': () => finishLive(),
+  'gx-add': () => { view.gxSel = []; view.gxQ = ''; openSheet({ title: 'Упражнения', accent: 'var(--gym)', body: pickerBody(), cls: 'sheet-wide' }); setTimeout(() => $('[data-gx-search]')?.focus(), 80); },
+  'gx-group': el => { view.gxGroup = el.dataset.v; const b = $('#sheet-body'); if (b) b.innerHTML = pickerBody(); },
+  'gx-pick': el => { const sel = view.gxSel = view.gxSel || [], k = sel.indexOf(el.dataset.id); if (k >= 0) sel.splice(k, 1); else sel.push(el.dataset.id);
+    $('#gx-list').innerHTML = pickerList(); const btn = $('#gx-pick-add'); if (btn) { btn.disabled = !sel.length; btn.textContent = sel.length ? `Добавить (${sel.length})` : 'Выбери упражнения'; } },
+  'gx-pick-add': () => { const L = S.gymLive; if (!L) return; for (const id of view.gxSel || []) { const c = exById(id); if (!c) continue; const h = exHistory(c.id)[0]; L.ex.push({ ex: c.id, name: c.name, sets: Array.from({ length: Math.max(1, Math.min(h?.sets.length || 3, 8)) }, () => blankSet(c.kind)) }); }
+    view.gxSel = []; closeModal(); save(); render(); setTimeout(() => { const all = document.querySelectorAll('.gx'); all[all.length - 1]?.scrollIntoView({ block: 'center', behavior: 'smooth' }); }, 60); },
+  'gx-add-one': el => { view.gxSel = [el.dataset.id]; ACTIONS['gx-pick-add'](); },
+  'gx-new': () => { const b = $('#sheet-body'); if (b) b.innerHTML = customExForm(); },
+  'gx-del': el => { const L = S.gymLive; if (!L) return; const i = +el.dataset.i, [x] = L.ex.splice(i, 1); save(); render(); undoToast(`«${x.name}» убрано`, () => { L.ex.splice(i, 0, x); }); },
+  'gs-add': el => { const x = S.gymLive?.ex[+el.dataset.i]; if (!x) return; const last = x.sets[x.sets.length - 1], kind = exOf(x).kind;
+    x.sets.push(last ? { ...Object.fromEntries(Object.entries(last).map(([k, v]) => [k, k === 'done' ? false : v])) } : blankSet(kind)); save(); render(); },
+  'gs-del': el => { const x = S.gymLive?.ex[+el.dataset.i]; if (!x) return; x.sets.splice(+el.dataset.j, 1); save(); render(); },
+  'gs-done': el => { const i = +el.dataset.i, j = +el.dataset.j, x = S.gymLive?.ex[i]; if (!x) return; const s = x.sets[j];
+    if (!s.done) {
+      // пустые поля берём из подсказки прошлого раза
+      document.querySelectorAll(`[data-gs^="${i}:${j}:"]`).forEach(inp => { const f = inp.dataset.gs.split(':')[2]; if (!String(s[f] ?? '').trim() && inp.placeholder) s[f] = inp.placeholder.replace(',', '.'); });
+      if (!Object.entries(s).some(([k, v]) => k !== 'done' && num(v))) { toast('Впиши вес и повторы', true); return; }
+      s.done = true; const kind = exOf(x).kind; if (kind !== 'c') view.rest = { until: Date.now() + (num(S.settings.rest) || 90) * 1000 };
+    } else s.done = false;
+    save(); render(); },
+  'rest-adj': el => { if (view.rest) { view.rest.until = Math.max(Date.now() + 5000, view.rest.until + +el.dataset.n * 1000); S.settings.rest = Math.max(15, Math.min(600, (num(S.settings.rest) || 90) + +el.dataset.n)); save(); } },
+  'rest-stop': () => { view.rest = null; $('#rest-bar')?.remove(); },
+  'ex-open': el => exSheet(el.dataset.k),
   'del-meal': el => { const m = S.meals.find(x => x.id === el.dataset.id); if (m) removeItems('meals', x => x.id === m.id, `«${baseName(m.name)}» удалено`); },
   'del-study': el => {
     const id = el.dataset.id, st = S.study.find(x => x.id === id); if (!st) return;
@@ -3478,7 +3811,7 @@ const ACTIONS = {
     const r = el.getBoundingClientRect(), x = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
     const m = Math.min(23 * 60 + 45, Math.round((+el.dataset.start + x * +el.dataset.span) / 15) * 15);
     view.presetTime = `${z(Math.floor(m / 60))}:${z(m % 60)}`;
-    ({ food: () => mealForm(), drink: () => drinkForm(), study: () => studyForm(), gym: () => gymForm(), quiz: () => { view.presetTime = null; location.hash = '#quiz'; }, task: () => { const tm = view.presetTime; view.presetTime = null; taskForm(null, view.date); setTimeout(() => { const f = $('#modal-root [data-form=task]'); if (f) f.time.value = tm; }, 0); } })[el.dataset.k]?.();
+    ({ food: () => mealForm(), drink: () => drinkForm(), study: () => studyForm(), gym: () => { const tm = view.presetTime; view.presetTime = null; startLive(view.date === ymd() && !tm ? {} : { past: true, date: view.date, time: tm || '18:00', minutes: 60 }); }, quiz: () => { view.presetTime = null; location.hash = '#quiz'; }, task: () => { const tm = view.presetTime; view.presetTime = null; taskForm(null, view.date); setTimeout(() => { const f = $('#modal-root [data-form=task]'); if (f) f.time.value = tm; }, 0); } })[el.dataset.k]?.();
   },
   'tl-open': () => {},
   'weigh': () => {
@@ -3658,13 +3991,12 @@ const FORMS = {
     const n = s.notes.length + s.qa.length + (s.notes.length >= 2 ? 1 : 0);
     toast(idx >= 0 ? 'Сохранено' : n ? `Записано. ${n} ${plural(n, 'карточка', 'карточки', 'карточек')} придут завтра` : 'Записано');
   },
-  gym(fd) {
-    const id = fd.get('id') || uid();
-    const w = { id, date: fd.get('date') || view.date, time: fd.get('time') || '', type: String(fd.get('type')).trim(), minutes: num(fd.get('minutes')), exercises: parseExercises(fd.get('exercises')), note: String(fd.get('note') || '').trim() };
-    if (!w.type) return;
-    const idx = S.workouts.findIndex(x => x.id === id);
-    if (idx >= 0) S.workouts[idx] = w; else S.workouts.push(w);
-    save(); closeModal(); render(); toast(idx >= 0 ? 'Сохранено' : 'Тренировка записана');
+  'gx-custom'(fd) {
+    const name = String(fd.get('name') || '').trim(); if (!name) return;
+    if (exByName(name)) { toast('Такое упражнение уже есть — найди его в списке', true); return; }
+    const c = { id: 'u' + uid(), name: name.slice(0, 60), group: GYM_GROUPS[fd.get('group')] ? String(fd.get('group')) : 'full', kind: KIND_NAMES[fd.get('kind')] ? String(fd.get('kind')) : 'w', icon: GI[fd.get('icon')] ? String(fd.get('icon')) : 'dumbbell', equip: EQUIP[fd.get('equip')] ? String(fd.get('equip')) : '' };
+    (S.exercises = S.exercises || []).push(c);
+    view.gxSel = [c.id]; ACTIONS['gx-pick-add'](); toast(`«${c.name}» добавлено в каталог`);
   },
   steps(fd) {
     const d = view.date;
@@ -3779,7 +4111,9 @@ document.addEventListener('input', e => {
     const live = $('#wiz-live'); if (live) live.innerHTML = wizLive();
   }
   if (t.closest && t.closest('[data-form=drink]')) drinkPreview();
-  if (t.dataset.live === 'exercises') { const p = $('#ex-preview'); if (p) p.textContent = exPreview(t.value); }
+  if (t.dataset.gs && S.gymLive) { const [i, j, f] = t.dataset.gs.split(':'), st = S.gymLive.ex[+i]?.sets[+j]; if (st) { st[f] = t.value.replace(',', '.'); save(); } }
+  if (t.dataset.gl && S.gymLive) { S.gymLive[t.dataset.gl] = t.value; save(); }
+  if (t.dataset.gxSearch !== undefined) { view.gxQ = t.value; const l = $('#gx-list'); if (l) l.innerHTML = pickerList(); }
   if (t.dataset.note !== undefined) {
     clearTimeout(noteTimer);
     noteTimer = setTimeout(() => { const d = t.dataset.note; S.days[d] = { ...dayRec(d), note: t.value }; save(); }, 400);
