@@ -1359,3 +1359,31 @@ mark.hit{background:#F6D96B;color:inherit;border-radius:3px;padding:0 1px}
   .card{grid-column:span 6}
   .card-wide{grid-column:1/-1}
 }
+
+/* шапка «Сегодня»: план, вес, серия одной панелью */
+.hstats{display:flex;background:var(--ink-1);border:1.5px solid var(--line-2);border-radius:20px;overflow:hidden}
+.hstat{
+  display:flex;flex-direction:column;align-items:flex-start;gap:3px;min-width:118px;padding:12px 16px;
+  background:transparent;border:0;border-left:1.5px solid var(--line-2);text-align:left;color:var(--paper);
+  font:inherit;text-decoration:none;cursor:pointer;transition:background .2s;
+}
+.hstat:first-child{border-left:0}
+a.hstat:hover,button.hstat:hover{background:var(--ink-3)}
+.hstat-k{display:flex;align-items:center;gap:6px;font:700 10px var(--sans);letter-spacing:.14em;text-transform:uppercase;color:var(--paper-2)}
+.hstat-k svg{width:13px;height:13px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.hstat-ico{font-style:normal;font-size:12px;letter-spacing:0}
+.hstat-v{font:800 24px/1.05 var(--display);letter-spacing:-.02em;font-variant-numeric:tabular-nums;white-space:nowrap}
+.hstat-v small{font:600 12px var(--sans);letter-spacing:0;color:var(--paper-2);margin-left:4px}
+.hstat-s{font-size:12px;font-weight:600;color:var(--paper-2);white-space:nowrap}
+.hstat-cta{color:var(--orange)}
+.hstat{cursor:default}
+a.hstat,button.hstat{cursor:pointer}
+.hstat-flame{background:var(--orange);color:var(--cream)}
+.hstat-flame .hstat-k,.hstat-flame .hstat-s,.hstat-flame .hstat-v small{color:rgba(255,248,236,.82)}
+@media (max-width:860px){
+  .hero-side{align-self:stretch;width:100%;align-items:stretch}
+  .hstats{width:100%}
+  .hstat{flex:1;min-width:0;padding:10px 12px}
+  .hstat-v{font-size:20px}
+  .hstat-s{font-size:11px;white-space:normal}
+}

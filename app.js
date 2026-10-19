@@ -406,9 +406,24 @@ function pageToday() {
       </div>
       <div class="hero-side">
         ${greet || d === ymd() ? `<div class="hero-greet">${greet || tod + '.'}</div>` : ''}
-        ${S.profile ? `<a class="chip chip-goal" href="#goal">${I.goal}${fmtN(set.kcal)} ккал · ${kgWeek(planNow().weeklyKg)}</a>` : ''}
-        <button class="chip chip-weigh" data-action="weigh">⚖ ${num(day.weight) ? `${fmt1(day.weight)} кг сегодня` : S.profile ? `${fmt1(curWeight())} кг · взвеситься` : 'записать вес'}</button>
-        <span class="chip chip-flame">${I.flame}${sk ? `${sk} ${plural(sk, 'день', 'дня', 'дней')} подряд` : 'серия начнётся с первой записи'}</span>
+        <div class="hstats">
+          ${S.profile ? `<a class="hstat" href="#goal" title="План питания и цель">
+            <span class="hstat-k">${I.goal}План</span>
+            <b class="hstat-v">${fmtN(set.kcal)}<small>ккал</small></b>
+            <span class="hstat-s">${kgWeek(planNow().weeklyKg)}</span>
+          </a>` : ''}
+          <button class="hstat" data-action="weigh" title="Записать вес">
+            <span class="hstat-k"><i class="hstat-ico">⚖</i>Вес</span>
+            ${num(day.weight) ? `<b class="hstat-v">${fmt1(day.weight)}<small>кг</small></b><span class="hstat-s">сегодня</span>`
+              : S.profile ? `<b class="hstat-v">${fmt1(curWeight())}<small>кг</small></b><span class="hstat-s hstat-cta">взвеситься →</span>`
+              : `<b class="hstat-v">—</b><span class="hstat-s hstat-cta">записать →</span>`}
+          </button>
+          <div class="hstat ${sk ? 'hstat-flame' : ''}" title="Дней подряд с записями">
+            <span class="hstat-k">${I.flame}Серия</span>
+            <b class="hstat-v">${sk}<small>${plural(sk, 'день', 'дня', 'дней')}</small></b>
+            <span class="hstat-s">${sk ? 'подряд' : 'с первой записи'}</span>
+          </div>
+        </div>
       </div>
     </header>
     ${starterCard(d)}
