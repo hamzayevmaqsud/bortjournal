@@ -250,6 +250,17 @@ function aiQuota(user, kind = 'ai') {
   aiUse.set(k, n); aiUse.set(g, gn); return true;
 }
 
+const bookSearches = new Map(); // поиски книг за день: отдельно от квоты ИИ
+const noCover = new Set();        // обложки, которых нет ни в одном каталоге: не спрашиваем повторно
+function isbn10(x) {
+  x = String(x).replace(/[^\dX]/gi, '').toUpperCase();
+  if (/^\d{9}[\dX]$/.test(x)) return x;
+  if (!/^978\d{10}$/.test(x)) return null;
+  const b = x.slice(3, 12); let sum = 0;
+  for (let i = 0; i < 9; i++) sum += (10 - i) * +b[i];
+  const c = (11 - sum % 11) % 11; return b + (c === 10 ? 'X' : c);
+}
+
 /* ---------- HTTP ---------- */
 function send(res, code, body, headers = {}) {
   const isJson = typeof body !== 'string' && !Buffer.isBuffer(body);
@@ -396,6 +407,64 @@ async function api(req, res, url) {
       answers: (Array.isArray(body.answers) ? body.answers : []).slice(0, 5).map(a => String(a).slice(0, 200))
     });
     return send(res, 200, out);
+  }
+  // Книги: поиск в Open Library и обложки. Сервер ходит только на адреса Open Library, собранные им самим
+  if (route === 'GET /api/books/search') {
+    const q = String(url.searchParams.get('q') || '').trim().slice(0, 120);
+    if (q.length < 2) return send(res, 200, { items: [] });
+    { const k = `${user}:${localDay()}`, n = (bookSearches.get(k) || 0) + 1; if (n > 300) return send(res, 429, { error: 'Слишком много поисков за сегодня.' }); bookSearches.set(k, n); }
+    try {
+      const r = await fetch(`https://openlibrary.org/search.json?q=${encodeURIComponent(q)}&limit=16&fields=key,title,author_name,first_publish_year,number_of_pages_median,cover_i,subject,isbn`,
+        { headers: { 'User-Agent': 'Bortjournal/1.0 (personal tracker)' }, signal: AbortSignal.timeout(12000) });
+      if (!r.ok) throw new Error(r.status);
+      const d = await r.json();
+      const items = (d.docs || []).map(x => ({
+        title: String(x.title || '').slice(0, 200), author: (x.author_name || []).slice(0, 2).join(', ').slice(0, 160),
+        year: x.first_publish_year || null, pages: x.number_of_pages_median || null, cover: Number.isInteger(x.cover_i) && x.cover_i > 0 ? x.cover_i : null,
+        genre: (x.subject || []).find(t => t.length < 30) || '',
+        isbn: [...new Set((x.isbn || []).map(isbn10).filter(Boolean))].slice(0, 4)
+      })).filter(x => x.title).sort((a, b) => (b.cover || b.isbn.length ? 1 : 0) - (a.cover || a.isbn.length ? 1 : 0)).slice(0, 12);
+      return send(res, 200, { items });
+    } catch { return send(res, 502, { error: 'Каталог книг не ответил. Можно добавить книгу вручную.' }); }
+  }
+  if (route === 'GET /api/books/cover') {
+    const ol = url.searchParams.get('ol'), mine = url.searchParams.get('mine');
+    const isbns = String(url.searchParams.get('isbn') || '').split(',').filter(x => /^\d{9}[\dX]$/.test(x)).slice(0, 4);
+    let file;
+    if ((ol && /^\d{1,12}$/.test(ol)) || isbns.length) {
+      const key = ol && /^\d{1,12}$/.test(ol) ? 'ol' + ol : 'isbn' + isbns[0];
+      file = path.join(DATA, 'covers', 'cat', key + '.jpg');
+      if (!(await fsp.access(file).then(() => true, () => false))) {
+        if (noCover.has(key)) return send(res, 404, 'No cover');
+        // сначала Amazon по ISBN (быстро), потом Open Library — её картинки лежат на archive.org, который доступен не везде
+        const urls = [...isbns.map(i => `https://images-na.ssl-images-amazon.com/images/P/${i}.01.LZZZZZZZ.jpg`), ...(key.startsWith('ol') ? [`https://covers.openlibrary.org/b/id/${ol}-M.jpg?default=false`] : [])];
+        let buf = null;
+        for (const u of urls) {
+          try {
+            const r = await fetch(u, { redirect: 'follow', signal: AbortSignal.timeout(8000) });
+            const host = new URL(r.url).hostname;
+            if (!r.ok || !/(^|\.)(openlibrary\.org|archive\.org|amazon\.com|media-amazon\.com|ssl-images-amazon\.com)$/.test(host) || !/^image\/jpe?g/.test(r.headers.get('content-type') || '')) continue;
+            const b = Buffer.from(await r.arrayBuffer());
+            if (b.length > 2000 && b.length < 3e6) { buf = b; break; } // у Amazon «нет обложки» — картинка 1×1
+          } catch {}
+        }
+        if (!buf) { noCover.add(key); return send(res, 404, 'No cover'); }
+        await fsp.mkdir(path.dirname(file), { recursive: true }); await fsp.writeFile(file, buf);
+      }
+    } else if (mine && /^[a-z0-9]{4,24}$/.test(mine)) file = path.join(DATA, 'covers', 'u', sha(user).slice(0, 16), mine + '.jpg');
+    else return send(res, 400, 'Bad request');
+    try { return send(res, 200, await fsp.readFile(file), { 'Content-Type': 'image/jpeg', 'Cache-Control': 'private, max-age=2592000' }); }
+    catch { return send(res, 404, 'No cover'); }
+  }
+  if (route === 'POST /api/books/cover') {
+    const body = await readBody(req, 2e6);
+    const id = String(body.id || ''), img = String(body.image || '');
+    if (!/^[a-z0-9]{4,24}$/.test(id) || img.length < 100 || img.length > 1.5e6) return send(res, 400, { error: 'Фото не подошло.' });
+    const buf = Buffer.from(img, 'base64');
+    if (buf[0] !== 0xff || buf[1] !== 0xd8) return send(res, 400, { error: 'Нужен JPEG.' });
+    const dir = path.join(DATA, 'covers', 'u', sha(user).slice(0, 16));
+    await fsp.mkdir(dir, { recursive: true }); await fsp.writeFile(path.join(dir, id + '.jpg'), buf);
+    return send(res, 200, { ok: true });
   }
   if (route === 'GET /api/state') return send(res, 200, loadState(user));
   if (route === 'PUT /api/state') {

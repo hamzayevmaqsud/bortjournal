@@ -7,10 +7,10 @@
 /* ---------- хранилище ---------- */
 const KEY = 'bortjournal.v1'; // старое хранилище браузера, нужно только для переноса
 const DEF = {
-  settings: { kcal: 2200, protein: 140, steps: 10000, study: 60, name: '' },
+  settings: { kcal: 2200, protein: 140, steps: 10000, study: 60, name: '', booksGoal: 12 },
   meals: [], study: [], workouts: [], days: {}, srs: {}, quizzes: {}, foods: {},
   profile: null, activity: {}, drinks: [], sets: [], studyTime: {},
-  tasks: [], goals: [], money: [], budget: {}
+  tasks: [], goals: [], money: [], budget: {}, books: [], readLog: [], achieved: {}
 };
 let S = structuredClone(DEF);
 let me = null, rev = 0, photoOn = false;
@@ -66,7 +66,7 @@ async function apiFetch(path, opts = {}) {
 }
 // сохранение: копим изменения 300 мс и отправляем всё состояние разом
 let saveTimer = null, saving = null, dirty = false, offline = false;
-function save() { updateBadge(); dirty = true; clearTimeout(saveTimer); saveTimer = setTimeout(flush, 300); }
+function save() { MEMO = new Map(); clearTimeout(achTimer); achTimer = setTimeout(checkAch, 1500); updateBadge(); dirty = true; clearTimeout(saveTimer); saveTimer = setTimeout(flush, 300); }
 async function flush() {
   clearTimeout(saveTimer);
   while (saving) await saving;
@@ -234,21 +234,25 @@ const I = {
   drop: '<svg viewBox="0 0 24 24"><path d="M12 3.5c3.2 4 6 7.3 6 10.5a6 6 0 0 1-12 0c0-3.2 2.8-6.5 6-10.5z"/><path d="M9 14.5a3 3 0 0 0 3 3"/></svg>',
   camera: '<svg viewBox="0 0 24 24"><path d="M4 8.5A1.5 1.5 0 0 1 5.5 7h2l1.5-2h6l1.5 2h2A1.5 1.5 0 0 1 20 8.5v9a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 17.5z"/><circle cx="12" cy="12.5" r="3.5"/></svg>',
   budget: '<svg viewBox="0 0 24 24"><path d="M4 7.5A2.5 2.5 0 0 1 6.5 5H17v3"/><rect x="4" y="8" width="16" height="11" rx="2.5"/><path d="M15.5 13.5h1"/></svg>',
+  books: '<svg viewBox="0 0 24 24"><path d="M5 4.5h4v15H5zM10 4.5h4v15h-4z"/><path d="M15 5.4l3.7-1 3.3 14.6-3.7 1z"/></svg>',
+  awards: '<svg viewBox="0 0 24 24"><circle cx="12" cy="9" r="5.5"/><path d="M8.5 13.5L7 21l5-2.5 5 2.5-1.5-7.5"/></svg>',
   logout: '<svg viewBox="0 0 24 24"><path d="M15 4h3a2 2 0 012 2v12a2 2 0 01-2 2h-3M10 16l-4-4 4-4M6 12h10"/></svg>'
 };
 document.querySelectorAll('[data-ico]').forEach(el => { el.innerHTML = I[el.dataset.ico] || ''; });
 
 /* ---------- состояние представления ---------- */
 const view = { page: 'today', date: ymd(), range: 30, lastPage: null };
-const PAGES = ['today', 'plans', 'food', 'budget', 'study', 'quiz', 'gym', 'steps', 'goal', 'stats', 'settings', 'more'];
+const PAGES = ['today', 'plans', 'food', 'budget', 'study', 'books', 'quiz', 'gym', 'steps', 'goal', 'stats', 'awards', 'settings', 'more'];
 // на телефоне внизу 5 вкладок; эти разделы — в «Ещё»
-const MORE_PAGES = ['budget', 'quiz', 'goal', 'gym', 'steps', 'stats', 'settings'];
+const MORE_PAGES = ['budget', 'books', 'awards', 'quiz', 'goal', 'gym', 'steps', 'stats', 'settings'];
 
 function route() {
   const [h, sub] = (decodeURIComponent(location.hash.replace('#', '')) || 'today').split('/');
   view.page = PAGES.includes(h) ? h : 'today';
   if (view.page === 'food' && ['day', 'analysis'].includes(sub)) view.foodTab = sub;
   if (view.page === 'plans' && PERIODS[sub]) view.planKind = sub;
+  if (view.page === 'stats' && STAT_TABS.some(t => t[0] === sub)) view.statTab = sub;
+  if (view.page === 'books' && ['now', 'shelf', 'quotes'].includes(sub)) view.bookTab = sub;
   if ($('#modal-root .overlay')) closeModal('nav');
   render();
 }
@@ -264,8 +268,9 @@ function render() {
   document.body.classList.toggle('setup-mode', !!view.wizard);
   if (view.wizard) { $('#main').innerHTML = pageWizard(); window.scrollTo({ top: 0, behavior: 'instant' }); return; }
   document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.page === view.page || (t.dataset.page === 'more' && MORE_PAGES.includes(view.page))));
-  const pages = { more: pageMore, today: pageToday, plans: pagePlans, food: pageFood, budget: pageBudget, study: pageStudy, quiz: pageQuiz, gym: pageGym, steps: pageSteps, goal: pageGoal, stats: pageStats, settings: pageSettings };
+  const pages = { more: pageMore, today: pageToday, plans: pagePlans, food: pageFood, budget: pageBudget, books: pageBooks, awards: pageAwards, study: pageStudy, quiz: pageQuiz, gym: pageGym, steps: pageSteps, goal: pageGoal, stats: pageStats, settings: pageSettings };
   const y = window.scrollY;
+  MEMO = new Map();
   $('#main').innerHTML = pages[view.page]();
   afterRender();
   if (view.lastPage !== view.page) window.scrollTo({ top: 0, behavior: 'instant' });
@@ -278,6 +283,7 @@ function afterRender() {
     document.querySelectorAll('.ring-fg[data-offset]').forEach(el => { el.style.strokeDashoffset = el.dataset.offset; });
     document.querySelectorAll('[data-w]').forEach(el => { el.style.width = el.dataset.w + '%'; });
     document.querySelectorAll('[data-count]').forEach(countUp);
+    document.querySelectorAll('.yh-wrap').forEach(el => { el.scrollLeft = el.scrollWidth; }); // год: показываем свежие недели
   });
 }
 function countUp(el) {
@@ -452,6 +458,8 @@ function pageMore() {
   const q = S.quizzes[ymd()], qn = q ? q.items.filter(i => !i.result).length : Math.min(dueCards(ymd()).length, QUIZ_SIZE);
   const items = [
     ['budget', 'Бюджет', num(S.budget.amount) ? (v => v >= 0 ? `сегодня можно ${fmtM(v)}` : `перерасход ${fmtM(-v)}`)(budgetDay(ymd()).leftToday) : 'лимит на день'],
+    ['books', 'Книги', (() => { const r = S.books.filter(b => b.status === 'reading'); return r.length ? `читаю «${esc(r[0].title.slice(0, 22))}»` : `${S.books.length} на полке`; })()],
+    ['awards', 'Достижения', `${achState().reduce((a, x) => a + x.tier, 0)} ступеней открыто`],
     ['quiz', 'Вопросы', qn ? `${qn} на сегодня` : 'на сегодня всё'],
     ['goal', 'Цель', S.profile ? `${fmt1(curWeight())} кг → ${S.profile.target ? fmt1(S.profile.target) + ' кг' : 'держать'}` : 'составить план'],
     ['gym', 'Зал', (() => { const n = S.workouts.filter(w => w.date >= addDays(ymd(), -6)).length; return n ? `${n} за неделю` : 'тренировки'; })()],
@@ -2191,6 +2199,652 @@ function pageBudget() {
 }
 
 /* ============================================================
+   КНИГИ: что читаю, полка-коллекция, цитаты
+   Поиск и обложки — Open Library через сервер; можно снять свою обложку.
+   ============================================================ */
+const BOOK_STATUS = { reading: 'Читаю', want: 'Хочу прочитать', done: 'Прочитано', drop: 'Брошено' };
+const BOOK_FORMAT = { paper: 'Бумажная', ebook: 'Электронная', audio: 'Аудио' };
+const BOOK_COLORS = ['#2F3B4F', '#D9622B', '#3C5B38', '#B5891E', '#8E2F22', '#4D7B78', '#5A4A6E', '#2E6B57'];
+const bookColor = b => BOOK_COLORS[[...String(b.title || '')].reduce((a, c) => (a * 31 + c.charCodeAt(0)) >>> 0, 7) % BOOK_COLORS.length];
+const readOn = d => S.readLog.filter(x => x.date === d).reduce((a, x) => a + num(x.pages), 0);
+const bookById = id => S.books.find(b => b.id === id);
+const bookPct = b => b.status === 'done' ? 100 : num(b.pages) ? Math.min(100, Math.round(num(b.page) / num(b.pages) * 100)) : 0;
+const booksDoneIn = y => S.books.filter(b => b.status === 'done' && String(b.finished || '').startsWith(String(y)));
+// «на 1 книгу», «на 2,5 книги», «на 7 книг»
+const bkN = v => { const r = Math.round(v * 10) / 10; return Number.isInteger(r) ? `${r} ${plural(r, 'книгу', 'книги', 'книг')}` : `${fmt1(r)} книги`; };
+function readStreak() {
+  let d = ymd(); if (!readOn(d)) d = addDays(d, -1);
+  let n = 0; while (readOn(d) > 0 && n < 3650) { n++; d = addDays(d, -1); }
+  return n;
+}
+function readPace() { // страниц в день за 30 дней, считая только дни с чтением
+  const v = rangeDays(30).map(readOn).filter(Boolean);
+  return v.length ? v.reduce((a, b) => a + b, 0) / v.length : 0;
+}
+function stars(n, id) {
+  return `<span class="bk-stars" role="${id ? 'radiogroup' : 'img'}" aria-label="Оценка ${n || 0} из 5">${[1, 2, 3, 4, 5].map(k => id
+    ? `<button type="button" class="${k <= n ? 'on' : ''}" data-action="book-rate" data-id="${id}" data-v="${k}" aria-label="${k}">★</button>`
+    : `<i class="${k <= n ? 'on' : ''}">★</i>`).join('')}</span>`;
+}
+function coverHtml(b, size = 'm') {
+  const cat = b.cover && (b.cover.ol || b.cover.isbn?.length) ? `/api/books/cover?${b.cover.ol ? `ol=${+b.cover.ol}&` : ''}isbn=${encodeURIComponent((b.cover.isbn || []).join(','))}` : '';
+  const src = b.cover?.mine ? `/api/books/cover?mine=${b.id}&v=${+b.cover.v || 1}` : cat;
+  return `<div class="bk-cover bk-${size}" style="--bc:${bookColor(b)}">
+    <div class="bk-gen"><b>${esc(b.title)}</b>${b.author ? `<span>${esc(b.author)}</span>` : ''}</div>
+    ${src ? `<img src="${src}" alt="Обложка: ${esc(b.title)}" loading="lazy">` : ''}
+  </div>`;
+}
+// обложка не загрузилась — остаётся нарисованная
+document.addEventListener('error', e => { const t = e.target; if (t.tagName === 'IMG' && t.closest('.bk-cover')) t.remove(); }, true);
+
+function bookTile(b) {
+  return `<button type="button" class="bk-tile" data-action="book-open" data-id="${b.id}">
+    ${coverHtml(b)}
+    ${b.status === 'reading' ? `<span class="bk-prog"><i style="width:${bookPct(b)}%"></i></span>` : ''}
+    <b class="bk-t">${esc(b.title)}</b><span class="bk-a">${esc(b.author || '')}</span>
+    ${b.rating ? stars(b.rating) : b.status !== 'done' ? `<span class="bk-st bk-st-${b.status}">${BOOK_STATUS[b.status]}</span>` : ''}
+  </button>`;
+}
+
+function readingCard(b) {
+  const left = Math.max(0, num(b.pages) - num(b.page)), pace = readPace();
+  const eta = pace && left ? Math.ceil(left / pace) : null;
+  const today = S.readLog.filter(x => x.book === b.id && x.date === ymd()).reduce((a, x) => a + num(x.pages), 0);
+  return `<article class="bk-now">
+    <button type="button" class="bk-now-cover" data-action="book-open" data-id="${b.id}" aria-label="Открыть «${esc(b.title)}»">${coverHtml(b, 'l')}</button>
+    <div class="bk-now-main">
+      <div class="bk-now-k">${b.format && b.format !== 'paper' ? BOOK_FORMAT[b.format] + ' · ' : ''}${b.started ? `читаю с ${human(b.started)}` : 'читаю'}</div>
+      <h3>${esc(b.title)}</h3><div class="bk-now-a">${esc(b.author || '')}</div>
+      <div class="bk-now-bar"><i data-w="${bookPct(b)}"></i></div>
+      <div class="bk-now-s"><b>${bookPct(b)}%</b>${num(b.pages) ? ` · стр. ${fmtN(num(b.page))} из ${fmtN(num(b.pages))}` : ''}${eta ? ` · ≈${eta} ${plural(eta, 'день', 'дня', 'дней')} до конца` : ''}${today ? ` · <span class="bk-today">сегодня +${today}</span>` : ''}</div>
+      <form data-form="read-progress" class="bk-log">
+        <input type="hidden" name="id" value="${b.id}">
+        <label class="bk-log-in"><span>Дочитал до стр.</span><input name="page" type="number" inputmode="numeric" min="0" ${num(b.pages) ? `max="${num(b.pages)}"` : ''} placeholder="${num(b.page) || ''}"></label>
+        <button class="btn btn-primary btn-sm" style="--c:var(--books)" type="submit">${I.check}Записать</button>
+        <button type="button" class="btn btn-ghost btn-sm" data-action="read-add" data-id="${b.id}" data-n="10">+10</button>
+        <button type="button" class="btn btn-ghost btn-sm" data-action="read-add" data-id="${b.id}" data-n="25">+25</button>
+        <button type="button" class="btn btn-ghost btn-sm" data-action="book-finish" data-id="${b.id}">Дочитал</button>
+      </form>
+    </div>
+  </article>`;
+}
+
+function pageBooks() {
+  const tab = view.bookTab || 'now', y = new Date().getFullYear(), goal = num(S.settings.booksGoal) || 12;
+  const done = booksDoneIn(y).length;
+  const tabs = `<div class="seg" role="tablist">${[['now', 'Читаю'], ['shelf', 'Полка'], ['quotes', 'Цитаты']].map(([k, n]) => `<button role="tab" class="${tab === k ? 'on' : ''}" data-action="book-tab" data-v="${k}">${n}</button>`).join('')}</div>`;
+  const head = topbar('Книги', `${done} из ${goal} за ${y} год · ${S.books.length} ${plural(S.books.length, 'книга', 'книги', 'книг')} на полке`, { date: false, actions: `${tabs}<button class="btn btn-primary btn-sm" style="--c:var(--books)" data-action="book-add">${I.plus}Книга</button>` });
+  const body = tab === 'shelf' ? booksShelf() : tab === 'quotes' ? booksQuotes() : booksNow(y, goal, done);
+  return `<section class="page page-books" style="--c:var(--books)">${head}${body}</section>`;
+}
+
+function booksNow(y, goal, done) {
+  const reading = S.books.filter(b => b.status === 'reading');
+  const want = S.books.filter(b => b.status === 'want').slice(0, 8);
+  const recent = S.books.filter(b => b.status === 'done').sort((a, b) => String(b.finished || '').localeCompare(String(a.finished || ''))).slice(0, 8);
+  // по графику: сколько книг должно быть к сегодняшнему дню
+  const dayOfYear = diffDays(`${y}-01-01`, ymd()) + 1, should = goal * dayOfYear / (y % 4 ? 365 : 366);
+  const diff = done - should, weeksLeft = Math.max(1, (diffDays(ymd(), `${y}-12-31`) + 1) / 7), need = Math.max(0, goal - done);
+  const R = 52, C = 2 * Math.PI * R, k = Math.min(1, done / goal);
+  const days30 = rangeDays(30), pages30 = days30.reduce((a, d) => a + readOn(d), 0), sk = readStreak();
+  let i = 0;
+  const goalCard = `<div class="bk-goal">
+      <div class="bud-ring" style="width:130px;height:130px"><svg viewBox="0 0 130 130" width="130" height="130" role="img" aria-label="${done} из ${goal} книг">
+        <circle cx="65" cy="65" r="${R}" class="ring-bg" stroke-width="12"/>
+        <circle cx="65" cy="65" r="${R}" fill="none" stroke="var(--books)" stroke-width="12" stroke-linecap="round" stroke-dasharray="${C}" stroke-dashoffset="${C * (1 - k)}" transform="rotate(-90 65 65)"/>
+      </svg><div class="bud-ring-c"><b>${done}</b><small>из ${goal}</small></div></div>
+      <div>
+        <div class="bud-k">Цель на ${y}</div>
+        <p class="bk-goal-t">${done >= goal ? 'Цель года выполнена — всё, что дальше, сверху.' : diff >= 0.5 ? `Опережаешь график на ${bkN(diff)}.` : diff <= -0.5 ? `Отстаёшь от графика на ${bkN(-diff)} — догонишь.` : 'Идёшь точно по графику.'}</p>
+        ${need ? `<p class="hint">Осталось ${need} ${plural(need, 'книга', 'книги', 'книг')} — примерно по одной в ${fmt1(weeksLeft / need)} нед.</p>` : ''}
+        <button class="btn btn-ghost btn-sm" data-action="books-goal">Изменить цель</button>
+      </div>
+    </div>`;
+  return `<div class="kpis">
+      ${kpi('Серия чтения', `${sk}<small>${plural(sk, 'день', 'дня', 'дней')}</small>`, 'books', i++, sk ? 'подряд с чтением' : 'почитай сегодня — начнётся')}
+      ${kpi('Сегодня', `${readOn(ymd())}<small>стр.</small>`, 'books', i++, `за неделю ${rangeDays(7).reduce((a, d) => a + readOn(d), 0)} стр.`)}
+      ${kpi('Темп', `${fmtN(readPace())}<small>стр/день</small>`, 'books', i++, 'в дни, когда читаешь')}
+      ${kpi('За 30 дней', `${fmtN(pages30)}<small>стр.</small>`, 'books', i++, `${S.books.filter(b => b.status === 'done' && b.finished >= days30[0]).length} книг дочитано`)}
+    </div>
+    <div class="grid">
+      ${card({ domain: 'books', title: reading.length > 1 ? `Читаю сейчас · ${reading.length}` : 'Читаю сейчас', span: 8, i: i++, body: reading.length ? reading.map(readingCard).join('') : `<div class="bk-empty">${empty(S.books.length ? 'Сейчас ничего не читаешь. Выбери следующую книгу из «Хочу прочитать».' : 'Добавь книгу, которую читаешь, — журнал будет считать страницы, темп и серию.')}<button class="btn btn-primary" style="--c:var(--books)" data-action="book-add">${I.plus}Добавить книгу</button></div>` })}
+      ${card({ domain: 'books', title: 'Цель года', span: 4, i: i++, body: goalCard })}
+      ${card({ domain: 'books', title: 'Страниц в день · 30 дней', span: 12, i: i++, body: pages30 ? barChart(days30.map(d => ({ label: parseYmd(d).getDate(), v: readOn(d), hint: `${human(d)}: ${readOn(d)} стр.` })), { color: 'var(--books)', unit: 'стр.', labelEvery: 5 }) : empty('Записывай, до какой страницы дочитал, — появится график.') })}
+      ${want.length ? card({ domain: 'books', title: 'Следующие на очереди', span: 12, i: i++, body: `<div class="bk-row">${want.map(bookTile).join('')}</div>`, action: `<button class="btn btn-ghost btn-sm" data-action="book-tab" data-v="shelf" data-f="want">Все</button>` }) : ''}
+      ${recent.length ? card({ domain: 'books', title: 'Недавно прочитано', span: 12, i: i++, body: `<div class="bk-row">${recent.map(bookTile).join('')}</div>` }) : ''}
+    </div>`;
+}
+
+function booksShelf() {
+  const f = view.bookFilter || 'all', sort = view.bookSort || 'added';
+  const filters = [['all', 'Все'], ['reading', 'Читаю'], ['done', 'Прочитано'], ['want', 'Хочу'], ['owned', 'Моя коллекция'], ['drop', 'Брошено']];
+  let list = S.books.filter(b => f === 'all' ? true : f === 'owned' ? b.owned : b.status === f);
+  const by = { added: (a, b) => String(b.added || '').localeCompare(String(a.added || '')), title: (a, b) => a.title.localeCompare(b.title, 'ru'), author: (a, b) => String(a.author || '').localeCompare(String(b.author || ''), 'ru'), rating: (a, b) => num(b.rating) - num(a.rating) };
+  list = list.sort(by[sort] || by.added);
+  const pagesRead = S.books.reduce((a, b) => a + (b.status === 'done' ? num(b.pages) : b.status === 'reading' ? num(b.page) : 0), 0);
+  const cnt = k => k === 'all' ? S.books.length : S.books.filter(b => k === 'owned' ? b.owned : b.status === k).length;
+  let grid;
+  if (!list.length) grid = empty(S.books.length ? 'В этом разделе пока пусто.' : 'Полка пустая. Добавь книги, которые читал, читаешь или хочешь прочитать.');
+  else if (f === 'done' && sort === 'added') {
+    // прочитанное — по годам, как полки
+    grid = groupBy(list.sort((a, b) => String(b.finished || '').localeCompare(String(a.finished || ''))), b => (b.finished || '').slice(0, 4) || 'Без даты')
+      .map(([yr, xs]) => `<div class="bk-year"><h3>${yr}<span>${xs.length} ${plural(xs.length, 'книга', 'книги', 'книг')} · ${fmtN(xs.reduce((a, b) => a + num(b.pages), 0))} стр.</span></h3><div class="bk-grid">${xs.map(bookTile).join('')}</div></div>`).join('');
+  } else grid = `<div class="bk-grid">${list.map(bookTile).join('')}</div>`;
+  return `<div class="kpis">
+      ${kpi('На полке', `${S.books.length}`, 'books', 0, `${cnt('owned')} в моей коллекции`)}
+      ${kpi('Прочитано', `${cnt('done')}`, 'books', 1, `${fmtN(pagesRead)} стр. всего`)}
+      ${kpi('Хочу прочитать', `${cnt('want')}`, 'books', 2, cnt('want') ? 'список ждёт' : 'пусто')}
+      ${kpi('Средняя оценка', (() => { const r = S.books.filter(b => b.rating); return r.length ? `${fmt1(r.reduce((a, b) => a + b.rating, 0) / r.length)}<small>из 5</small>` : '—'; })(), 'books', 3)}
+    </div>
+    <div class="bk-filters">
+      <div class="chips">${filters.map(([k, n]) => `<button class="chip chip-btn ${f === k ? 'on' : ''}" data-action="book-filter" data-v="${k}">${n}<b>${cnt(k)}</b></button>`).join('')}</div>
+      <label class="bk-sort">Сортировка <select data-book-sort>${[['added', 'недавние'], ['title', 'по названию'], ['author', 'по автору'], ['rating', 'по оценке']].map(([k, n]) => `<option value="${k}" ${sort === k ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
+    </div>
+    <section class="card bk-shelf" style="--c:var(--books)">${grid}</section>`;
+}
+
+function booksQuotes() {
+  const all = S.books.flatMap(b => (b.quotes || []).map(q => ({ ...q, b }))).sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
+  if (!all.length) return `<div class="grid">${card({ domain: 'books', title: 'Цитаты', span: 12, body: `${empty('Сохраняй фразы, которые зацепили: открой книгу и нажми «Добавить цитату».')}${S.books.length ? `<div class="bk-row">${S.books.slice(0, 8).map(bookTile).join('')}</div>` : ''}` })}</div>`;
+  return `<div class="bk-quotes">${all.map(q => `<figure class="bk-quote" style="--bc:${bookColor(q.b)}">
+      <blockquote>${esc(q.text)}</blockquote>
+      <figcaption><button type="button" data-action="book-open" data-id="${q.b.id}">${esc(q.b.title)}</button>${q.b.author ? ` · ${esc(q.b.author)}` : ''}${q.page ? ` · стр. ${esc(q.page)}` : ''}</figcaption>
+    </figure>`).join('')}</div>`;
+}
+
+/* карточка книги */
+function openSheet({ title, accent, body, cls = '' }) {
+  const root = $('#modal-root');
+  root.innerHTML = `<div class="overlay" data-action="close-modal"><div class="sheet ${cls}" style="--c:${accent}" role="dialog" aria-modal="true" aria-label="${esc(title)}">
+    <header class="sheet-head"><h2>${title}</h2><button type="button" class="icon-btn" data-action="close-modal" aria-label="Закрыть">${I.x}</button></header>
+    <div class="sheet-body" id="sheet-body">${body}</div></div></div>`;
+  requestAnimationFrame(() => root.classList.add('open'));
+}
+function bookSheetBody(b) {
+  const log = S.readLog.filter(x => x.book === b.id).sort((a, c) => c.date.localeCompare(a.date));
+  const days = new Set(log.map(x => x.date)).size;
+  return `<div class="bk-detail">
+      ${coverHtml(b, 'xl')}
+      <div class="bk-detail-main">
+        <h3>${esc(b.title)}</h3><div class="bk-now-a">${esc(b.author || 'Автор не указан')}</div>
+        <div class="bk-meta">${[b.genre && esc(b.genre), num(b.pages) && `${fmtN(num(b.pages))} стр.`, b.format && BOOK_FORMAT[b.format], b.owned && 'в коллекции'].filter(Boolean).map(x => `<span class="chip">${x}</span>`).join('')}</div>
+        <div class="seg seg-wrap bk-status">${Object.entries(BOOK_STATUS).map(([k, n]) => `<button type="button" class="${b.status === k ? 'on' : ''}" data-action="book-status" data-id="${b.id}" data-v="${k}">${n}</button>`).join('')}</div>
+        <div class="bk-rate">Оценка ${stars(b.rating || 0, b.id)}</div>
+        ${b.status === 'reading' || (b.status === 'done' && num(b.pages)) ? `<div class="bk-now-bar"><i style="width:${bookPct(b)}%"></i></div><div class="bk-now-s">${bookPct(b)}%${num(b.pages) ? ` · стр. ${fmtN(num(b.page))} из ${fmtN(num(b.pages))}` : ''}</div>` : ''}
+        <p class="hint">${[b.started && `Начал ${humanLong(b.started)}`, b.finished && `закончил ${humanLong(b.finished)}`, b.started && b.finished && `за ${diffDays(b.started, b.finished) + 1} ${plural(diffDays(b.started, b.finished) + 1, 'день', 'дня', 'дней')}`, days && `читал ${days} ${plural(days, 'день', 'дня', 'дней')}`].filter(Boolean).join(' · ') || `Добавлена ${b.added ? humanLong(b.added) : ''}`}</p>
+      </div>
+    </div>
+    <div class="field"><label>Мысли о книге</label><textarea class="note-area" data-book-note="${b.id}" placeholder="Что запомнилось, кому посоветовать…">${esc(b.notes || '')}</textarea></div>
+    <div class="bk-q-head"><h4>Цитаты · ${(b.quotes || []).length}</h4></div>
+    <form data-form="quote" class="bk-q-form"><input type="hidden" name="id" value="${b.id}">
+      <textarea name="text" rows="2" maxlength="1200" placeholder="Фраза, которая зацепила" required></textarea>
+      <div class="row"><input name="page" maxlength="10" inputmode="numeric" placeholder="стр." style="max-width:90px"><button class="btn btn-primary btn-sm" style="--c:var(--books)" type="submit">${I.plus}Добавить цитату</button></div>
+    </form>
+    ${(b.quotes || []).map(q => `<figure class="bk-quote sm" style="--bc:${bookColor(b)}"><blockquote>${esc(q.text)}</blockquote><figcaption>${q.page ? `стр. ${esc(q.page)} · ` : ''}${q.date ? human(q.date) : ''}<button type="button" class="icon-btn" data-action="quote-del" data-id="${b.id}" data-q="${q.id}" aria-label="Удалить цитату">${I.trash}</button></figcaption></figure>`).join('')}
+    ${log.length ? `<details class="bk-hist"><summary>История чтения · ${log.length}</summary><ul>${log.slice(0, 60).map(x => `<li><span>${human(x.date)}</span><b>+${x.pages} стр.</b></li>`).join('')}</ul></details>` : ''}
+    <footer class="sheet-foot"><button type="button" class="btn btn-danger btn-sm" data-action="book-del" data-id="${b.id}">${I.trash}Удалить</button><button type="button" class="btn btn-ghost" data-action="book-edit" data-id="${b.id}">${I.edit}Изменить</button></footer>`;
+}
+function openBook(id) {
+  const b = bookById(id); if (!b) return;
+  view.bookOpen = id;
+  openSheet({ title: 'Книга', accent: 'var(--books)', body: bookSheetBody(b), cls: 'sheet-wide' });
+}
+function refreshBook() {
+  const b = bookById(view.bookOpen), el = $('#sheet-body');
+  if (b && el) { const ta = el.querySelector('[data-book-note]'); const keep = ta && document.activeElement === ta; el.innerHTML = bookSheetBody(b); if (keep) el.querySelector('[data-book-note]')?.focus(); }
+}
+
+/* добавить / изменить */
+let bkPick = null; // выбранная в поиске книга (обложка Open Library)
+function bookForm(b = null) {
+  bkPick = b?.cover && !b.cover.mine ? { cover: b.cover.ol, isbn: b.cover.isbn } : null;
+  const st = b?.status || 'reading';
+  openModal({ title: b ? 'Изменить книгу' : 'Новая книга', accent: 'var(--books)', form: 'book', submit: b ? 'Сохранить' : 'Добавить', body: `
+    ${b ? `<input type="hidden" name="id" value="${b.id}">` : `<div class="bk-search">
+      <div class="search-box">${I.search}<input data-bk-search placeholder="Найти по названию или автору" autocomplete="off"></div>
+      <div class="bk-results" id="bk-results"><p class="hint">Найдём обложку, автора и число страниц. Или заполни вручную ниже.</p></div>
+    </div>`}
+    ${field('Название', `<input name="title" required maxlength="200" value="${esc(b?.title || '')}">`)}
+    <div class="row row-2">
+      ${field('Автор', `<input name="author" maxlength="160" value="${esc(b?.author || '')}">`)}
+      ${field('Страниц', `<input name="pages" type="number" min="0" max="20000" inputmode="numeric" value="${b?.pages || ''}">`)}
+    </div>
+    ${field('Статус', `<div class="seg seg-wrap">${Object.entries(BOOK_STATUS).map(([k, n]) => `<label class="seg-radio"><input type="radio" name="status" value="${k}" ${st === k ? 'checked' : ''}><span>${n}</span></label>`).join('')}</div>`)}
+    <div class="row row-2">
+      ${field('Формат', `<select name="format">${Object.entries(BOOK_FORMAT).map(([k, n]) => `<option value="${k}" ${(b?.format || 'paper') === k ? 'selected' : ''}>${n}</option>`).join('')}</select>`)}
+      ${field('Жанр', `<input name="genre" maxlength="40" list="bk-genres" value="${esc(b?.genre || '')}"><datalist id="bk-genres">${[...new Set(['Роман', 'Нон-фикшн', 'Бизнес', 'Психология', 'Фантастика', 'Классика', 'История', 'Саморазвитие', 'Технологии', 'Биография', ...S.books.map(x => x.genre).filter(Boolean)])].map(g => `<option value="${esc(g)}">`).join('')}</datalist>`)}
+    </div>
+    <label class="check-row"><input type="checkbox" name="owned" ${b?.owned ? 'checked' : ''}><span>Есть в моей коллекции (книга у меня)</span></label>
+    ${field('Своя обложка — фото книги', `<input type="file" name="photo" accept="image/*">`)}
+    <p class="hint" id="bk-cover-note">${bkPick ? 'Обложка из каталога выбрана.' : ''}</p>` });
+}
+let bkTimer = null, bkSeq = 0;
+async function bookSearch(q) {
+  const box = $('#bk-results'); if (!box) return;
+  if (q.trim().length < 2) { box.innerHTML = '<p class="hint">Найдём обложку, автора и число страниц. Или заполни вручную ниже.</p>'; return; }
+  const my = ++bkSeq; box.innerHTML = '<p class="hint">Ищу…</p>';
+  try {
+    const r = await fetch('/api/books/search?q=' + encodeURIComponent(q), { credentials: 'same-origin' });
+    const d = await r.json(); if (my !== bkSeq || !$('#bk-results')) return;
+    if (!r.ok) { box.innerHTML = `<p class="hint">${esc(d.error || 'Поиск не сработал')}</p>`; return; }
+    window.bkHits = d.items;
+    box.innerHTML = d.items.length ? `<div class="bk-hits">${d.items.map((x, k) => `<button type="button" class="bk-hit" data-action="bk-pick" data-k="${k}">
+        ${coverHtml({ title: x.title, author: x.author, cover: x.cover || x.isbn?.length ? { ol: x.cover, isbn: x.isbn } : null }, 's')}
+        <span><b>${esc(x.title)}</b><small>${esc(x.author || '')}${x.year ? ` · ${x.year}` : ''}${x.pages ? ` · ${x.pages} стр.` : ''}</small></span></button>`).join('')}</div>` : '<p class="hint">Ничего не нашлось — заполни вручную.</p>';
+  } catch { if (my === bkSeq && $('#bk-results')) box.innerHTML = '<p class="hint">Нет связи с сервером.</p>'; }
+}
+// фото обложки: уменьшаем до 480 px и отправляем JPEG
+function coverUpload(file, id) {
+  return new Promise((resolve, reject) => {
+    const img = new Image(), url = URL.createObjectURL(file);
+    img.onload = async () => {
+      const k = Math.min(1, 480 / Math.max(img.width, img.height)), c = document.createElement('canvas');
+      c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height); URL.revokeObjectURL(url);
+      const data = c.toDataURL('image/jpeg', 0.82).split(',')[1];
+      try {
+        const r = await fetch('/api/books/cover', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, image: data }) });
+        if (!r.ok) throw new Error((await r.json()).error || 'Не удалось сохранить обложку');
+        resolve();
+      } catch (e) { reject(e); }
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Не получилось открыть фото')); };
+    img.src = url;
+  });
+}
+function logPages(b, newPage) {
+  const p = Math.max(0, Math.round(num(newPage))), pages = num(b.pages);
+  const to = pages ? Math.min(p, pages) : p, delta = to - num(b.page);
+  b.page = to;
+  if (delta > 0) {
+    const today = ymd(), ex = S.readLog.find(x => x.book === b.id && x.date === today);
+    if (ex) ex.pages += delta; else S.readLog.push({ id: uid(), date: today, book: b.id, pages: delta });
+  }
+  if (!b.started) b.started = ymd();
+  return delta;
+}
+function finishBook(b) {
+  if (num(b.pages) && num(b.page) < num(b.pages) && b.status === 'reading') logPages(b, b.pages);
+  b.status = 'done'; b.finished = b.finished || ymd(); if (num(b.pages)) b.page = num(b.pages);
+}
+
+/* ============================================================
+   ОЦЕНКА ДНЯ: из того, что человек реально ведёт
+   Направление считается, если в нём были записи за последние 30 дней.
+   Зал и чтение — бонус: их отсутствие день не портит.
+   ============================================================ */
+let MEMO = new Map();
+const memo = (k, fn) => { if (!MEMO.has(k)) MEMO.set(k, fn()); return MEMO.get(k); };
+function trackedAreas() {
+  return memo('areas', () => {
+    const days = rangeDays(30), has = f => days.some(f);
+    return {
+      food: has(d => S.meals.some(m => m.date === d)), water: has(d => drinksOn(d).length > 0), steps: has(d => num(dayRec(d).steps) > 0),
+      study: has(d => studyMin(d) > 0), tasks: has(d => tasksOn(d).length > 0), quiz: has(d => (S.quizzes[d]?.items || []).some(i => i.result))
+    };
+  });
+}
+const AREA_NAMES = { food: 'еда в норме', protein: 'белок', water: 'вода', steps: 'шаги', study: 'учёба', tasks: 'задачи', quiz: 'вопросы', gym: 'зал', read: 'чтение' };
+function dayParts(d) {
+  return memo('p' + d, () => {
+    const A = trackedAreas(), nm = norms(), out = [], t = sumMeals(mealsOn(d));
+    if (A.food) {
+      out.push(['food', t.kcal ? Math.max(0, 1 - Math.max(0, Math.abs(t.kcal / nm.kcal - 1) - 0.1) * 3) : 0]);
+      if (nm.p) out.push(['protein', t.kcal ? Math.min(1, t.p / (nm.p * 0.9)) : 0]);
+    }
+    if (A.water) out.push(['water', Math.min(1, drinkDay(d).hyd / waterNorm())]);
+    if (A.steps) out.push(['steps', Math.min(1, num(dayRec(d).steps) / (num(S.settings.steps) || 10000))]);
+    if (A.study) out.push(['study', Math.min(1, studyMin(d) / (num(S.settings.study) || 60))]);
+    if (A.tasks) { const ts = tasksOn(d); if (ts.length) out.push(['tasks', ts.filter(x => x.done).length / ts.length]); }
+    if (A.quiz) { const q = S.quizzes[d]?.items || []; if (q.length) out.push(['quiz', q.filter(i => i.result).length / q.length]); }
+    return out;
+  });
+}
+function dayScore(d) {
+  return memo('s' + d, () => {
+    const parts = dayParts(d);
+    const bonus = (gymOn(d).length ? 0.1 : 0) + (readOn(d) ? 0.1 : 0);
+    if (!parts.length) return bonus ? Math.min(1, bonus * 3) : 0;
+    return Math.min(1, parts.reduce((a, [, v]) => a + v, 0) / parts.length + bonus);
+  });
+}
+const scoreColor = s => s >= 0.95 ? 'var(--mustard)' : s >= 0.7 ? 'var(--gym)' : s >= 0.4 ? 'var(--steps)' : s > 0 ? 'var(--paper-3)' : 'var(--ink-3)';
+function firstDay() {
+  return memo('first', () => [S.meals[0]?.date, S.drinks[0]?.date, S.study[0]?.date, S.workouts[0]?.date, ...Object.keys(S.days)].concat(S.meals.map(m => m.date), S.study.map(s => s.date), S.readLog.map(r => r.date), S.money.map(m => m.date)).filter(Boolean).sort()[0] || ymd());
+}
+function historyDays() { return memo('hist', () => { const out = []; for (let d = firstDay(); d <= ymd(); d = addDays(d, 1)) out.push(d); return out; }); }
+function bestStreak() {
+  return memo('bestStreak', () => { let best = 0, cur = 0; for (const d of historyDays()) { if (hasAny(d)) { cur++; best = Math.max(best, cur); } else cur = 0; } return best; });
+}
+
+/* ============================================================
+   ДОСТИЖЕНИЯ: 4 ступени — бронза, серебро, золото, легенда
+   ============================================================ */
+const TIERS = [['Бронза', '#B0713F'], ['Серебро', '#8C99A6'], ['Золото', '#CFA232'], ['Легенда', '#D9622B']];
+const past = () => historyDays().filter(d => d < ymd());
+const ACH = [
+  { k: 'streak', n: 'Не сдаваться', u: 'дней подряд с записями', ic: 'flame', c: 'orange', t: [3, 7, 30, 100], v: () => bestStreak() },
+  { k: 'perfect', n: 'Идеальный день', u: 'дней с оценкой 95%+', ic: 'star', c: 'mustard', t: [1, 7, 30, 100], v: () => past().filter(d => dayScore(d) >= 0.95).length },
+  { k: 'food', n: 'Дневник еды', u: 'дней с записанной едой', ic: 'food', c: 'food', t: [7, 30, 100, 365], v: () => new Set(S.meals.map(m => m.date)).size },
+  { k: 'norm', n: 'В яблочко', u: 'дней в норме калорий', ic: 'goal', c: 'food', t: [5, 20, 60, 150], v: () => { const nm = norms(); return past().filter(d => { const t = sumMeals(mealsOn(d)); return t.kcal && judge('kcal', t.kcal, nm.kcal, false).lvl === 'good'; }).length; } },
+  { k: 'protein', n: 'Белковый', u: 'дней с закрытым белком', ic: 'check', c: 'food', t: [5, 20, 60, 150], v: () => { const nm = norms(); return nm.p ? past().filter(d => sumMeals(mealsOn(d)).p >= nm.p * 0.9).length : 0; } },
+  { k: 'water', n: 'Водный баланс', u: 'дней с нормой воды', ic: 'drop', c: 'steps', t: [7, 30, 100, 250], v: () => { const w = waterNorm(); return historyDays().filter(d => drinkDay(d).hyd >= w).length; } },
+  { k: 'steps', n: 'Ходок', u: 'дней с целью по шагам', ic: 'steps', c: 'steps', t: [1, 10, 50, 150], v: () => Object.values(S.days).filter(x => num(x.steps) >= (num(S.settings.steps) || 10000)).length },
+  { k: 'stepsTot', n: 'Марафонец', u: 'шагов всего', ic: 'steps', c: 'steps', t: [100000, 1000000, 3000000, 10000000], v: () => Object.values(S.days).reduce((a, x) => a + num(x.steps), 0) },
+  { k: 'study', n: 'Учёный', u: 'часов учёбы', ic: 'study', c: 'study', t: [5, 25, 100, 300], v: () => Math.floor(historyDays().reduce((a, d) => a + studyMin(d), 0) / 60) },
+  { k: 'quiz', n: 'Память', u: 'верных ответов', ic: 'quiz', c: 'quiz', t: [10, 100, 500, 2000], v: () => Object.values(S.quizzes).reduce((a, q) => a + (q.items || []).filter(i => i.result === 'good').length, 0) },
+  { k: 'gym', n: 'Железо', u: 'тренировок', ic: 'gym', c: 'gym', t: [1, 10, 50, 150], v: () => S.workouts.length },
+  { k: 'tasks', n: 'Делаю', u: 'задач выполнено', ic: 'plans', c: 'paper', t: [10, 50, 200, 1000], v: () => S.tasks.filter(x => x.done).length },
+  { k: 'books', n: 'Книжный червь', u: 'книг прочитано', ic: 'books', c: 'books', t: [1, 5, 12, 50], v: () => S.books.filter(b => b.status === 'done').length },
+  { k: 'pages', n: 'Страница за страницей', u: 'страниц прочитано', ic: 'books', c: 'books', t: [300, 2000, 10000, 30000], v: () => S.readLog.reduce((a, x) => a + num(x.pages), 0) + S.books.filter(b => b.status === 'done' && !S.readLog.some(x => x.book === b.id)).reduce((a, b) => a + num(b.pages), 0) },
+  { k: 'shelf', n: 'Библиотека', u: 'книг в коллекции', ic: 'books', c: 'books', t: [5, 25, 100, 300], v: () => S.books.filter(b => b.owned).length },
+  { k: 'quotes', n: 'Собиратель цитат', u: 'цитат сохранено', ic: 'star', c: 'books', t: [3, 15, 50, 150], v: () => S.books.reduce((a, b) => a + (b.quotes || []).length, 0) },
+  { k: 'budget', n: 'Финансист', u: 'дней в рамках бюджета', ic: 'budget', c: 'money', t: [7, 30, 90, 250], v: () => { if (!num(S.budget.amount) || !S.money.length) return 0; const f = S.money.map(m => m.date).sort()[0]; return past().filter(d => d >= f && budgetDay(d).leftToday >= 0).length; } },
+  { k: 'notes', n: 'Летописец', u: 'дней с заметкой', ic: 'edit', c: 'paper', t: [7, 30, 100, 365], v: () => Object.values(S.days).filter(x => String(x.note || '').trim().length > 10).length },
+  { k: 'weight', n: 'Минус', u: 'кг сброшено', ic: 'goal', c: 'gym', t: [1, 5, 10, 20], hide: () => S.profile?.goal !== 'lose', v: () => { const w = weightSeries(); return w.length > 1 ? Math.max(0, Math.floor(Math.max(...w.map(x => x.v)) - w[w.length - 1].v)) : 0; } }
+];
+function achState() {
+  return memo('ach', () => ACH.filter(a => !a.hide?.()).map(a => {
+    const val = a.v(), tier = a.t.filter(t => val >= t).length;
+    const prev = tier ? a.t[tier - 1] : 0, next = a.t[tier];
+    return { a, val, tier, next, prog: next ? (val - prev) / (next - prev) : 1 };
+  }));
+}
+const fmtBig = v => v >= 1e6 ? `${fmt1(v / 1e6)} млн` : v >= 1e4 ? `${fmt1(v / 1e3)} тыс` : fmtN(v);
+function medal(x, size = 64) {
+  const col = x.tier ? TIERS[x.tier - 1][1] : 'var(--ink-3)', r = size / 2 - 4, C = 2 * Math.PI * r;
+  return `<div class="medal ${x.tier ? '' : 'locked'}" style="--mc:${col};--dc:var(--${x.a.c});width:${size}px;height:${size}px">
+    <svg viewBox="0 0 ${size} ${size}" width="${size}" height="${size}" aria-hidden="true">
+      <circle cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none" stroke="var(--ink-3)" stroke-width="5"/>
+      ${x.next ? `<circle cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none" stroke="var(--mc-next, var(--dc))" stroke-width="5" stroke-linecap="round" stroke-dasharray="${C}" stroke-dashoffset="${C * (1 - x.prog)}" transform="rotate(-90 ${size / 2} ${size / 2})" opacity=".55"/>` : ''}
+    </svg><span class="medal-ic">${I[x.a.ic] || I.star}</span></div>`;
+}
+function pageAwards() {
+  const st = achState(), total = st.reduce((a, x) => a + x.tier, 0), max = st.length * 4;
+  const near = st.filter(x => x.next).sort((a, b) => b.prog - a.prog).slice(0, 3);
+  const recent = Object.entries(S.achieved).sort((a, b) => b[1].localeCompare(a[1])).slice(0, 6).map(([k, d]) => { const [key, t] = k.split(':'); const x = st.find(s => s.a.k === key); return x ? { x, t: +t, d } : null; }).filter(Boolean);
+  const level = Math.floor(total / 4) + 1;
+  return `<section class="page page-awards">
+    ${topbar('Достижения', `открыто ${total} из ${max} ступеней`, { date: false })}
+    <div class="aw-hero">
+      <div class="aw-level"><span>Уровень</span><b>${level}</b><small>${4 - total % 4} ${plural(4 - total % 4, 'ступень', 'ступени', 'ступеней')} до следующего</small></div>
+      <div class="aw-tiers">${TIERS.map(([n, c], k) => `<div style="--mc:${c}"><i></i><b>${st.filter(x => x.tier > k).length}</b><span>${n}</span></div>`).join('')}</div>
+      ${near.length ? `<div class="aw-near"><span class="bud-k">Ближе всего</span>${near.map(x => `<div class="aw-near-i"><b>${x.a.n}</b><span>${fmtBig(x.val)} / ${fmtBig(x.next)} ${x.a.u}</span><div class="bar"><i data-w="${Math.round(x.prog * 100)}"></i></div></div>`).join('')}</div>` : ''}
+    </div>
+    ${recent.length ? `<h3 class="aw-sec">Недавно получено</h3><div class="aw-recent">${recent.map(({ x, t, d }) => `<div class="aw-chip" style="--mc:${TIERS[t][1]}"><i></i><b>${x.a.n}</b><span>${TIERS[t][0]} · ${human(d)}</span></div>`).join('')}</div>` : ''}
+    <h3 class="aw-sec">Все достижения</h3>
+    <div class="aw-grid">${st.sort((a, b) => b.tier - a.tier || b.prog - a.prog).map((x, i) => `<article class="aw-card ${x.tier ? '' : 'locked'}" style="--i:${i}">
+      ${medal(x)}
+      <div class="aw-body">
+        <b>${x.a.n}</b>
+        <span class="aw-tier" style="--mc:${x.tier ? TIERS[x.tier - 1][1] : 'var(--paper-3)'}">${x.tier ? TIERS[x.tier - 1][0] : 'Ещё не открыто'}</span>
+        <p>${x.next ? `${fmtBig(x.val)} из ${fmtBig(x.next)} ${x.a.u}` : `${fmtBig(x.val)} ${x.a.u} — максимум`}</p>
+        <div class="aw-pips">${x.a.t.map((t, k) => `<i class="${k < x.tier ? 'on' : ''}" style="--mc:${TIERS[k][1]}" title="${TIERS[k][0]}: ${fmtBig(t)}"></i>`).join('')}</div>
+      </div>
+    </article>`).join('')}</div>
+  </section>`;
+}
+let achTimer = null;
+function checkAch() {
+  if (!me || view.wizard) return;
+  MEMO = new Map();
+  const got = [];
+  for (const x of achState()) for (let t = 0; t < x.tier; t++) { const key = `${x.a.k}:${t}`; if (!S.achieved[key]) { S.achieved[key] = ymd(); got.push({ x, t }); } }
+  if (!got.length) return;
+  save();
+  const top = got.sort((a, b) => b.t - a.t)[0];
+  const el = document.createElement('div'); el.className = 'toast toast-ach'; el.setAttribute('role', 'status');
+  el.innerHTML = `<i style="--mc:${TIERS[top.t][1]}"></i><span><b>${got.length > 1 ? `Новые достижения: ${got.length}` : 'Новое достижение'}</b>${esc(top.x.a.n)} · ${TIERS[top.t][0]}</span><a href="#awards">Смотреть</a>`;
+  $('#toast-root').appendChild(el); setTimeout(() => el.remove(), 7000);
+}
+
+/* ============================================================
+   СТАТИСТИКА
+   ============================================================ */
+const STAT_TABS = [['overview', 'Обзор'], ['food', 'Еда'], ['body', 'Тело'], ['study', 'Учёба'], ['money', 'Деньги'], ['books', 'Книги']];
+const avgOf = a => a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0;
+function delta(cur, prev, { unit = '', good = 'up', fmt = fmtN } = {}) {
+  if (!prev || !isFinite(cur) || !isFinite(prev)) return '';
+  const d = cur - prev, p = Math.round(d / prev * 100);
+  if (!Math.round(Math.abs(d) * 10)) return '<span class="dl">как раньше</span>';
+  const better = good === 'up' ? d > 0 : good === 'down' ? d < 0 : null;
+  return `<span class="dl ${better === null ? '' : better ? 'up' : 'down'}">${d > 0 ? '▲' : '▼'} ${Math.abs(p)}%</span>`;
+}
+function pageStats() {
+  const tab = STAT_TABS.some(t => t[0] === view.statTab) ? view.statTab : 'overview', n = view.range;
+  const tabs = `<div class="seg seg-wrap stat-tabs" role="tablist">${STAT_TABS.map(([k, t]) => `<button role="tab" class="${k === tab ? 'on' : ''}" data-action="stat-tab" data-v="${k}">${t}</button>`).join('')}</div>`;
+  const rng = `<div class="seg">${[7, 30, 90, 365].map(r => `<button class="${r === n ? 'on' : ''}" data-action="range" data-n="${r}">${r === 365 ? 'год' : r + ' дн'}</button>`).join('')}</div>`;
+  const body = { overview: statsOverview, food: statsFood, body: statsBody, study: statsStudy, money: statsMoney, books: statsBooks }[tab](n);
+  return `<section class="page page-stats">
+    ${topbar('Статистика', tab === 'overview' ? 'как ты живёшь — в цифрах' : `последние ${n === 365 ? 'год' : n + ' дней'}`, { date: false, actions: tab === 'overview' ? '' : rng })}
+    ${tabs}${body}
+  </section>`;
+}
+const chartLab = n => d => n <= 7 ? WD[parseYmd(d).getDay()] : n <= 31 ? parseYmd(d).getDate() : `${parseYmd(d).getDate()}.${z(parseYmd(d).getMonth() + 1)}`;
+const chartEvery = n => n <= 7 ? 1 : n <= 31 ? 5 : n <= 90 ? 14 : 60;
+
+/* Месячный календарь с кольцом оценки в каждом дне */
+function scoreCalendar() {
+  const t = ymd(), cur = view.statMonth || t.slice(0, 7);
+  const [y, m] = cur.split('-').map(Number), first = `${cur}-01`, len = new Date(y, m, 0).getDate(), lead = (parseYmd(first).getDay() + 6) % 7;
+  const cells = [], scores = [];
+  for (let k = 0; k < lead; k++) cells.push('<span class="sc-cell pad"></span>');
+  for (let k = 1; k <= len; k++) {
+    const d = `${cur}-${z(k)}`, fut = d > t, s = fut ? 0 : dayScore(d), perfect = s >= 0.95;
+    if (!fut && d < t && hasAny(d)) scores.push([d, s]);
+    const r = 15, C = 2 * Math.PI * r;
+    const parts = fut ? [] : dayParts(d), tip = fut ? human(d) : `${human(d)}: ${Math.round(s * 100)}%${parts.length ? ' — ' + parts.map(([a, v]) => `${AREA_NAMES[a]} ${Math.round(v * 100)}%`).join(', ') : ''}${gymOn(d).length ? ', зал' : ''}${readOn(d) ? `, чтение ${readOn(d)} стр.` : ''}`;
+    cells.push(`<button type="button" class="sc-cell ${fut ? 'fut' : ''} ${perfect ? 'perfect' : ''} ${d === t ? 'today' : ''}" ${fut ? 'disabled' : `data-action="stat-day" data-d="${d}"`} title="${esc(tip)}" aria-label="${esc(tip)}">
+      <svg viewBox="0 0 36 36" aria-hidden="true"><circle cx="18" cy="18" r="${r}" fill="none" stroke="var(--ink-3)" stroke-width="3.5"/>${s > 0 ? `<circle cx="18" cy="18" r="${r}" fill="none" stroke="${scoreColor(s)}" stroke-width="3.5" stroke-linecap="round" stroke-dasharray="${C}" stroke-dashoffset="${C * (1 - s)}" transform="rotate(-90 18 18)"/>` : ''}</svg>
+      <span class="sc-n">${k}</span>${perfect ? '<i class="sc-star">★</i>' : ''}${gymOn(d).length ? '<i class="sc-gym"></i>' : ''}
+    </button>`);
+  }
+  const avg = avgOf(scores.map(x => x[1])), best = scores.slice().sort((a, b) => b[1] - a[1])[0], perfect = scores.filter(x => x[1] >= 0.95).length;
+  // прошлый месяц для сравнения
+  const pm = new Date(y, m - 2, 1), pk = `${pm.getFullYear()}-${z(pm.getMonth() + 1)}`;
+  const prevS = []; for (let k = 1; k <= new Date(pm.getFullYear(), pm.getMonth() + 1, 0).getDate(); k++) { const d = `${pk}-${z(k)}`; if (d < t && hasAny(d)) prevS.push(dayScore(d)); }
+  const pavg = avgOf(prevS), MN = ['январь', 'февраль', 'март', 'апрель', 'май', 'июнь', 'июль', 'август', 'сентябрь', 'октябрь', 'ноябрь', 'декабрь'];
+  const line = !scores.length ? 'В этом месяце пока нет завершённых дней — всё впереди.'
+    : avg >= 0.8 ? 'Сильный месяц. Так держать.' : pavg && avg > pavg + 0.03 ? `Лучше, чем в прошлом месяце, на ${Math.round((avg - pavg) * 100)} п.` : pavg && avg < pavg - 0.03 ? `Чуть ниже прошлого месяца — ${Math.round(pavg * 100)}% против ${Math.round(avg * 100)}%. Есть куда расти.` : 'Ровный месяц. Один сильный день — и среднее поползёт вверх.';
+  return { html: `<div class="cal-head">
+      <button class="icon-btn" data-action="stat-month" data-n="-1" aria-label="Предыдущий месяц">${I.chevL}</button>
+      <b>${MN[m - 1][0].toUpperCase() + MN[m - 1].slice(1)} ${y}</b>
+      <button class="icon-btn" data-action="stat-month" data-n="1" aria-label="Следующий месяц" ${cur >= t.slice(0, 7) ? 'disabled' : ''}>${I.chevR}</button>
+    </div>
+    <div class="sc-cal">${['пн', 'вт', 'ср', 'чт', 'пт', 'сб', 'вс'].map(w => `<span class="cal-wd">${w}</span>`).join('')}${cells.join('')}</div>
+    <div class="heat-legend"><span><i style="background:var(--mustard)"></i>идеально ★</span><span><i style="background:var(--gym)"></i>70%+</span><span><i style="background:var(--steps)"></i>40%+</span><span><i style="background:var(--paper-3)"></i>начало</span><span><i class="sc-gym-l"></i>зал</span></div>`,
+    avg, best, perfect, days: scores.length, line, pavg, month: MN[m - 1] };
+}
+/* Год клетками: цвет — оценка дня */
+function yearHeat() {
+  const t = ymd(), weeks = 53, dow = (parseYmd(t).getDay() + 6) % 7, start = addDays(t, -dow - 7 * (weeks - 1));
+  const cell = 13, gap = 3, L = 22, T = 16, cells = [], months = [];
+  let lastM = -1;
+  for (let w = 0; w < weeks; w++) for (let k = 0; k < 7; k++) {
+    const d = addDays(start, w * 7 + k); if (d > t) continue;
+    const s = hasAny(d) || drinksOn(d).length || readOn(d) ? dayScore(d) : 0, x = L + w * (cell + gap), yy = T + k * (cell + gap);
+    if (k === 0) { const mo = parseYmd(d).getMonth(); if (mo !== lastM && parseYmd(d).getDate() <= 7) { months.push(`<text x="${x}" y="10">${['янв', 'фев', 'мар', 'апр', 'май', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'][mo]}</text>`); lastM = mo; } }
+    cells.push(`<rect x="${x}" y="${yy}" width="${cell}" height="${cell}" rx="3" fill="${scoreColor(s)}" ${s ? '' : 'opacity=".55"'}><title>${human(d)}: ${s ? Math.round(s * 100) + '%' : 'нет записей'}</title></rect>`);
+  }
+  const wd = ['пн', '', 'ср', '', 'пт', '', ''].map((w, k) => w ? `<text x="0" y="${T + k * (cell + gap) + 10}">${w}</text>` : '').join('');
+  const W = L + weeks * (cell + gap), H = T + 7 * (cell + gap);
+  return `<div class="yh-wrap"><svg class="yh" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="Год по дням">${months.join('')}${wd}${cells.join('')}</svg></div>`;
+}
+
+function statsOverview() {
+  const cal = scoreCalendar(), t = ymd();
+  const hist = past().filter(hasAny), all = historyDays();
+  const yearDays = all.filter(d => d >= addDays(t, -364) && d < t);
+  const active365 = yearDays.filter(hasAny).length, perfect365 = yearDays.filter(d => dayScore(d) >= 0.95).length;
+  // дни недели
+  const wdS = [0, 1, 2, 3, 4, 5, 6].map(k => avgOf(hist.filter(d => (parseYmd(d).getDay() + 6) % 7 === k).slice(-12).map(dayScore)));
+  const WDN = ['пн', 'вт', 'ср', 'чт', 'пт', 'сб', 'вс'], WDL = ['понедельник', 'вторник', 'среда', 'четверг', 'пятница', 'суббота', 'воскресенье'];
+  const bestWd = wdS.indexOf(Math.max(...wdS)), worstWd = wdS.indexOf(Math.min(...wdS.map((v, k) => v || 9)));
+  // рекорды
+  const rec = (arr, f) => arr.reduce((b, d) => { const v = f(d); return v > b.v ? { d, v } : b; }, { d: null, v: 0 });
+  const rSteps = rec(all, d => num(dayRec(d).steps)), rStudy = rec(all, studyMin), rRead = rec(all, readOn), rScore = rec(hist, dayScore);
+  const records = [
+    ['Лучшая серия', `${bestStreak()} ${plural(bestStreak(), 'день', 'дня', 'дней')}`, `сейчас ${streak()}`, 'flame'],
+    rScore.d && ['Лучший день', `${Math.round(rScore.v * 100)}%`, humanLong(rScore.d), 'star'],
+    rSteps.v && ['Больше всего шагов', fmtN(rSteps.v), humanLong(rSteps.d), 'steps'],
+    rStudy.v && ['Дольше всего учился', fmtMin(rStudy.v), humanLong(rStudy.d), 'study'],
+    rRead.v && ['Больше всего прочитал', `${rRead.v} стр.`, humanLong(rRead.d), 'books'],
+    S.workouts.length && ['Тренировок всего', fmtN(S.workouts.length), `с ${human(S.workouts.map(w => w.date).sort()[0])}`, 'gym']
+  ].filter(Boolean);
+  // 30 дней против прошлых 30
+  const last = rangeDays(30, addDays(t, -1)), prev = rangeDays(30, addDays(t, -31));
+  const sAvg = a => avgOf(a.filter(hasAny).map(dayScore));
+  const st = achState(), tiers = st.reduce((a, x) => a + x.tier, 0);
+  const avgWeek = rangeDays(7, addDays(t, -1)).map(dayScore);
+  let i = 0;
+  return `<div class="ov-hero">
+      <div class="ov-score">${(() => { const s = dayScore(t), R = 54, C = 2 * Math.PI * R; return `<div class="bud-ring" style="width:136px;height:136px"><svg viewBox="0 0 136 136" width="136" height="136" role="img" aria-label="Сегодня ${Math.round(s * 100)}%"><circle cx="68" cy="68" r="${R}" class="ring-bg" stroke-width="13"/><circle cx="68" cy="68" r="${R}" fill="none" stroke="${scoreColor(Math.max(s, 0.01))}" stroke-width="13" stroke-linecap="round" stroke-dasharray="${C}" stroke-dashoffset="${C * (1 - s)}" transform="rotate(-90 68 68)"/></svg><div class="bud-ring-c"><b>${Math.round(s * 100)}%</b><small>сегодня, пока</small></div></div>`; })()}
+        <div><div class="bud-k">Оценка дня</div><p class="ov-line">${dayParts(t).length ? dayParts(t).map(([a, v]) => `<span class="ov-part ${v >= 0.99 ? 'ok' : ''}">${v >= 0.99 ? '✓' : Math.round(v * 100) + '%'} ${AREA_NAMES[a]}</span>`).join('') : 'Записывай еду, воду, шаги или учёбу — из этого складывается оценка.'}</p>
+        <p class="hint">Среднее за 7 дней — ${Math.round(avgOf(avgWeek) * 100)}%. Зал и чтение добавляют бонус.</p></div>
+      </div>
+      <div class="ov-nums">
+        <div><b>${active365}</b><span>активных дней за год</span></div>
+        <div><b>${perfect365}</b><span>${plural(perfect365, 'идеальный день', 'идеальных дня', 'идеальных дней')}</span></div>
+        <div><b>${streak()}</b><span>серия сейчас · рекорд ${bestStreak()}</span></div>
+        <a href="#awards"><b>${tiers}</b><span>ступеней достижений →</span></a>
+      </div>
+    </div>
+    <div class="grid">
+      ${card({ domain: 'paper', title: 'Календарь', span: 7, i: i++, body: cal.html })}
+      ${card({ domain: 'paper', title: `Как идёт ${cal.month}`, span: 5, i: i++, body: `<div class="ov-month">
+          <div class="ov-big"><b>${cal.days ? Math.round(cal.avg * 100) : '—'}<small>%</small></b><span>средняя оценка${cal.pavg ? ` · в прошлом ${Math.round(cal.pavg * 100)}%` : ''}</span></div>
+          <p class="ov-motto">${cal.line}</p>
+          <ul class="ov-list">
+            <li><span>Дней с записями</span><b>${cal.days}</b></li>
+            <li><span>Идеальных дней ★</span><b>${cal.perfect}</b></li>
+            ${cal.best ? `<li><span>Лучший день</span><b>${human(cal.best[0])} · ${Math.round(cal.best[1] * 100)}%</b></li>` : ''}
+            <li><span>30 дней против прошлых 30</span><b>${Math.round(sAvg(last) * 100)}% ${delta(sAvg(last), sAvg(prev))}</b></li>
+          </ul></div>` })}
+      ${card({ domain: 'paper', title: 'Год по дням', span: 12, i: i++, body: yearHeat() + `<p class="hint">Каждая клетка — день, цвет — его оценка. Золотые — идеальные.</p>` })}
+      ${card({ domain: 'paper', title: 'Дни недели', span: 6, i: i++, body: hist.length >= 7 ? `${barChart(wdS.map((v, k) => ({ label: WDN[k], v: Math.round(v * 100), hint: `${WDL[k]}: в среднем ${Math.round(v * 100)}%` })), { color: 'var(--navy)', max: 100, unit: '%', labelEvery: 1, values: true })}
+          <p class="hint">Лучше всего получается ${WDL[bestWd]}${wdS[worstWd] && worstWd !== bestWd ? `, тяжелее всего — ${WDL[worstWd]}` : ''}.</p>` : empty('Нужна хотя бы неделя записей.') })}
+      ${card({ domain: 'paper', title: 'Рекорды', span: 6, i: i++, body: `<ul class="rec-list">${records.map(([n, v, s, ic]) => `<li><span class="rec-ic">${I[ic]}</span><div><span>${n}</span><small>${s}</small></div><b>${v}</b></li>`).join('')}</ul>` })}
+    </div>`;
+}
+
+function statsFood(n) {
+  const days = rangeDays(n), nm = norms(), lab = chartLab(n), every = chartEvery(n);
+  const rows = days.map(d => ({ d, ...sumMeals(mealsOn(d)), w: drinkDay(d).hyd }));
+  const logged = rows.filter(r => r.kcal && r.d < ymd()), prevRows = rangeDays(n, addDays(days[0], -1)).map(d => sumMeals(mealsOn(d))).filter(r => r.kcal);
+  const j = logged.map(r => judge('kcal', r.kcal, nm.kcal, false).lvl), good = j.filter(x => x === 'good').length, over = j.filter(x => x === 'bad').length;
+  const avgK = avgOf(logged.map(r => r.kcal)), avgP = avgOf(logged.map(r => r.p)), wn = waterNorm();
+  // частые блюда
+  const freq = {}; S.meals.filter(m => days.includes(m.date)).forEach(m => { const k = String(m.name || '').trim().toLowerCase(); if (k) { freq[k] = freq[k] || { n: 0, kcal: 0, name: m.name }; freq[k].n++; freq[k].kcal += num(m.kcal); } });
+  const top = Object.values(freq).sort((a, b) => b.n - a.n).slice(0, 8), topMax = top[0]?.n || 1;
+  const mk = logged.reduce((a, r) => ({ p: a.p + r.p * 4, f: a.f + r.f * 9, c: a.c + r.c * 4 }), { p: 0, f: 0, c: 0 }), mt = mk.p + mk.f + mk.c;
+  let i = 0;
+  return `<div class="kpis">
+      ${kpi('Ккал в день', logged.length ? fmtN(avgK) : '—', 'food', i++, logged.length ? `норма ${fmtN(nm.kcal)} ${delta(avgK, avgOf(prevRows.map(r => r.kcal)), { good: 'none' })}` : 'нет записей')}
+      ${kpi('Белок в день', logged.length ? `${fmtN(avgP)}<small>г</small>` : '—', 'food', i++, `норма ${nm.p} г ${delta(avgP, avgOf(prevRows.map(r => r.p)))}`)}
+      ${kpi('Дней в норме', `${good}<small>из ${logged.length}</small>`, 'gym', i++, logged.length ? `${Math.round(good / logged.length * 100)}% дней · перебор ${over}` : '')}
+      ${kpi('Вода в день', `${fmt1(avgOf(rows.filter(r => r.w).map(r => r.w)) / 1000)}<small>л</small>`, 'steps', i++, `норма ${fmt1(wn / 1000)} л · ${rows.filter(r => r.w >= wn).length} дн. закрыто`)}
+    </div>
+    <div class="grid">
+      ${card({ domain: 'food', title: 'Калории по дням', span: 12, i: i++, body: barChart(rows.map(r => ({ label: lab(r.d), v: r.kcal, hint: `${human(r.d)}: ${fmtN(r.kcal)} ккал`, color: r.kcal && r.d < ymd() ? { good: 'var(--gym)', warn: 'var(--mustard)', low: 'var(--mustard)', bad: 'var(--bad)' }[judge('kcal', r.kcal, nm.kcal, false).lvl] : null })), { color: 'var(--food)', target: nm.kcal, unit: 'ккал', labelEvery: every }) + `<div class="heat-legend"><span><i style="background:var(--gym)"></i>в норме</span><span><i style="background:var(--mustard)"></i>мимо</span><span><i style="background:var(--bad)"></i>перебор</span></div>` })}
+      ${card({ domain: 'food', title: 'Белок, г', span: 6, i: i++, body: barChart(rows.map(r => ({ label: lab(r.d), v: Math.round(r.p), hint: `${human(r.d)}: ${fmtN(r.p)} г` })), { color: 'var(--navy)', target: nm.p, unit: 'г', labelEvery: every }) })}
+      ${card({ domain: 'food', title: 'Из чего калории', span: 6, i: i++, body: mt ? `<div class="m-cat-wrap">${donut([{ n: 'Белки', v: mk.p, color: 'var(--navy)' }, { n: 'Жиры', v: mk.f, color: 'var(--mustard)' }, { n: 'Углеводы', v: mk.c, color: 'var(--food)' }], 150, `<b>${fmtN(avgK)}</b><small>ккал/день</small>`, (s, p) => `${s.n}: ${Math.round(p * 100)}%`)}
+          <ul class="m-cat-list">${[['Белки', mk.p, 'var(--navy)', '10–35%'], ['Жиры', mk.f, 'var(--mustard)', '20–35%'], ['Углеводы', mk.c, 'var(--food)', '45–65%']].map(([nn, v, c, r]) => `<li><i class="m-dot" style="--dot:${c}"></i><span>${nn}</span><b>${Math.round(v / mt * 100)}%</b><em>${r}</em></li>`).join('')}</ul></div><p class="hint">Справа — здоровый диапазон по рекомендациям (AMDR).</p>` : empty('Нет записей еды за период.') })}
+      ${card({ domain: 'steps', title: 'Вода, л', span: 6, i: i++, body: barChart(rows.map(r => ({ label: lab(r.d), v: Math.round(r.w / 100) / 10, hint: `${human(r.d)}: ${fmt1(r.w / 1000)} л` })), { color: '#2A7FB8', target: wn / 1000, unit: 'л', labelEvery: every, fmt: fmt1 }) })}
+      ${card({ domain: 'food', title: 'Чаще всего ешь', span: 6, i: i++, body: top.length ? `<div class="hbars">${top.map(x => `<div class="hbar"><span class="hbar-label">${esc(x.name)}</span><span class="hbar-track"><i data-w="${x.n / topMax * 100}"></i></span><span class="hbar-val">${x.n}× · ${fmtN(x.kcal / x.n)} ккал</span></div>`).join('')}</div>` : empty('Пока нет блюд за период.') })}
+    </div>`;
+}
+
+function statsBody(n) {
+  const days = rangeDays(n), lab = chartLab(n), every = chartEvery(n), goal = num(S.settings.steps) || 10000;
+  const steps = days.map(d => num(dayRec(d).steps)), stepDays = steps.filter(Boolean), prevSteps = rangeDays(n, addDays(days[0], -1)).map(d => num(dayRec(d).steps)).filter(Boolean);
+  const ws = weightSeries(), wIn = ws.filter(w => w.d >= days[0]);
+  const wdSteps = [0, 1, 2, 3, 4, 5, 6].map(k => avgOf(days.filter(d => (parseYmd(d).getDay() + 6) % 7 === k).map(d => num(dayRec(d).steps)).filter(Boolean)));
+  const gymN = S.workouts.filter(w => w.date >= days[0]).length;
+  const types = {}; S.workouts.filter(w => w.date >= days[0]).forEach(w => { const k = w.type || 'Тренировка'; types[k] = (types[k] || 0) + 1; });
+  let i = 0;
+  return `<div class="kpis">
+      ${kpi('Вес', ws.length ? `${fmt1(ws[ws.length - 1].v)}<small>кг</small>` : '—', 'paper', i++, wIn.length > 1 ? `${wIn[wIn.length - 1].v - wIn[0].v > 0 ? '+' : ''}${fmt1(wIn[wIn.length - 1].v - wIn[0].v)} кг за период` : 'взвешивайся раз в пару дней')}
+      ${kpi('Шагов в день', stepDays.length ? fmtN(avgOf(stepDays)) : '—', 'steps', i++, `цель ${fmtN(goal)} ${delta(avgOf(stepDays), avgOf(prevSteps))}`)}
+      ${kpi('Цель по шагам', `${steps.filter(v => v >= goal).length}<small>дн.</small>`, 'steps', i++, `всего ${fmtBig(steps.reduce((a, b) => a + b, 0))} шагов`)}
+      ${kpi('Тренировок', `${gymN}`, 'gym', i++, `${fmt1(gymN / n * 7)} в неделю`)}
+    </div>
+    <div class="grid">
+      ${card({ domain: 'paper', title: 'Вес', span: 12, i: i++, body: wIn.length > 1 ? lineChart(wIn.map(w => ({ label: human(w.d), v: w.v })), { color: 'var(--navy)', unit: 'кг' }) + (S.profile?.target ? `<p class="hint">Цель — ${fmt1(S.profile.target)} кг, осталось ${fmt1(Math.abs(ws[ws.length - 1].v - S.profile.target))} кг.</p>` : '') : empty('Нужно хотя бы два взвешивания за период.') })}
+      ${card({ domain: 'steps', title: 'Шаги', span: 6, i: i++, body: barChart(days.map((d, k) => ({ label: lab(d), v: steps[k], hint: `${human(d)}: ${fmtN(steps[k])}`, color: steps[k] >= goal ? 'var(--gym)' : null })), { color: 'var(--steps)', target: goal, labelEvery: every }) })}
+      ${card({ domain: 'steps', title: 'Шаги по дням недели', span: 6, i: i++, body: stepDays.length ? barChart(wdSteps.map((v, k) => ({ label: ['пн', 'вт', 'ср', 'чт', 'пт', 'сб', 'вс'][k], v: Math.round(v), hint: `в среднем ${fmtN(v)}` })), { color: 'var(--steps)', target: goal, labelEvery: 1, values: true }) : empty('Нет шагов за период.') })}
+      ${card({ domain: 'gym', title: 'Тренировки по неделям', span: 6, i: i++, body: barChart(weeklyCounts(Math.max(4, Math.min(26, Math.ceil(n / 7))), d => gymOn(d).length), { color: 'var(--gym)', unit: 'тр.', max: 7, labelEvery: n > 90 ? 4 : 1, values: n <= 90 }) })}
+      ${card({ domain: 'gym', title: 'Виды тренировок', span: 6, i: i++, body: Object.keys(types).length ? (() => { const e = Object.entries(types).sort((a, b) => b[1] - a[1]), mx = e[0][1]; return `<div class="hbars">${e.map(([k, v]) => `<div class="hbar"><span class="hbar-label">${esc(k)}</span><span class="hbar-track"><i data-w="${v / mx * 100}"></i></span><span class="hbar-val">${v}</span></div>`).join('')}</div>`; })() : empty('Тренировок за период нет.') })}
+    </div>`;
+}
+
+function statsStudy(n) {
+  const days = rangeDays(n), lab = chartLab(n), every = chartEvery(n), goal = num(S.settings.study) || 60;
+  const mins = days.map(studyMin), tot = mins.reduce((a, b) => a + b, 0), prevTot = rangeDays(n, addDays(days[0], -1)).reduce((a, d) => a + studyMin(d), 0);
+  const byCat = {}; S.study.filter(s => s.date >= days[0]).forEach(s => { const k = s.category || 'Без категории'; byCat[k] = (byCat[k] || 0) + num(s.minutes); });
+  const cats = Object.entries(byCat).sort((a, b) => b[1] - a[1]), maxCat = cats[0]?.[1] || 1;
+  const qItems = days.flatMap(d => (S.quizzes[d]?.items || []).filter(i => i.result)), acc = qItems.length ? qItems.filter(i => i.result === 'good').length / qItems.length : null;
+  let i = 0;
+  return `<div class="kpis">
+      ${kpi('Учёба', `${hoursStr(tot)}<small>ч</small>`, 'study', i++, `${fmtMin(tot / n)} в день ${delta(tot, prevTot)}`)}
+      ${kpi('Дней с учёбой', `${mins.filter(Boolean).length}<small>из ${n}</small>`, 'study', i++, `цель ${fmtMin(goal)} закрыта ${mins.filter(v => v >= goal).length} раз`)}
+      ${kpi('Ответов', `${qItems.length}`, 'quiz', i++, acc === null ? 'ещё нет' : `верно ${Math.round(acc * 100)}%`)}
+      ${kpi('Тем', `${new Set(S.study.filter(s => s.date >= days[0]).map(s => s.topic)).size}`, 'study', i++, `${cats.length} ${plural(cats.length, 'направление', 'направления', 'направлений')}`)}
+    </div>
+    <div class="grid">
+      ${card({ domain: 'study', title: 'Минуты по дням', span: 12, i: i++, body: barChart(days.map((d, k) => ({ label: lab(d), v: mins[k], hint: `${human(d)}: ${fmtMin(mins[k])}` })), { color: 'var(--study)', target: goal, unit: 'мин', labelEvery: every }) })}
+      ${card({ domain: 'study', title: 'Направления', span: 6, i: i++, body: cats.length ? `<div class="hbars">${cats.map(([c, m]) => `<div class="hbar"><span class="hbar-label">${esc(c)}</span><span class="hbar-track"><i data-w="${m / maxCat * 100}"></i></span><span class="hbar-val">${fmtMin(m)}</span></div>`).join('')}</div>` : empty('Нет занятий за период.') })}
+      ${card({ domain: 'quiz', title: 'Точность ответов, %', span: 6, i: i++, body: quizHistory(Math.min(n, 60)) || empty('Отвечай на вопросы дня — появится график.') })}
+    </div>`;
+}
+
+function statsMoney(n) {
+  if (!num(S.budget.amount)) return `<div class="grid">${card({ domain: 'money', title: 'Деньги', span: 12, body: `${empty('Бюджет ещё не настроен.')}<a class="btn btn-primary" style="--c:var(--money)" href="#budget">Настроить бюджет</a>` })}</div>`;
+  const days = rangeDays(n), lab = chartLab(n), every = chartEvery(n);
+  const outs = S.money.filter(x => x.kind !== 'in' && x.date >= days[0] && x.date <= ymd()), tot = msum(outs);
+  const prev = msum(S.money.filter(x => x.kind !== 'in' && x.date >= addDays(days[0], -n) && x.date < days[0]));
+  const per = days.map(d => msum(outs.filter(x => x.date === d))), base = budgetDay(ymd()).base;
+  const inLimit = days.filter(d => d < ymd() && d >= (S.money.map(m => m.date).sort()[0] || ymd()) && budgetDay(d).leftToday >= 0).length;
+  const byCat = MONEY_CATS.out.map(([k, nn, c]) => ({ n: nn, color: c, v: msum(outs.filter(o => mcat('out', o.cat)[0] === k)) })).filter(x => x.v > 0).sort((a, b) => b.v - a.v);
+  // последние 6 периодов
+  const periods = []; let p = budgetPeriod(ymd());
+  for (let k = 0; k < 6; k++) { periods.unshift(p); p = budgetPeriod(addDays(p.from, -1)); }
+  const pRows = periods.map(pp => { const v = msum(S.money.filter(x => x.kind !== 'in' && x.date >= pp.from && x.date <= pp.to)); return { label: MON[parseYmd(pp.from).getMonth()], v: Math.round(v), hint: `${human(pp.from)} — ${human(pp.to)}: ${fmtM(v)}` }; });
+  let i = 0;
+  return `<div class="kpis">
+      ${kpi('Потрачено', fmtM(tot), 'money', i++, `${delta(tot, prev, { good: 'down' })} к прошлому периоду`)}
+      ${kpi('В день', fmtM(tot / n), 'money', i++, `ровный лимит ${fmtM(base)}`)}
+      ${kpi('Дней в рамках', `${inLimit}`, 'gym', i++, 'когда не вышел за дневной лимит')}
+      ${kpi('Доходы', fmtM(msum(S.money.filter(x => x.kind === 'in' && x.date >= days[0]))), 'paper', i++, 'за период')}
+    </div>
+    <div class="grid">
+      ${card({ domain: 'money', title: 'Траты по дням', span: 12, i: i++, body: barChart(days.map((d, k) => ({ label: lab(d), v: Math.round(per[k] * 100) / 100, hint: `${human(d)}: ${fmtM(per[k])}`, color: per[k] > base * 1.5 ? 'var(--bad)' : null })), { color: 'var(--money)', target: Math.round(base), unit: CUR(), labelEvery: every }) })}
+      ${card({ domain: 'money', title: 'По категориям', span: 6, i: i++, body: byCat.length ? `<div class="m-cat-wrap">${donut(byCat, 150, `<b>${fmtM(tot)}</b><small>всего</small>`, (s, q) => `${s.n}: ${fmtM(s.v)} (${Math.round(q * 100)}%)`)}<ul class="m-cat-list">${byCat.map(x => `<li><i class="m-dot" style="--dot:${x.color}"></i><span>${x.n}</span><b>${fmtM(x.v)}</b><em>${Math.round(x.v / tot * 100)}%</em></li>`).join('')}</ul></div>` : empty('Трат за период нет.') })}
+      ${card({ domain: 'money', title: 'По месяцам', span: 6, i: i++, body: barChart(pRows, { color: 'var(--money)', target: Math.round(num(S.budget.amount)), unit: CUR(), labelEvery: 1, values: true }) })}
+    </div>`;
+}
+
+function statsBooks(n) {
+  const days = rangeDays(n), lab = chartLab(n), every = chartEvery(n), pages = days.map(readOn), tot = pages.reduce((a, b) => a + b, 0);
+  const y = new Date().getFullYear(), done = S.books.filter(b => b.status === 'done');
+  const months = Array.from({ length: 12 }, (_, k) => { const key = `${y}-${z(k + 1)}`, xs = done.filter(b => String(b.finished || '').startsWith(key)); return { label: MON[k], v: xs.length, hint: `${MONG[k]}: ${xs.map(b => b.title).join(', ') || 'нет'}` }; });
+  const genres = {}; done.forEach(b => { const g = b.genre || 'Без жанра'; genres[g] = (genres[g] || 0) + 1; });
+  const gl = Object.entries(genres).sort((a, b) => b[1] - a[1]), cols = BOOK_COLORS;
+  const speed = done.filter(b => b.started && b.finished && num(b.pages)).map(b => num(b.pages) / (diffDays(b.started, b.finished) + 1));
+  let i = 0;
+  return `<div class="kpis">
+      ${kpi('Страниц', fmtN(tot), 'books', i++, `${fmt1(tot / n)} в день · ${pages.filter(Boolean).length} дн. с чтением`)}
+      ${kpi(`Книг за ${y}`, `${booksDoneIn(y).length}<small>из ${num(S.settings.booksGoal) || 12}</small>`, 'books', i++, 'цель года')}
+      ${kpi('Скорость', speed.length ? `${fmtN(avgOf(speed))}<small>стр/день</small>` : '—', 'books', i++, 'от начала до конца книги')}
+      ${kpi('Серия чтения', `${readStreak()}`, 'books', i++, 'дней подряд')}
+    </div>
+    <div class="grid">
+      ${card({ domain: 'books', title: 'Страниц по дням', span: 12, i: i++, body: tot ? barChart(days.map((d, k) => ({ label: lab(d), v: pages[k], hint: `${human(d)}: ${pages[k]} стр.` })), { color: 'var(--books)', unit: 'стр.', labelEvery: every }) : empty('Записывай чтение в «Книгах».') })}
+      ${card({ domain: 'books', title: `Прочитано по месяцам ${y}`, span: 6, i: i++, body: barChart(months, { color: 'var(--books)', labelEvery: 1, values: true, max: 2 }) })}
+      ${card({ domain: 'books', title: 'Жанры', span: 6, i: i++, body: gl.length ? `<div class="m-cat-wrap">${donut(gl.map(([g, v], k) => ({ n: g, v, color: cols[k % cols.length] })), 150, `<b>${done.length}</b><small>книг</small>`, (s, q) => `${s.n}: ${s.v}`)}<ul class="m-cat-list">${gl.map(([g, v], k) => `<li><i class="m-dot" style="--dot:${cols[k % cols.length]}"></i><span>${esc(g)}</span><b>${v}</b></li>`).join('')}</ul></div>` : empty('Дочитанные книги появятся здесь.') })}
+    </div>`;
+}
+
+/* ============================================================
    ЦЕЛЬ: профиль, план и прогноз
    ============================================================ */
 function mondayOf(d) { return addDays(d, -((parseYmd(d).getDay() + 6) % 7)); }
@@ -2548,44 +3202,6 @@ function maybeWeekly() {
 /* ============================================================
    СТАТИСТИКА
    ============================================================ */
-function pageStats() {
-  const n = view.range, set = S.settings;
-  const days = rangeDays(n);
-  const rows = days.map(d => { const t = sumMeals(mealsOn(d)); return { d, kcal: t.kcal, p: t.p, study: studyMin(d), steps: num(dayRec(d).steps), gym: gymOn(d).length, active: hasAny(d) }; });
-  const avg = (arr) => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
-  const kcalDays = rows.filter(r => r.kcal), stepDays = rows.filter(r => r.steps);
-  const studyTot = rows.reduce((a, r) => a + r.study, 0), gymTot = rows.reduce((a, r) => a + r.gym, 0), active = rows.filter(r => r.active).length;
-  const qItems = days.flatMap(d => (S.quizzes[d]?.items || []).filter(i => i.result));
-  const acc = qItems.length ? qItems.filter(i => i.result === 'good').length / qItems.length * 100 : null;
-  const lab = d => n <= 7 ? WD[parseYmd(d).getDay()] : parseYmd(d).getDate();
-  const every = n <= 7 ? 1 : n <= 30 ? 5 : 15;
-  const byCat = {};
-  S.study.filter(s => days.includes(s.date)).forEach(s => { byCat[s.category || 'Без категории'] = (byCat[s.category || 'Без категории'] || 0) + num(s.minutes); });
-  const cats = Object.entries(byCat).sort((a, b) => b[1] - a[1]); const maxCat = cats[0]?.[1] || 1;
-  let i = 0;
-  const seg = `<div class="seg">${[7, 30, 90].map(r => `<button class="${r === n ? 'on' : ''}" data-action="range" data-n="${r}">${r} дн</button>`).join('')}</div>`;
-  return `<section class="page">
-    ${topbar('Статистика', `последние ${n} дней`, { date: false, actions: seg })}
-    <div class="kpis">
-      ${kpi('Ккал в день', kcalDays.length ? `${fmtN(avg(kcalDays.map(r => r.kcal)))}` : '—', 'food', i++, kcalDays.length ? `цель ${fmtN(set.kcal)} · записано ${kcalDays.length} дн.` : 'нет записей')}
-      ${kpi('Белка в день', kcalDays.length ? `${fmtN(avg(kcalDays.map(r => r.p)))}<small>г</small>` : '—', 'food', i++, `цель ${set.protein} г`)}
-      ${kpi('Учёба', `${hoursStr(studyTot)}<small>ч</small>`, 'study', i++, `${fmtMin(studyTot / n)} в день`)}
-      ${kpi('Точность ответов', acc === null ? '—' : `${Math.round(acc)}<small>%</small>`, 'quiz', i++, qItems.length ? `${qItems.length} ${plural(qItems.length, 'ответ', 'ответа', 'ответов')}` : 'ещё нет ответов')}
-      ${kpi('Тренировок', `${gymTot}`, 'gym', i++, `${fmt1(gymTot / n * 7)} в неделю`)}
-      ${kpi('Шагов в день', stepDays.length ? `${fmtN(avg(stepDays.map(r => r.steps)))}` : '—', 'steps', i++, `цель ${fmtN(set.steps)}`)}
-      ${kpi('Активных дней', `${active}<small>из ${n}</small>`, 'paper', i++, `серия ${streak()}`)}
-    </div>
-    <div class="grid">
-      ${card({ domain: 'paper', title: 'Карта активности · 16 недель', span: 12, i: i++, body: heatmap(16) })}
-      ${card({ domain: 'food', title: 'Калории', span: 6, i: i++, body: barChart(rows.map(r => ({ label: lab(r.d), v: r.kcal, hint: `${human(r.d)}: ${fmtN(r.kcal)} ккал` })), { color: 'var(--food)', target: set.kcal, unit: 'ккал', labelEvery: every }) })}
-      ${card({ domain: 'steps', title: 'Шаги', span: 6, i: i++, body: barChart(rows.map(r => ({ label: lab(r.d), v: r.steps, hint: `${human(r.d)}: ${fmtN(r.steps)}` })), { color: 'var(--steps)', target: set.steps, unit: '', labelEvery: every }) })}
-      ${card({ domain: 'study', title: 'Учёба, минуты', span: 6, i: i++, body: barChart(rows.map(r => ({ label: lab(r.d), v: r.study, hint: `${human(r.d)}: ${fmtMin(r.study)}` })), { color: 'var(--study)', target: set.study, unit: 'мин', labelEvery: every }) })}
-      ${card({ domain: 'study', title: 'Направления за период', span: 6, i: i++, body: cats.length ? `<div class="hbars">${cats.map(([c, m]) => `<div class="hbar"><span class="hbar-label">${esc(c)}</span><span class="hbar-track"><i data-w="${m / maxCat * 100}"></i></span><span class="hbar-val">${fmtMin(m)}</span></div>`).join('')}</div>` : empty('Нет занятий за период.') })}
-      ${card({ domain: 'gym', title: 'Тренировки по неделям', span: 6, i: i++, body: barChart(weeklyCounts(Math.max(4, Math.ceil(n / 7)), d => gymOn(d).length), { color: 'var(--gym)', unit: 'тр.', max: 7, labelEvery: 1 }) })}
-      ${card({ domain: 'quiz', title: 'Точность по дням', span: 6, i: i++, body: quizHistory(n) || empty('Отвечай на вопросы дня, и здесь появится график.') })}
-    </div>
-  </section>`;
-}
 function kpi(label, val, domain, i, sub) {
   return `<div class="kpi" style="--c:var(--${domain});--cf:var(--${domain}-f);--i:${i}"><div class="kpi-label">${label}</div><div class="kpi-val">${val}</div>${sub ? `<div class="kpi-sub">${sub}</div>` : ''}</div>`;
 }
@@ -2607,9 +3223,12 @@ function groupBy(arr, fn) {
 }
 
 /* ---------- графики ---------- */
-function barChart(rows, { color, target, max, unit = '', labelEvery } = {}) {
+const narrow = () => window.matchMedia('(max-width: 860px)').matches;
+function barChart(rows, { color, target, max, unit = '', labelEvery, values = false, fmt = fmtN } = {}) {
   const n = rows.length; if (!n) return empty('Нет данных');
-  const W = 600, H = 150, pt = 12, pb = 22;
+  // на телефоне рисуем в меньшей системе координат, чтобы подписи не сжимались до нечитаемых
+  const W = narrow() ? 340 : 600, H = narrow() ? 170 : 160, pt = values ? 22 : 14, pb = 22;
+  if (narrow() && labelEvery && n > 14) labelEvery = Math.ceil(n / 6);
   const mx = Math.max(max || 0, target || 0, ...rows.map(r => r.v)) || 1;
   const ih = H - pt - pb, bw = W / n;
   const y = v => pt + ih * (1 - v / mx);
@@ -2618,15 +3237,15 @@ function barChart(rows, { color, target, max, unit = '', labelEvery } = {}) {
     const w = Math.max(2, bw * 0.68), x = i * bw + (bw - w) / 2;
     const h = r.v ? Math.max(2, ih * r.v / mx) : 2;
     const yy = r.v ? y(r.v) : pt + ih - 2;
-    return `<rect x="${x.toFixed(1)}" y="${yy.toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}" rx="${Math.min(3, w / 2)}" fill="${color}" opacity="${r.v ? (r.empty ? .35 : .85) : .12}"><title>${esc(r.hint || `${r.label}: ${fmtN(r.v)} ${unit}`)}</title></rect>`;
+    return `<rect x="${x.toFixed(1)}" y="${yy.toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}" rx="${Math.min(3, w / 2)}" fill="${r.color || color}" opacity="${r.v ? (r.empty ? .35 : .9) : .12}"><title>${esc(r.hint || `${r.label}: ${fmt(r.v)} ${unit}`)}</title></rect>${values && r.v ? `<text class="bar-val" x="${(x + w / 2).toFixed(1)}" y="${(yy - 5).toFixed(1)}" text-anchor="middle">${fmt(r.v)}</text>` : ''}`;
   }).join('');
   const labels = rows.map((r, i) => (i % step === 0 || (step > 1 && i === n - 1 && (n - 1) % step !== 0 && n > 3 && (n - 1 - i) < 0)) ? `<text x="${(i * bw + bw / 2).toFixed(1)}" y="${H - 6}" text-anchor="middle">${esc(r.label)}</text>` : '').join('');
-  const tgt = target && target <= mx ? `<line class="target" x1="0" x2="${W}" y1="${y(target).toFixed(1)}" y2="${y(target).toFixed(1)}"/><text class="target-label" x="${W}" y="${(y(target) - 4).toFixed(1)}" text-anchor="end">${fmtN(target)} ${unit}</text>` : '';
+  const tgt = target && target <= mx ? `<line class="target" x1="0" x2="${W}" y1="${y(target).toFixed(1)}" y2="${y(target).toFixed(1)}"/><text class="target-label" x="${W}" y="${(y(target) - 4).toFixed(1)}" text-anchor="end">${fmt(target)} ${unit}</text>` : '';
   return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img">${tgt}${bars}${labels}</svg>`;
 }
 function lineChart(pts, { color, unit = '' }) {
   const n = pts.length; if (n < 2) return empty('Мало данных');
-  const W = 600, H = 150, pt = 14, pb = 22, pl = 6, pr = 6;
+  const W = narrow() ? 340 : 600, H = narrow() ? 170 : 160, pt = 14, pb = 22, pl = 6, pr = 6;
   const vals = pts.map(p => p.v), lo = Math.min(...vals), hi = Math.max(...vals), span = (hi - lo) || 1;
   const x = i => pl + (W - pl - pr) * i / (n - 1), y = v => pt + (H - pt - pb) * (1 - (v - lo) / span);
   const d = pts.map((p, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(p.v).toFixed(1)}`).join(' ');
@@ -2756,6 +3375,29 @@ function toast(msg, err = false) {
    ДЕЙСТВИЯ
    ============================================================ */
 const ACTIONS = {
+  'stat-tab': el => { view.statTab = el.dataset.v; setSub(el.dataset.v); render(); },
+  'stat-month': el => { const [y, m] = (view.statMonth || ymd().slice(0, 7)).split('-').map(Number); const dt = new Date(y, m - 1 + +el.dataset.n, 1); view.statMonth = `${dt.getFullYear()}-${z(dt.getMonth() + 1)}`; render(); },
+  'stat-day': el => { view.date = el.dataset.d; location.hash = '#today'; },
+  'book-tab': el => { view.bookTab = el.dataset.v; if (el.dataset.f) view.bookFilter = el.dataset.f; setSub(el.dataset.v); window.scrollTo({ top: 0, behavior: 'instant' }); render(); },
+  'book-filter': el => { view.bookFilter = el.dataset.v; render(); },
+  'book-add': () => bookForm(),
+  'book-open': el => openBook(el.dataset.id),
+  'book-edit': el => { const b = bookById(el.dataset.id); if (b) { closeModal('swap'); bookForm(b); } },
+  'book-del': el => { const b = bookById(el.dataset.id); if (!b) return; closeModal(); const log = S.readLog.filter(x => x.book === b.id);
+    removeItems('books', x => x.id === b.id, `«${b.title}» убрана с полки`, { after: () => { S.readLog = S.readLog.filter(x => x.book !== b.id); }, snapshot: () => log, restore: l => { S.readLog.push(...l); } }); },
+  'book-status': el => { const b = bookById(el.dataset.id); if (!b) return; const v = el.dataset.v;
+    if (v === 'done') finishBook(b); else { b.status = v; if (v === 'reading' && !b.started) b.started = ymd(); if (v !== 'done') b.finished = null; }
+    save(); render(); refreshBook(); if (v === 'done') toast(`«${b.title}» прочитана — ${booksDoneIn(new Date().getFullYear()).length}-я книга в этом году`); },
+  'book-rate': el => { const b = bookById(el.dataset.id); if (!b) return; b.rating = b.rating === +el.dataset.v ? 0 : +el.dataset.v; save(); render(); refreshBook(); },
+  'book-finish': el => { const b = bookById(el.dataset.id); if (!b) return; finishBook(b); save(); render(); openBook(b.id); toast(`«${b.title}» прочитана! Поставь оценку и сохрани мысли.`); },
+  'read-add': el => { const b = bookById(el.dataset.id); if (!b) return; const d = logPages(b, num(b.page) + +el.dataset.n); save(); render(); toast(`+${d} стр. · сегодня ${readOn(ymd())}`); },
+  'quote-del': el => { const b = bookById(el.dataset.id); if (!b) return; const qi = (b.quotes || []).findIndex(q => q.id === el.dataset.q); if (qi < 0) return; const [q] = b.quotes.splice(qi, 1);
+    save(); render(); refreshBook(); undoToast('Цитата удалена', () => { b.quotes.splice(qi, 0, q); refreshBook(); }); },
+  'bk-pick': el => { const x = (window.bkHits || [])[+el.dataset.k], f = $('#modal-root [data-form=book]'); if (!x || !f) return;
+    f.title.value = x.title; f.author.value = x.author || ''; if (x.pages) f.pages.value = x.pages; if (x.genre && !f.genre.value) f.genre.value = x.genre.slice(0, 40);
+    bkPick = x.cover || x.isbn?.length ? { cover: x.cover, isbn: x.isbn || [] } : null; document.querySelectorAll('.bk-hit').forEach(h => h.classList.toggle('on', h === el));
+    const note = $('#bk-cover-note'); if (note) note.textContent = x.cover || x.isbn?.length ? 'Обложка из каталога выбрана.' : 'У этой книги в каталоге нет обложки — нарисуем свою или сфотографируй.'; },
+  'books-goal': () => openModal({ title: 'Цель на год', accent: 'var(--books)', form: 'books-goal', body: field('Сколько книг прочитать за год', `<input name="n" type="number" min="1" max="365" inputmode="numeric" value="${num(S.settings.booksGoal) || 12}">`) }),
   'm-kind': el => { view.mKind = el.dataset.v; render(); $('.m-form [name=amount]')?.focus(); },
   'm-edit': el => {
     const x = S.money.find(m => m.id === el.dataset.id); if (!x) return;
@@ -2948,6 +3590,36 @@ const ACTIONS = {
 };
 
 const FORMS = {
+  async book(fd, f) {
+    const title = String(fd.get('title') || '').trim(); if (!title) return;
+    const old = fd.get('id'), b = old ? bookById(old) : { id: uid(), added: ymd(), quotes: [], page: 0 };
+    if (!b) return;
+    const st = BOOK_STATUS[fd.get('status')] ? String(fd.get('status')) : 'want', wasStatus = b.status;
+    Object.assign(b, { title: title.slice(0, 200), author: String(fd.get('author') || '').trim().slice(0, 160), pages: Math.max(0, Math.round(num(fd.get('pages')))),
+      format: BOOK_FORMAT[fd.get('format')] ? String(fd.get('format')) : 'paper', genre: String(fd.get('genre') || '').trim().slice(0, 40), owned: !!fd.get('owned') });
+    if (bkPick && !b.cover?.mine) b.cover = { ol: bkPick.cover || null, isbn: (bkPick.isbn || []).filter(i => /^\d{9}[\dX]$/.test(i)).slice(0, 4) };
+    if (st !== wasStatus) { if (st === 'done') { b.status = 'reading'; finishBook(b); } else { b.status = st; if (st === 'reading' && !b.started) b.started = ymd(); } }
+    const photo = fd.get('photo');
+    if (photo && photo.size) {
+      const btn = f.querySelector('[type=submit]'); if (btn) { btn.disabled = true; btn.textContent = 'Загружаю обложку…'; }
+      try { await coverUpload(photo, b.id); b.cover = { mine: 1, v: Date.now() % 1e9 }; } catch (e) { toast(e.message, true); if (btn) { btn.disabled = false; btn.textContent = 'Сохранить'; } return; }
+    }
+    if (!old) S.books.push(b);
+    save(); closeModal(); render(); toast(old ? 'Сохранено' : `«${b.title}» — на полке`);
+  },
+  'read-progress'(fd) {
+    const b = bookById(fd.get('id')); if (!b) return;
+    const v = String(fd.get('page') || '').trim(); if (!v) { toast('Впиши страницу, до которой дочитал', true); return; }
+    const d = logPages(b, v);
+    if (num(b.pages) && num(b.page) >= num(b.pages)) { finishBook(b); save(); render(); openBook(b.id); toast(`«${b.title}» дочитана!`); return; }
+    save(); render(); toast(d > 0 ? `+${d} стр. · сегодня ${readOn(ymd())}` : `Стр. ${b.page}`);
+  },
+  quote(fd) {
+    const b = bookById(fd.get('id')), text = String(fd.get('text') || '').trim(); if (!b || !text) return;
+    (b.quotes = b.quotes || []).unshift({ id: uid(), text: text.slice(0, 1200), page: String(fd.get('page') || '').trim().slice(0, 10), date: ymd() });
+    save(); render(); refreshBook(); toast('Цитата сохранена');
+  },
+  'books-goal'(fd) { S.settings.booksGoal = Math.max(1, Math.min(365, Math.round(num(fd.get('n'))) || 12)); save(); closeModal(); render(); },
   'budget-set'(fd) {
     const amount = parseAmount(fd.get('amount'));
     if (amount <= 0) { toast('Введи сумму на месяц', true); return; }
@@ -3078,6 +3750,8 @@ let noteTimer;
 document.addEventListener('input', e => {
   const t = e.target;
   if (t.dataset.comp && ['title', 'note'].includes(t.dataset.f)) { const c = view.comp?.[t.dataset.comp]; if (c) c[t.dataset.f] = t.value; }
+  if (t.dataset.bkSearch !== undefined) { clearTimeout(bkTimer); const v = t.value; bkTimer = setTimeout(() => bookSearch(v), 350); }
+  if (t.dataset.bookNote) { const b = bookById(t.dataset.bookNote); if (b) { b.notes = t.value.slice(0, 5000); save(); } }
   if (t.dataset.search !== undefined) { clearTimeout(searchTimer); const v = t.value; searchTimer = setTimeout(() => runSearch(v), 250); }
   if (t.dataset.rdFind !== undefined) { clearTimeout(searchTimer); const v = t.value; searchTimer = setTimeout(() => rdFind(v), 250); }
   if (t.dataset.qans !== undefined) { const it = S.quizzes[quizDay()]?.items[+t.dataset.qans]; if (it) it.answer = t.value; }
@@ -3115,6 +3789,7 @@ document.addEventListener('change', e => {
   const t = e.target;
   if (t.dataset.comp && ['date', 'time', 'goalId'].includes(t.dataset.f)) { const c = view.comp?.[t.dataset.comp]; if (c) { c[t.dataset.f] = t.value || (t.dataset.f === 'date' ? c.date : ''); render(); } return; }
   if (t.dataset.rdSec !== undefined && t.value) { const h = $('.rd-body #' + headId(t.value)); if (h) h.scrollIntoView({ block: 'start', behavior: 'smooth' }); t.value = ''; return; }
+  if (t.dataset.bookSort !== undefined) { view.bookSort = t.value; render(); return; }
   if (t.dataset.photo !== undefined && t.files[0]) { startPhoto(t.files[0]); t.value = ''; return; }
   if (t.dataset.import !== undefined && t.files[0]) {
     const r = new FileReader();
@@ -3243,6 +3918,10 @@ async function boot() {
   try { const r = await apiFetch('/api/me'); me = r.username; photoOn = !!r.photo; }
   catch (e) { return showAuth(e.status === 401 ? '' : 'Сервер недоступен. Проверь, что он запущен.'); }
   await loadState();
+  setTimeout(checkAch, 2500);
 }
 boot();
+// графики рисуются под ширину экрана: при смене телефон/компьютер перерисовываем
+let wasNarrow = narrow();
+window.addEventListener('resize', () => { if (narrow() !== wasNarrow) { wasNarrow = narrow(); if (me && !$('#modal-root .overlay') && !typingNow()) render(); } });
 if ('serviceWorker' in navigator && window.isSecureContext) navigator.serviceWorker.register('/sw.js').catch(() => {});
