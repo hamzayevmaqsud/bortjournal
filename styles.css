@@ -608,6 +608,31 @@ details.theses li{margin:3px 0}
 .wk-ic{font-size:10px;height:12px}.wk-ic.st-good{color:var(--st-good)}.wk-ic.st-warn,.wk-ic.st-low{color:var(--st-warn)}.wk-ic.st-bad{color:var(--st-bad)}
 .wk-sum{margin:12px 0 0;font-size:14px}
 
+/* ---------- календарь питания ---------- */
+.cal-head{display:flex;align-items:center;justify-content:space-between;margin:-6px 0 8px}
+.cal-head b{font:800 17px var(--display)}
+.cal-head .icon-btn:disabled{opacity:.3;cursor:default}
+.cal{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
+.cal-wd{font:700 10px var(--sans);letter-spacing:.1em;text-transform:uppercase;color:var(--paper-3);text-align:center;padding-bottom:2px}
+.cal-cell{
+  position:relative;aspect-ratio:1;border:0;border-radius:11px;cursor:pointer;
+  background:var(--ink-2);color:var(--paper);font:600 13px var(--sans);
+  display:grid;place-items:center;padding:0;transition:transform .15s var(--ease),box-shadow .2s;
+}
+.cal-cell:hover:not(:disabled){transform:translateY(-1px)}
+.cal-pad{background:none;cursor:default}
+.cal-fut{opacity:.35;cursor:default}
+.cal-good{background:color-mix(in srgb,var(--st-good) 22%,var(--ink-2))}
+.cal-warn,.cal-low{background:color-mix(in srgb,var(--st-warn) 24%,var(--ink-2))}
+.cal-bad{background:color-mix(in srgb,var(--st-bad) 26%,var(--ink-2))}
+.cal-today{box-shadow:inset 0 0 0 2px var(--orange)}
+.cal-sel{box-shadow:inset 0 0 0 2px var(--navy)}
+.cal-today.cal-sel{box-shadow:inset 0 0 0 2px var(--orange),0 0 0 2px var(--navy)}
+.cal-ic{position:absolute;top:3px;right:4px;font-style:normal;font-size:8px;line-height:1}
+.cal-good .cal-ic{color:var(--st-good)}.cal-warn .cal-ic,.cal-low .cal-ic{color:var(--st-warn)}.cal-bad .cal-ic{color:var(--st-bad)}
+.cal-p{position:absolute;bottom:4px;left:50%;width:5px;height:5px;margin-left:-2.5px;border-radius:50%;background:#3F6FB5}
+.cal-p.cal-p-l{position:static;display:inline-block;width:8px;height:8px;margin:0 6px 0 0;border-radius:50%}
+
 /* ---------- фото еды ---------- */
 .card-actions{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
 .opts-5{grid-template-columns:repeat(5,1fr)}

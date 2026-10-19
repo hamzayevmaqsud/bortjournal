@@ -496,6 +496,35 @@ function mealTimingCard(d) {
   </div></div>`;
 }
 
+
+/* Календарь месяца: цвет дня — попадание в норму калорий, синяя точка — белок закрыт */
+function foodCalendarCard(nm) {
+  const t = ymd(), cur = view.calMonth || view.date.slice(0, 7);
+  const [y, m] = cur.split('-').map(Number), first = `${cur}-01`;
+  const days = new Date(y, m, 0).getDate(), lead = (parseYmd(first).getDay() + 6) % 7;
+  let good = 0, logged = 0, prot = 0;
+  const cells = [];
+  for (let k = 0; k < lead; k++) cells.push('<span class="cal-cell cal-pad"></span>');
+  for (let n = 1; n <= days; n++) {
+    const d = `${cur}-${z(n)}`, tot = sumMeals(mealsOn(d)), live = d === t, fut = d > t;
+    const st = tot.kcal ? judge('kcal', tot.kcal, nm.kcal, live) : null, sp = tot.kcal ? judge('p', tot.p, nm.p, live) : null;
+    if (st && !live) { logged++; if (st.lvl === 'good') good++; if (sp.lvl === 'good') prot++; }
+    const cls = ['cal-cell', st && !live ? `cal-${st.lvl}` : '', live ? 'cal-today' : '', fut ? 'cal-fut' : '', d === view.date ? 'cal-sel' : ''].join(' ');
+    const tip = tot.kcal ? `${human(d)}: ${fmtN(tot.kcal)} из ${fmtN(nm.kcal)} ккал (${Math.round(tot.kcal / nm.kcal * 100)}%), белок ${fmtN(tot.p)} из ${nm.p} г · ${st.text}` : `${human(d)}: нет записей`;
+    cells.push(`<button type="button" class="${cls}" data-action="cal-day" data-d="${d}" title="${tip}" aria-label="${tip}" ${fut ? 'disabled' : ''}>
+      <span class="cal-n">${n}</span>${st && !live ? `<i class="cal-ic" aria-hidden="true">${st.icon}</i>` : ''}${sp && sp.lvl === 'good' ? '<i class="cal-p" aria-hidden="true"></i>' : ''}</button>`);
+  }
+  const mName = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'][m - 1];
+  return `<div class="cal-head">
+      <button class="icon-btn" data-action="cal-month" data-n="-1" aria-label="Предыдущий месяц">${I.chevL}</button>
+      <b>${mName} ${y}</b>
+      <button class="icon-btn" data-action="cal-month" data-n="1" aria-label="Следующий месяц" ${cur >= t.slice(0, 7) ? 'disabled' : ''}>${I.chevR}</button>
+    </div>
+    <div class="cal">${['пн', 'вт', 'ср', 'чт', 'пт', 'сб', 'вс'].map(w => `<span class="cal-wd">${w}</span>`).join('')}${cells.join('')}</div>
+    <p class="wk-sum">${logged ? `В норме <b>${good} из ${logged}</b> ${plural(logged, 'дня', 'дней', 'дней')} с записями · белок закрыт <b>${prot}</b>` : 'В этом месяце завершённых дней с записями нет.'}</p>
+    <div class="heat-legend"><span><i style="background:var(--st-good)"></i>в норме</span><span><i style="background:var(--st-warn)"></i>мимо нормы</span><span><i style="background:var(--st-bad)"></i>перебор</span><span><i class="cal-p cal-p-l"></i>белок закрыт</span></div>`;
+}
+
 function pageFood() {
   const d = view.date, ms = mealsOn(d), tot = sumMeals(ms), nm = norms(), live = d === ymd();
   const freq = topFoods(8);
@@ -505,9 +534,10 @@ function pageFood() {
     <div class="grid">
       ${card({ domain: 'food', title: live ? 'Норма на сегодня' : `Норма на ${human(d)}`, span: 12, i: i++, body: dayNormsCard(d, tot, nm, live) + `<p class="hint">Нормы из твоего плана${S.profile ? '' : ' (заполни профиль на вкладке «Цель», чтобы они стали личными)'}: ${fmtN(nm.kcal)} ккал, белок ${nm.p} г, жиры ${nm.f} г, углеводы ${nm.c} г. Второй, тёмный виток кольца — сколько сверх нормы.</p>` })}
       ${card({ domain: 'food', title: 'Записи за день', span: 7, i: i++, body: ms.length ? `<div class="list">${ms.map(mealItem).join('')}</div>` : empty('За этот день записей нет. Добавь первую — название и калории, остальное по желанию.') })}
+      ${card({ domain: 'food', title: 'Календарь питания', span: 5, i: i++, body: foodCalendarCard(nm) })}
       ${card({ domain: 'food', title: 'Баланс БЖУ за день', span: 5, i: i++, body: macroSplitCard(tot) })}
       ${card({ domain: 'food', title: 'Неделя: в норме ли', span: 7, i: i++, body: weekNormsCard(d, nm) })}
-      ${card({ domain: 'food', title: 'Когда ешь', span: 5, i: i++, body: mealTimingCard(d) })}
+      ${card({ domain: 'food', title: 'Когда ешь', span: 12, i: i++, body: mealTimingCard(d) })}
       ${freq.length ? card({ domain: 'food', title: 'Частое', span: 12, i: i++, body: `<div class="chips">${freq.map(f => `<button class="chip chip-btn" data-action="quick-meal" data-name="${esc(f.name)}"><b>${esc(f.name)}</b>${fmtN(f.kcal)} ккал</button>`).join('')}</div><p class="hint">Нажми, чтобы записать на выбранный день прямо сейчас.</p>` }) : ''}
     </div>
   </section>`;
@@ -1510,8 +1540,10 @@ function toast(msg, err = false) {
    ДЕЙСТВИЯ
    ============================================================ */
 const ACTIONS = {
-  'date': el => { view.date = addDays(view.date, +el.dataset.n); render(); },
-  'date-today': () => { view.date = ymd(); render(); },
+  'date': el => { view.date = addDays(view.date, +el.dataset.n); view.calMonth = null; render(); },
+  'date-today': () => { view.date = ymd(); view.calMonth = null; render(); },
+  'cal-month': el => { const [y, m] = (view.calMonth || view.date.slice(0, 7)).split('-').map(Number); const dt = new Date(y, m - 1 + +el.dataset.n, 1); view.calMonth = `${dt.getFullYear()}-${z(dt.getMonth() + 1)}`; render(); },
+  'cal-day': el => { view.date = el.dataset.d; view.calMonth = el.dataset.d.slice(0, 7); render(); },
   'range': el => { view.range = +el.dataset.n; render(); },
   'close-modal': (el, e) => { if (el.classList.contains('overlay') && e.target !== el) return; closeModal(); },
   'add-meal': () => mealForm(),
