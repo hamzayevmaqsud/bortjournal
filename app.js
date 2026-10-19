@@ -9,10 +9,12 @@ const KEY = 'bortjournal.v1'; // старое хранилище браузер�
 const DEF = {
   settings: { kcal: 2200, protein: 140, steps: 10000, study: 60, apiKey: '', aiAuto: false, name: '' },
   meals: [], study: [], workouts: [], days: {}, srs: {}, quizzes: {}, foods: {},
-  profile: null, activity: {}, drinks: [], sets: []
+  profile: null, activity: {}, drinks: [], sets: [], studyTime: {}
 };
 let S = structuredClone(DEF);
 let me = null, rev = 0, photoOn = false;
+// конспекты из Obsidian: приходят с сервера отдельно от данных пользователя
+let OBS = { enabled: false, notes: [], diary: [] };
 
 function normalize(d) {
   const out = Object.assign(structuredClone(DEF), d || {});
@@ -127,7 +129,7 @@ function sumMeals(ms) {
     fi: a.fi + num(m.fi), su: a.su + num(m.su), sa: a.sa + num(m.sa), nut: a.nut + (m.su !== undefined ? 1 : 0), n: a.n + 1 }),
     { kcal: 0, p: 0, f: 0, c: 0, fi: 0, su: 0, sa: 0, nut: 0, n: 0 });
 }
-const studyMin = d => studyOn(d).reduce((a, s) => a + num(s.minutes), 0);
+const studyMin = d => studyOn(d).reduce((a, s) => a + num(s.minutes), 0) + (OBS.diary || []).filter(e => e.date === d).reduce((a, e) => a + num(S.studyTime[e.id]), 0);
 function hasAny(d) { return !!(mealsOn(d).length || studyOn(d).length || gymOn(d).length || num(dayRec(d).steps)); }
 function streak() {
   let d = ymd();
@@ -1044,31 +1046,133 @@ function photoSave() {
 const CATS = ['C#', 'Unity', 'Алгоритмы', 'Архитектура', 'Web', 'Git', 'Математика', 'Английский'];
 function usedCats() { return [...new Set([...S.study.map(s => s.category), ...CATS])].filter(Boolean); }
 
+/* Небольшой markdown → HTML для шпаргалок: заголовки, списки, таблицы, код, жирный */
+function mdToHtml(md) {
+  const inline = t => esc(t).replace(/`([^`]+)`/g, '<code>$1</code>').replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>').replace(/(^|[^*])\*([^*\n]+)\*/g, '$1<i>$2</i>').replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (m, a, b) => b || a.replace(/#.*/, ''));
+  const out = [], lines = String(md).split('\n');
+  for (let i = 0; i < lines.length; i++) {
+    const l = lines[i];
+    if (/^```/.test(l)) { const buf = []; while (++i < lines.length && !/^```/.test(lines[i])) buf.push(lines[i]); out.push(`<pre><code>${esc(buf.join('\n'))}</code></pre>`); continue; }
+    if (/^\s*\|.*\|\s*$/.test(l)) {
+      const rows = []; i--;
+      while (++i < lines.length && /^\s*\|.*\|\s*$/.test(lines[i])) rows.push(lines[i]);
+      i--;
+      const cells = r => r.trim().replace(/^\||\|$/g, '').split('|').map(c => c.trim());
+      const body = rows.filter(r => !/^\s*\|[\s:|-]+\|\s*$/.test(r));
+      out.push(`<div class="md-table"><table>${body.map((r, k) => `<tr>${cells(r).map(c => k ? `<td>${inline(c)}</td>` : `<th>${inline(c)}</th>`).join('')}</tr>`).join('')}</table></div>`);
+      continue;
+    }
+    const h = /^(#{1,4})\s+(.+)$/.exec(l);
+    if (h) { out.push(`<h${Math.min(4, h[1].length + 1)}>${inline(h[2])}</h${Math.min(4, h[1].length + 1)}>`); continue; }
+    if (/^\s*([-*]|\d+\.)\s+/.test(l)) {
+      const ordered = /^\s*\d+\./.test(l), items = []; i--;
+      while (++i < lines.length && /^\s*([-*]|\d+\.)\s+/.test(lines[i])) items.push(lines[i].replace(/^\s*([-*]|\d+\.)\s+(\[[ xX]\]\s+)?/, ''));
+      i--;
+      out.push(`<${ordered ? 'ol' : 'ul'}>${items.map(x => `<li>${inline(x)}</li>`).join('')}</${ordered ? 'ol' : 'ul'}>`);
+      continue;
+    }
+    if (/^>\s?/.test(l)) { out.push(`<blockquote>${inline(l.replace(/^>\s?(\[![^\]]+\]\s*)?/, ''))}</blockquote>`); continue; }
+    if (l.trim()) out.push(`<p>${inline(l)}</p>`);
+  }
+  return out.join('');
+}
+async function openCheat(id, regenerate) {
+  const n = OBS.notes.find(x => x.id === id); if (!n) return;
+  const root = $('#modal-root');
+  const show = (inner, foot = '') => {
+    root.innerHTML = `<div class="overlay" data-action="close-modal"><div class="sheet cheat-sheet" style="--c:var(--study)" role="dialog" aria-modal="true" aria-label="Шпаргалка">
+      <header class="sheet-head"><h2>${esc(noteShort(n.title))} — шпаргалка</h2><button type="button" class="icon-btn" data-action="close-modal" aria-label="Закрыть">${I.x}</button></header>
+      <div class="cheat-body">${inner}</div><footer class="sheet-foot">${foot}</footer></div></div>`;
+    requestAnimationFrame(() => root.classList.add('open'));
+  };
+  show(`<p class="cheat-wait"><span class="busy-dot"></span>${regenerate || !n.cheat ? 'Собираю шпаргалку из конспекта… обычно 20–40 секунд' : 'Открываю…'}</p>`);
+  try {
+    const r = regenerate || !n.cheat
+      ? await apiFetch('/api/study/cheatsheet', { method: 'POST', body: JSON.stringify({ noteId: id }) })
+      : await apiFetch('/api/study/cheatsheet?id=' + encodeURIComponent(id));
+    if (!root.querySelector('.cheat-sheet')) return;
+    show(mdToHtml(r.markdown), `<span class="hint" style="margin:0;flex:1">Сохранено в Obsidian: ${esc(r.rel)}</span><a class="btn" href="${esc(r.link)}">${I.study}Открыть в Obsidian</a><button class="btn btn-accent" style="--c:var(--study)" data-action="cheat-new" data-id="${id}">${I.repeat}Собрать заново</button>`);
+    loadObs();
+  } catch (e) { show(`<p class="auth-err">${esc(e.message)}</p>`, `<button class="btn btn-ghost" data-action="close-modal">Закрыть</button>`); }
+}
+
+function ago(iso) {
+  if (!iso) return 'ещё не было';
+  const m = Math.round((Date.now() - new Date(iso)) / 60e3);
+  return m < 1 ? 'только что' : m < 60 ? `${m} мин назад` : m < 1440 ? `${Math.round(m / 60)} ч назад` : human(ymd(new Date(iso)));
+}
+function obsStatusCard() {
+  if (!OBS.enabled) return `<p class="hint" style="margin:0">Obsidian не подключён. Укажи на сервере в файле <b>.env</b> путь к хранилищу (<code>OBSIDIAN_VAULT</code>) и свой логин (<code>OBSIDIAN_USER</code>), затем перезапусти сервер. Конспекты из папки «Учёба» будут подтягиваться сами.</p>`;
+  const q = OBS.queue || { total: 0, done: 0 };
+  const left = q.total - q.done;
+  return `<div class="obs-status">
+    <div class="obs-line">${I.study}<span>Хранилище <b>${esc(OBS.vaultName)}</b> → папка <b>${esc(OBS.folder)}</b> · синхронизировано ${ago(OBS.lastSync)}</span>
+      <button class="btn btn-sm" data-action="obs-sync">${I.repeat}Синхронизировать</button></div>
+    ${OBS.error ? `<p class="auth-err" style="margin:0">${esc(OBS.error)}</p>` : ''}
+    ${q.total ? `<div class="obs-line"><span class="obs-q">${left ? `${q.pausedUntil ? 'Лимит Gemini — пауза, продолжу сам. ' : 'Gemini готовит вопросы: '}${q.done} из ${q.total} разделов` : `Вопросы готовы для всех ${q.total} разделов`}</span><span class="sb-track obs-track"><i data-w="${q.total ? q.done / q.total * 100 : 0}" style="background:var(--quiz)"></i></span></div>` : ''}
+    <details class="obs-howto"><summary>Как оформлять конспекты</summary>
+      <p>Каждый конспект — отдельная заметка в папке «${esc(OBS.folder)}». Разделы — заголовки <code>##</code>: по каждому разделу будут свои вопросы. Наверху можно указать теги и дату:</p>
+      <pre><code>---\ntitle: Название темы\ntags: [ai, transformers]\ncreated: ${ymd()}\n---</code></pre>
+      <p>Пометки 🔍 (гипотезы) в вопросы не попадают, пункты <code>- [ ]</code> показываются как «что проверить». Дописал раздел — в дневнике появится запись, вопросы по нему пересоберутся.</p></details>
+  </div>`;
+}
+function notesCard() {
+  if (!OBS.notes.length) return empty(OBS.enabled ? `Конспектов пока нет. Положи заметку в папку «${esc(OBS.folder || 'Учёба')}» — она появится здесь в течение минуты.` : 'Подключи Obsidian — и конспекты появятся здесь.');
+  return OBS.notes.map(n => {
+    const secs = n.sections.filter(s => !s.skip), qn = secs.reduce((a, s) => a + (s.questions?.length || 0), 0), ready = secs.filter(s => s.questions !== null).length;
+    const open = (n.tasks || []).filter(t => !t.done);
+    const due = withState().filter(c => c.noteId === n.id && c.st.due <= ymd()).length;
+    return `<div class="note">
+      <div class="note-head"><div class="note-title"><b>${esc(n.title)}</b><span class="note-meta">${human(n.date)} · ${secs.length} ${plural(secs.length, 'раздел', 'раздела', 'разделов')} · ${qn} ${plural(qn, 'вопрос', 'вопроса', 'вопросов')}${ready < secs.length ? ` (готово ${ready}/${secs.length})` : ''}</span></div>
+        <div class="note-actions">
+          <button class="btn btn-primary btn-sm" style="--c:var(--quiz)" data-action="quiz-note" data-id="${n.id}" ${qn ? '' : 'disabled'}>${I.quiz}Повторить${due ? ` · ${due}` : ''}</button>
+          <button class="btn btn-accent btn-sm" style="--c:var(--study);--cf:var(--study-f)" data-action="cheat" data-id="${n.id}" ${photoOn ? '' : 'disabled'}>${I.spark}${n.cheat ? 'Шпаргалка' : 'Сделать шпаргалку'}</button>
+          <a class="btn btn-sm" href="${esc(n.link)}">Открыть в Obsidian</a>
+        </div></div>
+      ${n.tags.length ? `<div class="chips note-tags">${n.tags.map(t => `<span class="chip chip-pill" style="--c:var(--study);--cf:var(--study-f)">#${esc(t)}</span>`).join('')}</div>` : ''}
+      <details class="theses"><summary>Разделы и вопросы</summary><div class="note-secs">${secs.map(sec => `<div class="note-sec"><span>${esc(sec.h)}</span>
+        <span class="muted">${sec.questions === null ? 'вопросы готовятся…' : sec.qError ? `ошибка: ${esc(sec.qError.slice(0, 60))}` : `${sec.questions.length} ${plural(sec.questions.length, 'вопрос', 'вопроса', 'вопросов')}`}</span>
+        <button class="icon-btn" title="Пересобрать вопросы по разделу" aria-label="Пересобрать вопросы" data-action="obs-regen" data-id="${n.id}" data-key="${sec.key}">${I.repeat}</button></div>`).join('')}</div></details>
+      ${open.length ? `<details class="theses"><summary>Что проверить · ${open.length}</summary><ul class="note-tasks">${open.map(t => `<li>${esc(t.text)}</li>`).join('')}</ul></details>` : ''}
+    </div>`;
+  }).join('');
+}
+function diaryCard() {
+  const obs = (OBS.diary || []).map(e => ({ ...e, src: 'obs' }));
+  const man = S.study.map(x => ({ id: x.id, date: x.date, src: 'manual', s: x }));
+  const all = [...obs, ...man].sort((a, b) => b.date.localeCompare(a.date) || String(b.at || '').localeCompare(String(a.at || ''))).slice(0, 80);
+  if (!all.length) return empty('Дневник заполнится сам: новый конспект или дописанный раздел в Obsidian — запись здесь. Без Obsidian можно добавить занятие вручную.');
+  return groupBy(all, e => e.date).map(([d, arr]) => `<div class="group-date"><span>${relDay(d)} · ${human(d)}</span><span>${(() => { const m = studyMin(d); return m ? fmtMin(m) : ''; })()}</span></div>
+    <div class="list">${arr.map(e => e.src === 'manual' ? studyItem(e.s) : `<div class="item diary-item">
+      <span class="diary-ic">${e.kind === 'new' ? I.plus : I.edit}</span>
+      <div class="item-main"><div class="item-title">${esc(noteShort(e.title))}</div>
+        <div class="item-sub">${e.kind === 'new' ? `новый конспект: ${e.added.length} ${plural(e.added.length, 'раздел', 'раздела', 'разделов')}` : [e.added.length ? `дописал: ${e.added.map(esc).join(', ')}` : '', e.changed.length ? `изменил: ${e.changed.map(esc).join(', ')}` : ''].filter(Boolean).join(' · ')}</div></div>
+      <label class="diary-min" title="Сколько минут занимался"><input type="number" min="0" step="5" inputmode="numeric" placeholder="—" data-dmin="${e.id}" value="${S.studyTime[e.id] || ''}"><span>мин</span></label>
+      <a class="icon-btn" href="${esc((OBS.notes.find(n => n.id === e.noteId) || {}).link || '#study')}" title="Открыть в Obsidian" aria-label="Открыть в Obsidian">${I.chevR}</a>
+    </div>`).join('')}</div>`).join('');
+}
+
 function pageStudy() {
-  const total = S.study.reduce((a, s) => a + num(s.minutes), 0);
+  const allMin = S.study.reduce((a, s) => a + num(s.minutes), 0) + Object.values(S.studyTime).reduce((a, v) => a + num(v), 0);
   const week = rangeDays(7).reduce((a, d) => a + studyMin(d), 0);
-  const topics = new Set(S.study.map(s => s.topic.trim().toLowerCase())).size;
-  const cards = allCards().length;
-  const byCat = {};
-  S.study.forEach(s => { byCat[s.category || 'Без категории'] = (byCat[s.category || 'Без категории'] || 0) + num(s.minutes); });
-  const cats = Object.entries(byCat).sort((a, b) => b[1] - a[1]);
-  const maxCat = cats[0]?.[1] || 1;
+  const secs = OBS.notes.flatMap(n => n.sections.filter(s => !s.skip));
+  const qn = secs.reduce((a, s) => a + (s.questions?.length || 0), 0);
+  const due = dueCards(ymd()).length;
   const days30 = rangeDays(30).map(d => ({ label: parseYmd(d).getDate(), v: studyMin(d), hint: `${human(d)}: ${fmtMin(studyMin(d))}` }));
-  const recent = [...S.study].sort((a, b) => b.date.localeCompare(a.date) || (b.time || '').localeCompare(a.time || '')).slice(0, 60);
-  const grouped = groupBy(recent, s => s.date);
   let i = 0;
   return `<section class="page" style="--c:var(--study)">
-    ${topbar('Учёба', `${S.study.length} ${plural(S.study.length, 'занятие', 'занятия', 'занятий')}`, { date: false, actions: `<button class="btn btn-primary" style="--c:var(--study)" data-action="add-study">${I.plus}Занятие</button>` })}
+    ${topbar('Учёба', OBS.enabled ? `конспекты из Obsidian · ${OBS.vaultName}` : `${S.study.length} ${plural(S.study.length, 'занятие', 'занятия', 'занятий')}`, { date: false, actions: `<button class="btn" data-action="add-study">${I.plus}Занятие вручную</button>` })}
     <div class="kpis">
-      ${kpi('Всего часов', `${hoursStr(total)}<small>ч</small>`, 'study', i++)}
-      ${kpi('За 7 дней', `${hoursStr(week)}<small>ч</small>`, 'study', i++, `цель ${fmtMin(S.settings.study)} в день`)}
-      ${kpi('Тем', `${topics}`, 'paper', i++)}
-      ${kpi('Карточек', `${cards}`, 'quiz', i++, 'для повторения')}
+      ${kpi('Конспектов', `${OBS.notes.length}`, 'study', i++, `${secs.length} ${plural(secs.length, 'раздел', 'раздела', 'разделов')}`)}
+      ${kpi('Вопросов', `${qn}`, 'quiz', i++, 'по разделам конспектов')}
+      ${kpi('К повторению', `${due}`, 'paper', i++, due ? 'сегодня' : 'на сегодня всё')}
+      ${kpi('За 7 дней', `${hoursStr(week)}<small>ч</small>`, 'study', i++, `всего ${hoursStr(allMin)} ч`)}
     </div>
     <div class="grid">
-      ${card({ domain: 'study', title: '30 дней, минуты', span: 7, i: i++, body: barChart(days30, { color: 'var(--study)', target: S.settings.study, unit: 'мин', labelEvery: 5 }) })}
-      ${card({ domain: 'study', title: 'По направлениям', span: 5, i: i++, body: cats.length ? `<div class="hbars">${cats.map(([c, m]) => `<div class="hbar"><span class="hbar-label">${esc(c)}</span><span class="hbar-track"><i data-w="${m / maxCat * 100}"></i></span><span class="hbar-val">${fmtMin(m)}</span></div>`).join('')}</div>` : empty('Укажи направление в занятии, и здесь появится разбивка.') })}
-      ${card({ domain: 'study', title: 'Журнал занятий', span: 12, i: i++, body: recent.length ? grouped.map(([d, arr]) => `<div class="group-date"><span>${relDay(d)} · ${human(d)}</span><span>${fmtMin(arr.reduce((a, s) => a + num(s.minutes), 0))}</span></div><div class="list">${arr.map(studyItem).join('')}</div>`).join('') : `<p class="empty">Пока пусто. Запиши занятие: тему, сколько минут и 2–5 тезисов. Из тезисов соберутся завтрашние вопросы.</p>` })}
+      ${card({ domain: 'study', title: 'Obsidian', span: 12, i: i++, body: obsStatusCard() })}
+      ${card({ domain: 'study', title: 'Конспекты', span: 12, i: i++, body: notesCard() })}
+      ${card({ domain: 'study', title: 'Дневник занятий', span: 8, i: i++, body: diaryCard() + '<p class="hint">Время занятия можно вписать прямо в строку дневника — оно пойдёт в часы и график.</p>' })}
+      ${card({ domain: 'study', title: '30 дней, минуты', span: 4, i: i++, body: barChart(days30, { color: 'var(--study)', target: S.settings.study, unit: 'мин', labelEvery: 7 }) })}
     </div>
   </section>`;
 }
@@ -1117,6 +1221,8 @@ function allCards() {
     s.qa.forEach((p, i) => cards.push({ id: `${s.id}:q${i}`, type: 'qa', session: s, q: p.q, a: p.a }));
     if (s.notes.length >= 2) cards.push({ id: `${s.id}:sum`, type: 'summary', session: s });
   }
+  for (const n of OBS.notes || []) for (const sec of n.sections) for (const q of sec.questions || [])
+    cards.push({ id: `${n.id}:${sec.key}:${q.id}`, type: 'obs', session: { id: n.id, topic: `${noteShort(n.title)} · ${sec.h}`, date: sec.updated || sec.first, category: n.tags[0] || '' }, q: q.q, a: q.a, qkind: q.kind, noteId: n.id, key: sec.key });
   return cards;
 }
 function cardState(c) { return S.srs[c.id] || { interval: 0, ease: 2.5, reps: 0, due: addDays(c.session.date, 1) }; }
@@ -1128,8 +1234,11 @@ function hash(s) { let h = 2166136261; for (let i = 0; i < s.length; i++) { h ^=
 function rng(seed) { let x = seed || 1; return () => { x ^= x << 13; x >>>= 0; x ^= x >>> 17; x ^= x << 5; x >>>= 0; return x / 4294967296; }; }
 function shuffle(arr, r) { const a = [...arr]; for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(r() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
 
+const QKIND = { fact: 'Факт', why: 'Почему так', compare: 'Сравни', practice: 'Практика' };
+const noteShort = t => String(t).replace(/\s*[—–-]\s*конспект.*$/i, '').replace(/\s*\(.*\)\s*$/, '').trim() || t;
 function makeQuestion(c, r) {
   const s = c.session, when = `${s.topic} · ${human(s.date)}`;
+  if (c.type === 'obs') return { q: esc(c.q), a: esc(c.a), kind: QKIND[c.qkind] || 'Вопрос', meta: s.topic };
   if (c.type === 'qa') return { q: esc(c.q), a: esc(c.a), kind: 'Вопрос из конспекта', meta: when };
   if (c.type === 'summary') return { q: `Что ты изучал по теме «${esc(s.topic)}»? Назови главное своими словами.`, a: `<ul>${s.notes.map(n => `<li>${esc(n)}</li>`).join('')}</ul>`, kind: 'Вспомни тему', meta: when, html: true };
   const words = c.text.split(/\s+/);
@@ -1147,7 +1256,13 @@ function makeQuestion(c, r) {
 function buildQuiz(date, pool) {
   const r = rng(hash(date));
   const picked = shuffle(pool, r).slice(0, 6);
-  return { items: picked.map(c => { const q = makeQuestion(c, r); return { cardId: c.id, kind: q.kind, meta: q.meta, q: q.q, a: q.a, result: null, revealed: false }; }), source: 'local', created: Date.now() };
+  return { items: picked.map(c => quizItemFrom(c, r)), source: 'local', created: Date.now() };
+}
+const plainText = h => { const el = document.createElement('div'); el.innerHTML = String(h); return el.textContent.trim(); };
+function quizItemFrom(c, r) {
+  const q = makeQuestion(c, r);
+  const ctx = c.type === 'obs' ? '' : c.session.notes ? c.session.notes.join('\n') : '';
+  return { cardId: c.id, kind: q.kind, meta: q.meta, q: q.q, a: q.a, result: null, revealed: false, noteId: c.noteId || null, key: c.key || null, ctx: ctx.slice(0, 1500) };
 }
 function ensureQuiz(date) {
   if (S.quizzes[date]) return S.quizzes[date];
@@ -1213,12 +1328,17 @@ function quizItem(it, k, curIdx) {
   return `<article class="q ${state}" style="--i:${k}">
     <div class="q-meta"><span>${k + 1} · ${esc(it.kind)}</span><span>${esc(it.meta)}</span></div>
     <p class="q-text">${it.q}</p>
-    ${state === 'current' && !it.revealed ? `<div class="q-actions"><button class="btn btn-primary" style="--c:var(--quiz)" data-action="reveal" data-k="${k}">${I.eye}Показать ответ</button></div>` : ''}
-    ${(it.revealed || it.result) ? `<div class="q-answer">${it.a}</div>` : ''}
+    ${state === 'current' && !it.revealed ? (photoOn ? `<textarea class="q-input" data-qans="${k}" rows="3" placeholder="Ответь своими словами — ИИ сверит с конспектом">${esc(it.answer || '')}</textarea>
+      <div class="q-actions"><button class="btn btn-primary" style="--c:var(--quiz)" data-action="q-check" data-k="${k}">${I.spark}Проверить ответ</button><button class="btn btn-ghost" data-action="reveal" data-k="${k}">${I.eye}Не знаю — показать ответ</button></div>`
+      : `<div class="q-actions"><button class="btn btn-primary" style="--c:var(--quiz)" data-action="reveal" data-k="${k}">${I.eye}Показать ответ</button></div>`) : ''}
+    ${it.check ? `<div class="q-check q-check-${it.check.verdict}"><div class="q-score"><b>${it.check.score}</b><small>из 100</small></div><div class="q-fb">
+        ${it.answer ? `<p class="q-yours"><span>Твой ответ:</span> ${esc(it.answer)}</p>` : ''}<p>${esc(it.check.feedback)}</p>${it.check.missing.length ? `<ul>${it.check.missing.map(x => `<li>${esc(x)}</li>`).join('')}</ul>` : ''}</div></div>` : ''}
+    ${(it.revealed || it.result) ? `<div class="q-answer"><span class="q-ref">Эталон</span>${it.a}</div>` : ''}
     ${state === 'current' && it.revealed ? `<div class="q-actions">
-        <button class="btn btn-accent grade-again" data-action="grade" data-k="${k}" data-g="again">Не помню</button>
-        <button class="btn btn-accent grade-hard" data-action="grade" data-k="${k}" data-g="hard">Частично</button>
-        <button class="btn btn-accent grade-good" data-action="grade" data-k="${k}" data-g="good">${I.check}Помню</button>
+        ${it.check ? '<span class="q-suggest">Оценка ИИ подсвечена — можно выбрать другую:</span>' : ''}
+        <button class="btn btn-accent grade-again ${it.check?.verdict === 'again' ? 'suggest' : ''}" data-action="grade" data-k="${k}" data-g="again">Не помню</button>
+        <button class="btn btn-accent grade-hard ${it.check?.verdict === 'hard' ? 'suggest' : ''}" data-action="grade" data-k="${k}" data-g="hard">Частично</button>
+        <button class="btn btn-accent grade-good ${it.check?.verdict === 'good' ? 'suggest' : ''}" data-action="grade" data-k="${k}" data-g="good">${I.check}Помню</button>
       </div>` : ''}
     ${it.result ? `<div class="q-actions"><span class="q-result ${it.result}">${resName[it.result]}</span></div>` : ''}
   </article>`;
@@ -1947,6 +2067,33 @@ const ACTIONS = {
     form.kcal.focus();
   },
   'mood': el => { const d = view.date; S.days[d] = { ...dayRec(d), mood: dayRec(d).mood === +el.dataset.v ? 0 : +el.dataset.v }; save(); document.querySelectorAll('.mood').forEach(m => m.classList.toggle('on', +m.dataset.v === S.days[d].mood)); },
+  'q-check': async el => {
+    const d = ymd(), q = S.quizzes[d], it = q.items[+el.dataset.k];
+    const ta = document.querySelector(`[data-qans="${el.dataset.k}"]`); it.answer = (ta?.value || it.answer || '').trim();
+    if (!it.answer) { toast('Сначала напиши ответ — или нажми «Не знаю»', true); return; }
+    el.classList.add('busy');
+    try {
+      it.check = await apiFetch('/api/study/check', { method: 'POST', body: JSON.stringify({ question: plainText(it.q), reference: plainText(it.a), answer: it.answer, noteId: it.noteId, key: it.key, context: it.ctx || '' }) });
+      it.revealed = true; save(); render();
+    } catch (e) { el.classList.remove('busy'); toast(e.message, true); }
+  },
+  'quiz-note': el => {
+    const d = ymd(), pool = withState().filter(c => c.noteId === el.dataset.id);
+    if (!pool.length) { toast('Вопросы по этому конспекту ещё готовятся', true); return; }
+    const r = rng(hash(d + el.dataset.id + Date.now()));
+    const items = shuffle(pool, r).slice(0, 6).map(c => quizItemFrom(c, r));
+    const kept = (S.quizzes[d]?.items || []).filter(i => i.result);
+    S.quizzes[d] = { items: [...kept, ...items], source: 'local', created: Date.now() };
+    save(); location.hash = '#quiz';
+  },
+  'obs-sync': async el => {
+    el.classList.add('busy');
+    try { OBS = await apiFetch('/api/obsidian/sync', { method: 'POST', body: '{}' }); toast('Синхронизировано'); } catch (e) { toast(e.message, true); }
+    render();
+  },
+  'obs-regen': async el => { await apiFetch('/api/obsidian/regen', { method: 'POST', body: JSON.stringify({ noteId: el.dataset.id, key: el.dataset.key || null }) }).catch(e => toast(e.message, true)); toast('Вопросы пересоберутся в фоне'); setTimeout(() => loadObs(true), 1500); },
+  'cheat': el => openCheat(el.dataset.id, false),
+  'cheat-new': el => openCheat(el.dataset.id, true),
   'reveal': el => { const q = S.quizzes[ymd()]; q.items[+el.dataset.k].revealed = true; save(); render(); },
   'grade': el => {
     const q = S.quizzes[ymd()], it = q.items[+el.dataset.k];
@@ -2079,6 +2226,8 @@ document.addEventListener('submit', e => {
 let noteTimer;
 document.addEventListener('input', e => {
   const t = e.target;
+  if (t.dataset.qans !== undefined) { const it = S.quizzes[ymd()]?.items[+t.dataset.qans]; if (it) it.answer = t.value; }
+  if (t.dataset.dmin !== undefined) { const v = Math.max(0, Math.round(num(t.value))); if (v) S.studyTime[t.dataset.dmin] = v; else delete S.studyTime[t.dataset.dmin]; save(); }
   if (ph && t.dataset.ph) ph[t.dataset.ph] = t.value;
   if (ph && t.dataset.phRow !== undefined) {
     const r = ph.rows[+t.dataset.phRow], f = t.dataset.f;
@@ -2167,11 +2316,19 @@ function showAuth(msg = '') {
   </section>`;
   $('#main [name=username]').focus();
 }
+async function loadObs(rerender = false) {
+  try { OBS = await apiFetch('/api/obsidian'); } catch { OBS = { enabled: false, notes: [], diary: [] }; }
+  OBS.notes = OBS.notes || []; OBS.diary = OBS.diary || [];
+  if (rerender && ['study', 'quiz', 'today'].includes(view.page) && !$('#modal-root .overlay')) render();
+}
+// пока открыта учёба или вопросы — подтягиваем свежие вопросы, которые сервер генерирует в фоне
+setInterval(() => { if (me && !document.hidden && ['study', 'quiz'].includes(view.page)) loadObs(true); }, 30e3);
 async function loadState() {
   const r = await apiFetch('/api/state');
   rev = r.rev; S = normalize(r.state);
   document.body.classList.remove('auth-mode');
   view.wizard = null;
+  await loadObs();
   route();
   await migrateLocal();
   if (!S.profile) startWizard(); else maybeWeekly();

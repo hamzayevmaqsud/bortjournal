@@ -156,28 +156,19 @@ function photoQuota(user) {
 }
 const numClamp = (v, max) => Math.max(0, Math.min(max, Math.round((+v || 0) * 2) / 2));
 
-async function recognizeFood({ image, mime, note, scale, answers }) {
-  const text = [
-    FOOD_PROMPT,
-    SCALES[scale] || 'Эталона размера в кадре нет.',
-    image ? '' : 'Фото нет — только текстовое описание.',
-    note ? `${image ? 'Подпись пользователя' : 'Описание еды от пользователя'}: ${note}` : '',
-    answers && answers.length ? `Ответы пользователя на уточнения:\n${answers.map(a => `- ${a}`).join('\n')}` : ''
-  ].filter(Boolean).join('\n\n');
-  const body = JSON.stringify({
-    contents: [{ role: 'user', parts: image ? [{ inline_data: { mime_type: mime, data: image } }, { text }] : [{ text }] }],
-    generationConfig: { responseMimeType: 'application/json', responseSchema: FOOD_SCHEMA }
-  });
+/* Общий вызов Gemini: части запроса + JSON-схема ответа. Перебирает модели, если у первой лимит или сбой. */
+async function gemini(parts, schema, { timeout = 60e3 } = {}) {
+  const body = JSON.stringify({ contents: [{ role: 'user', parts }], generationConfig: { responseMimeType: 'application/json', responseSchema: schema } });
   let lastErr;
   for (const model of GEMINI_MODELS) {
     let r;
     try {
       r = await fetch(`${GEMINI_BASE}/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
         method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': GEMINI_KEY }, body,
-        signal: AbortSignal.timeout(60e3)
+        signal: AbortSignal.timeout(timeout)
       });
     } catch (err) {
-      lastErr = { status: 502, message: err.name === 'TimeoutError' ? 'Gemini не ответил за минуту.' : 'Нет связи с Gemini.' };
+      lastErr = { status: 502, message: err.name === 'TimeoutError' ? 'Gemini не ответил вовремя.' : 'Нет связи с Gemini.' };
       continue;
     }
     const data = await r.json().catch(() => ({}));
@@ -188,20 +179,8 @@ async function recognizeFood({ image, mime, note, scale, answers }) {
       break;
     }
     const part = data.candidates?.[0]?.content?.parts?.find(p => typeof p.text === 'string' && !p.thought);
-    let out;
-    try { out = JSON.parse(part?.text || ''); } catch { lastErr = { status: 502, message: 'Модель вернула непонятный ответ.' }; continue; }
-    const items = (Array.isArray(out.items) ? out.items : []).slice(0, 20).map(it => ({
-      name: String(it.name || 'Без названия').slice(0, 80),
-      grams: numClamp(it.grams, 3000), kcal: Math.round(numClamp(it.kcal, 6000)),
-      p: numClamp(it.protein, 500), f: numClamp(it.fat, 500), c: numClamp(it.carbs, 1000),
-      fi: numClamp(it.fiber, 200), su: numClamp(it.sugar, 500), sa: numClamp(it.salt, 50),
-      confidence: ['high', 'medium', 'low'].includes(it.confidence) ? it.confidence : 'medium',
-      source: ['estimate', 'label', 'user'].includes(it.source) ? it.source : 'estimate'
-    }));
-    const questions = (Array.isArray(out.questions) ? out.questions : []).slice(0, 3).map(q => ({
-      text: String(q.text || '').slice(0, 160), options: (Array.isArray(q.options) ? q.options : []).slice(0, 4).map(o => String(o).slice(0, 60))
-    })).filter(q => q.text && q.options.length);
-    return { isFood: out.is_food !== false && items.length > 0, items, questions, comment: String(out.comment || '').slice(0, 300), model };
+    try { return { out: JSON.parse(part?.text || ''), model }; }
+    catch { lastErr = { status: 502, message: 'Модель вернула непонятный ответ.' }; }
   }
   const e = new Error(
     lastErr?.status === 429 ? 'Бесплатный лимит Gemini на сейчас исчерпан. Попробуй через минуту или завтра.' :
@@ -209,6 +188,41 @@ async function recognizeFood({ image, mime, note, scale, answers }) {
     lastErr?.message || 'Gemini недоступен.');
   e.code = lastErr?.status === 429 ? 429 : 502;
   throw e;
+}
+
+async function recognizeFood({ image, mime, note, scale, answers }) {
+  const text = [
+    FOOD_PROMPT,
+    SCALES[scale] || 'Эталона размера в кадре нет.',
+    image ? '' : 'Фото нет — только текстовое описание.',
+    note ? `${image ? 'Подпись пользователя' : 'Описание еды от пользователя'}: ${note}` : '',
+    answers && answers.length ? `Ответы пользователя на уточнения:\n${answers.map(a => `- ${a}`).join('\n')}` : ''
+  ].filter(Boolean).join('\n\n');
+  const { out, model } = await gemini(image ? [{ inline_data: { mime_type: mime, data: image } }, { text }] : [{ text }], FOOD_SCHEMA);
+  const items = (Array.isArray(out.items) ? out.items : []).slice(0, 20).map(it => ({
+    name: String(it.name || 'Без названия').slice(0, 80),
+    grams: numClamp(it.grams, 3000), kcal: Math.round(numClamp(it.kcal, 6000)),
+    p: numClamp(it.protein, 500), f: numClamp(it.fat, 500), c: numClamp(it.carbs, 1000),
+    fi: numClamp(it.fiber, 200), su: numClamp(it.sugar, 500), sa: numClamp(it.salt, 50),
+    confidence: ['high', 'medium', 'low'].includes(it.confidence) ? it.confidence : 'medium',
+    source: ['estimate', 'label', 'user'].includes(it.source) ? it.source : 'estimate'
+  }));
+  const questions = (Array.isArray(out.questions) ? out.questions : []).slice(0, 3).map(q => ({
+    text: String(q.text || '').slice(0, 160), options: (Array.isArray(q.options) ? q.options : []).slice(0, 4).map(o => String(o).slice(0, 60))
+  })).filter(q => q.text && q.options.length);
+  return { isFood: out.is_food !== false && items.length > 0, items, questions, comment: String(out.comment || '').slice(0, 300), model };
+}
+
+/* ---------- Obsidian ---------- */
+const OBS_VAULT = process.env.OBSIDIAN_VAULT || '', OBS_USER = (process.env.OBSIDIAN_USER || '').toLowerCase();
+const obsidian = OBS_VAULT && OBS_USER ? require('./obsidian.js')({
+  vault: OBS_VAULT, user: OBS_USER, folder: process.env.OBSIDIAN_FOLDER || 'Учёба', cheatsFolder: process.env.OBSIDIAN_CHEATS || 'Шпаргалки',
+  dataDir: DATA, gemini: GEMINI_KEY ? gemini : null
+}) : null;
+const aiUse = new Map();
+function aiQuota(user) {
+  const k = `${user}:${new Date().toISOString().slice(0, 10)}`, n = (aiUse.get(k) || 0) + 1;
+  aiUse.set(k, n); return n <= (+process.env.AI_DAILY_LIMIT || 200);
 }
 
 /* ---------- HTTP ---------- */
@@ -270,6 +284,37 @@ async function api(req, res, url) {
     return send(res, 200, { ok: true }, { 'Set-Cookie': sessionCookie('', 0) });
   }
   if (route === 'GET /api/me') return send(res, 200, { username: user, photo: !!GEMINI_KEY });
+  if (route === 'GET /api/obsidian') return send(res, 200, obsidian && user === OBS_USER ? obsidian.publicState() : { enabled: false });
+  if (route === 'POST /api/obsidian/sync') {
+    if (!obsidian || user !== OBS_USER) return send(res, 404, { error: 'Obsidian не подключён.' });
+    await obsidian.sync(); return send(res, 200, obsidian.publicState());
+  }
+  if (route === 'POST /api/obsidian/regen') {
+    if (!obsidian || user !== OBS_USER) return send(res, 404, { error: 'Obsidian не подключён.' });
+    const body = await readBody(req); obsidian.regen(String(body.noteId || ''), body.key ? String(body.key) : null);
+    return send(res, 200, { ok: true });
+  }
+  if (route === 'POST /api/study/cheatsheet') {
+    if (!obsidian || user !== OBS_USER) return send(res, 404, { error: 'Obsidian не подключён.' });
+    if (!GEMINI_KEY) return send(res, 503, { error: 'Нет ключа Gemini.' });
+    if (!aiQuota(user)) return send(res, 429, { error: 'На сегодня лимит запросов к ИИ исчерпан.' });
+    const body = await readBody(req); return send(res, 200, await obsidian.cheatsheet(String(body.noteId || '')));
+  }
+  if (route === 'GET /api/study/cheatsheet') {
+    if (!obsidian || user !== OBS_USER) return send(res, 404, { error: 'Obsidian не подключён.' });
+    return send(res, 200, await obsidian.readCheat(url.searchParams.get('id') || ''));
+  }
+  if (route === 'POST /api/study/check') {
+    if (!GEMINI_KEY) return send(res, 503, { error: 'Нет ключа Gemini.' });
+    if (!aiQuota(user)) return send(res, 429, { error: 'На сегодня лимит запросов к ИИ исчерпан.' });
+    const body = await readBody(req);
+    const answer = String(body.answer || '').trim();
+    if (!answer) return send(res, 400, { error: 'Напиши ответ.' });
+    const check = obsidian ? obsidian.check : null;
+    if (!check) return send(res, 503, { error: 'Проверка недоступна.' });
+    return send(res, 200, await check({ question: String(body.question || '').slice(0, 600), reference: String(body.reference || '').slice(0, 1500), answer: answer.slice(0, 3000),
+      noteId: user === OBS_USER ? body.noteId : null, key: body.key, context: String(body.context || '').slice(0, 6000) }));
+  }
   if (route === 'POST /api/food/photo') {
     if (!GEMINI_KEY) return send(res, 503, { error: 'Распознавание не настроено: на сервере нет GEMINI_API_KEY.' });
     if (!photoQuota(user)) return send(res, 429, { error: 'На сегодня лимит фото исчерпан.' });
@@ -338,5 +383,6 @@ server.listen(PORT, HOST, () => {
       for (const a of list || []) if (a.family === 'IPv4' && !a.internal) console.log(`  в локальной сети: http://${a.address}:${PORT}`);
   }
   console.log(`Данные: ${DATA}`);
+  if (obsidian) console.log(`Obsidian: ${OBS_VAULT} → папка «${process.env.OBSIDIAN_FOLDER || 'Учёба'}», пользователь ${OBS_USER}`);
   console.log(GEMINI_KEY ? `Фото еды: Gemini (${GEMINI_MODELS.join(' → ')})` : 'Фото еды выключено: добавь GEMINI_API_KEY в файл .env');
 });
