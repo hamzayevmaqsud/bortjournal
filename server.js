@@ -64,6 +64,9 @@ process.on('unhandledRejection', e => console.error('Необработанна�
 
 let users = Object.assign(Object.create(null), readJson(USERS_FILE, {}));
 let sessions = Object.assign(Object.create(null), readJson(SESSIONS_FILE, {}));
+// напоминания: подписки браузеров, часовой пояс и что уже отправлено — data/push.json
+const PUSH_FILE = path.join(DATA, 'push.json');
+const pushDb = Object.assign(Object.create(null), readJson(PUSH_FILE, {}));
 const stateFile = u => path.join(STATE_DIR, `${u}.json`);
 const userRec = u => Object.hasOwn(users, u) ? users[u] : null;
 const RESERVED = new Set(['__proto__', 'constructor', 'prototype', 'admin', 'root']);
@@ -466,6 +469,25 @@ async function api(req, res, url) {
     await fsp.mkdir(dir, { recursive: true }); await fsp.writeFile(path.join(dir, id + '.jpg'), buf);
     return send(res, 200, { ok: true });
   }
+  if (route === 'GET /api/push/key') return send(res, 200, { key: vapid.publicKey, subs: (pushDb[user]?.subs || []).length });
+  if (route === 'POST /api/push/subscribe') {
+    const body = await readBody(req, 8e3), sub = body.sub || {};
+    if (!push.endpointOk(sub.endpoint) || typeof sub.keys?.p256dh !== 'string' || typeof sub.keys?.auth !== 'string') return send(res, 400, { error: 'Этот браузер не поддерживает напоминания.' });
+    const rec = pushDb[user] = pushDb[user] || { subs: [], sent: {} };
+    rec.tz = Math.max(-840, Math.min(840, Math.round(+body.tz || 0)));
+    rec.subs = [...rec.subs.filter(x => x.endpoint !== sub.endpoint), { endpoint: String(sub.endpoint).slice(0, 1000), keys: { p256dh: sub.keys.p256dh.slice(0, 200), auth: sub.keys.auth.slice(0, 100) }, at: new Date().toISOString() }].slice(-5);
+    await writeJson(PUSH_FILE, pushDb); return send(res, 200, { ok: true, subs: rec.subs.length });
+  }
+  if (route === 'POST /api/push/unsubscribe') {
+    const body = await readBody(req, 4e3), rec = pushDb[user];
+    if (rec) { rec.subs = rec.subs.filter(x => x.endpoint !== body.endpoint); await writeJson(PUSH_FILE, pushDb); }
+    return send(res, 200, { ok: true });
+  }
+  if (route === 'POST /api/push/test') {
+    const rec = pushDb[user]; if (!rec?.subs.length) return send(res, 400, { error: 'На этом аккаунте нет устройств с напоминаниями.' });
+    const n = await pushTo(user, { title: 'Напоминания работают', body: 'Так будут выглядеть подсказки Бортжурнала.', url: '/#today' });
+    return send(res, n ? 200 : 502, n ? { ok: true, sent: n } : { error: 'Сервис уведомлений не принял сообщение. Попробуй выключить и включить напоминания.' });
+  }
   if (route === 'GET /api/state') return send(res, 200, loadState(user));
   if (route === 'PUT /api/state') {
     const body = await readBody(req);
@@ -509,6 +531,46 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
+/* ---------- напоминания: раз в минуту проверяем, что пора отправить ---------- */
+const push = require('./push.js');
+const reminders = require('./reminders.js');
+const vapid = push.loadVapid(DATA);
+const PUSH_SUBJECT = process.env.PUSH_SUBJECT || 'mailto:bortjournal@localhost';
+async function pushTo(user, msg) {
+  const rec = pushDb[user]; if (!rec) return 0;
+  let ok = 0, changed = false;
+  for (const sub of [...rec.subs]) {
+    try {
+      const r = await push.send(vapid, sub, msg, PUSH_SUBJECT);
+      if (r.ok) ok++;
+      else if (r.gone) { rec.subs = rec.subs.filter(x => x !== sub); changed = true; }
+    } catch (e) { console.error('push:', e.message); }
+  }
+  if (changed) await writeJson(PUSH_FILE, pushDb);
+  return ok;
+}
+async function remindTick() {
+  for (const user of Object.keys(pushDb)) {
+    const rec = pushDb[user];
+    if (!rec.subs?.length || !userRec(user)) continue;
+    const st = loadState(user).state; if (!st) continue;
+    const list = reminders.due(st, rec.tz, rec.sent || {});
+    if (!list.length) continue;
+    rec.sent = rec.sent || {};
+    const today = reminders.localNow(rec.tz).ymd;
+    for (const m of list.slice(0, 2)) {
+      if (await pushTo(user, { title: m.title, body: m.body, url: m.url, tag: m.key })) {
+        rec.sent[m.key] = `${today}T${new Date().toISOString().slice(11, 16)}`;
+        if (m.key === 'water') rec.sent.waterAt = Date.now();
+      }
+    }
+    // старые отметки не копим
+    for (const k of Object.keys(rec.sent)) if (k !== 'waterAt' && !String(rec.sent[k]).startsWith(today)) delete rec.sent[k];
+    await writeJson(PUSH_FILE, pushDb);
+  }
+}
+setInterval(() => remindTick().catch(e => console.error('remind:', e.message)), 60 * 1000).unref();
+
 server.on('error', e => {
   if (e.code === 'EADDRINUSE') console.error(`Порт ${PORT} занят другой программой. Запусти на другом: PORT=4000 npm start`);
   else console.error(e);
@@ -523,6 +585,7 @@ server.listen(PORT, HOST, () => {
       for (const a of list || []) if (a.family === 'IPv4' && !a.internal) console.log(`  в локальной сети: http://${a.address}:${PORT}`);
   }
   console.log(`Данные: ${DATA}`);
+  console.log(`Напоминания: ${Object.values(pushDb).reduce((a, r) => a + (r.subs?.length || 0), 0)} устройств`);
   if (obsidian) console.log(`Obsidian: ${OBS_VAULT} → папка «${process.env.OBSIDIAN_FOLDER || 'Учёба'}», пользователь ${OBS_USER}`);
   console.log(GEMINI_KEY ? `Фото еды: Gemini (${GEMINI_MODELS.join(' → ')})` : 'Фото еды выключено: добавь GEMINI_API_KEY в файл .env');
 });

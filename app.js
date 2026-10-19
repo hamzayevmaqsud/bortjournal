@@ -10,7 +10,7 @@ const DEF = {
   settings: { kcal: 2200, protein: 140, steps: 10000, study: 60, name: '', booksGoal: 12 },
   meals: [], study: [], workouts: [], days: {}, srs: {}, quizzes: {}, foods: {},
   profile: null, activity: {}, drinks: [], sets: [], studyTime: {},
-  tasks: [], goals: [], money: [], budget: {}, books: [], readLog: [], achieved: {}, exercises: [], gymLive: null
+  tasks: [], goals: [], money: [], budget: {}, books: [], readLog: [], achieved: {}, exercises: [], gymLive: null, gymPlans: [], remindHints: {}
 };
 let S = structuredClone(DEF);
 let me = null, rev = 0, photoOn = false;
@@ -66,7 +66,7 @@ async function apiFetch(path, opts = {}) {
 }
 // сохранение: копим изменения 300 мс и отправляем всё состояние разом
 let saveTimer = null, saving = null, dirty = false, offline = false;
-function save() { MEMO = new Map(); clearTimeout(achTimer); achTimer = setTimeout(checkAch, 1500); updateBadge(); dirty = true; clearTimeout(saveTimer); saveTimer = setTimeout(flush, 300); }
+function save() { MEMO = new Map(); if (me && S.quizzes) try { remindHints(); } catch {} clearTimeout(achTimer); achTimer = setTimeout(checkAch, 1500); updateBadge(); dirty = true; clearTimeout(saveTimer); saveTimer = setTimeout(flush, 300); }
 async function flush() {
   clearTimeout(saveTimer);
   while (saving) await saving;
@@ -273,6 +273,7 @@ function render() {
   MEMO = new Map();
   $('#main').innerHTML = pages[view.page]() + (S.gymLive && !S.gymLive.past && view.page !== 'gym' ? `<a class="gym-pill" id="gym-pill" href="#gym">${gymIcon('dumbbell')}<span>Тренировка</span><b>${liveClock()}</b></a>` : '');
   afterRender();
+  if (view.page === 'settings') pushState();
   if (view.lastPage !== view.page) window.scrollTo({ top: 0, behavior: 'instant' });
   else window.scrollTo({ top: y, behavior: 'instant' });
   view.lastPage = view.page;
@@ -3273,6 +3274,53 @@ function pageMoreList() {
 }
 
 /* ============================================================
+   НАПОМИНАНИЯ: Web Push. Сервер сам решает, когда написать, —
+   по данным аккаунта; телефон показывает уведомление, даже если журнал закрыт.
+   ============================================================ */
+const REMIND_KINDS = [['water', 'Вода', 'если отстаёшь от нормы и давно не пил (10–21 ч)'], ['food', 'Еда', 'в 13:30, если за день ничего не записано'],
+  ['tasks', 'Задачи', 'в назначенное время'], ['gym', 'Тренировки', 'по плану тренировок в разделе «Зал»'], ['quiz', 'Вопросы', 'в 10:00, если есть повторение'], ['streak', 'Серия', 'в 21:00, если сегодня ещё пусто']];
+const pushSupport = () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window && window.isSecureContext;
+const isIOS = () => /iPhone|iPad|iPod/.test(navigator.userAgent);
+const isStandalone = () => window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+function remindCard() {
+  const R = { water: true, food: true, streak: true, quiz: true, tasks: true, gym: true, ...(S.settings.remind || {}) };
+  return `<div class="remind">
+    <div id="push-state" class="push-state">${pushSupport() ? 'Проверяю…' : !window.isSecureContext ? 'Напоминания работают только по https. Настрой Tailscale по инструкции в README — и включи здесь с телефона.' : isIOS() && !isStandalone() ? 'На iPhone: «Поделиться» → «На экран „Домой“», открой журнал оттуда — и включи здесь.' : 'Этот браузер не умеет получать напоминания.'}</div>
+    <div class="remind-list">${REMIND_KINDS.map(([k, n, sub]) => `<label class="remind-i"><input type="checkbox" data-remind="${k}" ${R[k] ? 'checked' : ''}><span><b>${n}</b><small>${sub}</small></span></label>`).join('')}</div>
+  </div>`;
+}
+async function pushState() {
+  const el = $('#push-state'); if (!el || !pushSupport()) return;
+  try {
+    const reg = await navigator.serviceWorker.ready, sub = await reg.pushManager.getSubscription();
+    if (!$('#push-state')) return;
+    el.innerHTML = Notification.permission === 'denied' ? 'Уведомления запрещены в настройках браузера для этого сайта — разреши их там.'
+      : sub ? `<b>Включены на этом устройстве.</b> <button class="btn btn-sm" data-action="push-test">Проверить</button> <button class="btn btn-ghost btn-sm" data-action="push-off">Выключить</button>`
+      : `<button class="btn btn-primary" style="--c:var(--orange)" data-action="push-on">${I.plus}Включить на этом устройстве</button>`;
+  } catch { el.textContent = 'Не получилось проверить уведомления.'; }
+}
+async function pushOn() {
+  try {
+    if (await Notification.requestPermission() !== 'granted') { toast('Без разрешения на уведомления напоминать не получится', true); pushState(); return; }
+    const { key } = await apiFetch('/api/push/key');
+    const reg = await navigator.serviceWorker.ready;
+    const sub = await reg.pushManager.getSubscription() || await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: Uint8Array.from(atob(key.replace(/-/g, '+').replace(/_/g, '/')), c => c.charCodeAt(0)) });
+    await apiFetch('/api/push/subscribe', { method: 'POST', body: JSON.stringify({ sub: sub.toJSON(), tz: -new Date().getTimezoneOffset() }) });
+    toast('Напоминания включены'); pushState();
+  } catch (e) { toast(e.message || 'Не получилось включить напоминания', true); pushState(); }
+}
+// при каждом запуске освежаем подписку и часовой пояс
+async function pushRefresh() {
+  if (!pushSupport() || Notification.permission !== 'granted') return;
+  try { const reg = await navigator.serviceWorker.ready, sub = await reg.pushManager.getSubscription(); if (sub) await apiFetch('/api/push/subscribe', { method: 'POST', body: JSON.stringify({ sub: sub.toJSON(), tz: -new Date().getTimezoneOffset() }) }); } catch {}
+}
+// подсказки серверу: сколько вопросов на сегодня и какая норма воды (их считает приложение)
+function remindHints() {
+  const h = { date: ymd(), quizDue: (() => { const q = S.quizzes[ymd()]; return q ? q.items.filter(i => !i.result).length : Math.min(dueCards(ymd()).length, QUIZ_SIZE); })(), waterNorm: waterNorm() };
+  if (!same(h, S.remindHints)) S.remindHints = h;
+}
+
+/* ============================================================
    ЦЕЛЬ: профиль, план и прогноз
    ============================================================ */
 function mondayOf(d) { return addDays(d, -((parseYmd(d).getDay() + 6) % 7)); }
@@ -3729,6 +3777,7 @@ function pageSettings() {
         ${field('Книг за год', `<input name="booksGoal" type="number" min="1" max="365" value="${num(s.booksGoal) || 12}">`)}
         <p class="hint" style="margin:0">Бюджет на месяц и валюта — в разделе <a href="#budget">«Бюджет»</a> → «Настроить».</p>
         <div><button class="btn btn-primary" type="submit">Сохранить</button></div></form>` })}
+      ${card({ domain: 'paper', title: 'Напоминания', span: 12, body: remindCard() })}
       ${card({ domain: 'paper', title: 'Данные', span: 12, body: `
         <p class="hint" style="margin:0 0 12px">Записи аккаунта «${esc(me)}» хранятся на сервере (${(size / 1024).toFixed(1)} КБ). Экспорт в JSON нужен для резервной копии или переноса.</p>
         <div class="chips" style="gap:8px">
@@ -3808,6 +3857,9 @@ function toast(msg, err = false) {
    ДЕЙСТВИЯ
    ============================================================ */
 const ACTIONS = {
+  'push-on': () => pushOn(),
+  'push-off': async () => { try { const reg = await navigator.serviceWorker.ready, sub = await reg.pushManager.getSubscription(); if (sub) { await apiFetch('/api/push/unsubscribe', { method: 'POST', body: JSON.stringify({ endpoint: sub.endpoint }) }); await sub.unsubscribe(); } toast('Напоминания на этом устройстве выключены'); } catch { toast('Не получилось выключить', true); } pushState(); },
+  'push-test': async () => { try { await apiFetch('/api/push/test', { method: 'POST', body: '{}' }); toast('Отправил — уведомление придёт через пару секунд'); } catch (e) { toast(e.message, true); } },
   'quick-add': () => openSheet({ title: 'Записать', accent: 'var(--orange)', body: quickAddBody(), cls: 'sheet-qa' }),
   // плитка открывает своё окно поверх этого — или закрывает лист и делает дело
   'qa': el => { const fn = ACTIONS[el.dataset.do]; if (!fn) return; if (el.dataset.modal) fn(el); else { closeModal('nav'); fn(el); } },
@@ -4268,6 +4320,7 @@ document.addEventListener('input', e => {
 });
 document.addEventListener('change', e => {
   const t = e.target;
+  if (t.dataset.remind) { S.settings.remind = { ...(S.settings.remind || {}), [t.dataset.remind]: t.checked }; save(); return; }
   if (t.dataset.comp && ['date', 'time', 'goalId'].includes(t.dataset.f)) { const c = view.comp?.[t.dataset.comp]; if (c) { c[t.dataset.f] = t.value || (t.dataset.f === 'date' ? c.date : ''); render(); } return; }
   if (t.dataset.rdSec !== undefined && t.value) { const h = $('.rd-body #' + headId(t.value)); if (h) h.scrollIntoView({ block: 'start', behavior: 'smooth' }); t.value = ''; return; }
   if (t.dataset.bookSort !== undefined) { view.bookSort = t.value; render(); return; }
@@ -4400,6 +4453,8 @@ async function boot() {
   catch (e) { return showAuth(e.status === 401 ? '' : 'Сервер недоступен. Проверь, что он запущен.'); }
   await loadState();
   setTimeout(checkAch, 2500);
+  pushRefresh();
+  { const before = JSON.stringify(S.remindHints); try { remindHints(); } catch {} if (JSON.stringify(S.remindHints) !== before) save(); }
 }
 boot();
 // графики рисуются под ширину экрана: при смене телефон/компьютер перерисовываем
