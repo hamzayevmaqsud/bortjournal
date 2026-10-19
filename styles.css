@@ -608,6 +608,24 @@ details.theses li{margin:3px 0}
 .wk-ic{font-size:10px;height:12px}.wk-ic.st-good{color:var(--st-good)}.wk-ic.st-warn,.wk-ic.st-low{color:var(--st-warn)}.wk-ic.st-bad{color:var(--st-bad)}
 .wk-sum{margin:12px 0 0;font-size:14px}
 
+/* ---------- большие кнопки добавления еды ---------- */
+.add-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px;margin:0 0 14px}
+.add-tile{
+  appearance:none;border:0;cursor:pointer;text-align:left;font:inherit;
+  display:flex;align-items:center;gap:16px;padding:20px 22px;border-radius:24px;
+  transition:transform .15s var(--ease),filter .2s;
+}
+.add-tile:hover{transform:translateY(-2px);filter:brightness(1.05)}
+.add-tile:active{transform:translateY(0)}
+.add-tile:focus-within,.add-tile:focus-visible{outline:3px solid var(--navy);outline-offset:3px}
+.add-tile>svg{flex:none;width:52px;height:52px;padding:13px;border-radius:16px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.add-tile b{display:block;font:800 20px/1.15 var(--display);letter-spacing:-.01em}
+.add-tile small{display:block;margin-top:4px;font-size:13px;line-height:1.35;opacity:.8}
+.add-photo{background:var(--orange);color:var(--cream)}
+.add-photo>svg{background:rgba(255,255,255,.2)}
+.add-manual{background:var(--navy);color:var(--cream)}
+.add-manual>svg{background:rgba(251,244,230,.12);color:var(--orange)}
+
 /* ---------- календарь питания ---------- */
 .cal-head{display:flex;align-items:center;justify-content:space-between;margin:-6px 0 8px}
 .cal-head b{font:800 17px var(--display)}
@@ -740,6 +758,10 @@ details.theses li{margin:3px 0}
   .opts-5{grid-template-columns:repeat(3,1fr)}
   .meters{grid-template-columns:repeat(2,1fr);gap:18px 10px}
   .wk{gap:2px}
+  .add-tiles{gap:10px}
+  .add-tile{padding:16px 18px;gap:14px;border-radius:20px}
+  .add-tile>svg{width:46px;height:46px;padding:11px}
+  .add-tile b{font-size:18px}
   .wk-pct{font-size:9.5px}
   .wk-cell{padding:6px 0 4px}
   .ph-top,.ph-top-sm{grid-template-columns:1fr}

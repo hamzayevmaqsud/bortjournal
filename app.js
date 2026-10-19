@@ -458,25 +458,6 @@ function macroSplitCard(tot) {
   return `<div class="split">${ring}<div class="split-rows">${rows}<p class="hint" style="margin:2px 0 0">Полоса — здоровый диапазон доли калорий (AMDR), точка — твой день.</p>${note}</div></div>`;
 }
 
-function weekNormsCard(end, nm) {
-  const days = rangeDays(7, end), t = ymd();
-  let okK = 0, okP = 0, done = 0;
-  const cells = days.map(d => {
-    const tot = sumMeals(mealsOn(d)), live = d === t, st = judge('kcal', tot.kcal, nm.kcal, live), sp = judge('p', tot.p, nm.p, live);
-    if (!live && tot.kcal) { done++; if (st.lvl === 'good') okK++; if (sp.lvl === 'good') okP++; }
-    const col = st.lvl === 'good' ? 'var(--st-good)' : st.lvl === 'bad' ? 'var(--st-bad)' : st.lvl === 'warn' || st.lvl === 'low' ? 'var(--st-warn)' : MAC.kcal.color;
-    const k = nm.kcal ? tot.kcal / nm.kcal : 0, size = 58, sw = 7, r = (size - sw) / 2, C = 2 * Math.PI * r;
-    return `<div class="wk-cell ${live ? 'today' : ''}" title="${human(d)}: ${fmtN(tot.kcal)} из ${fmtN(nm.kcal)} ккал · ${st.text}">
-      <div class="wk-ring"><svg class="ring" viewBox="0 0 ${size} ${size}"><circle class="ring-bg" cx="${size / 2}" cy="${size / 2}" r="${r}" stroke-width="${sw}"/>
-      ${tot.kcal ? `<circle class="ring-fg" cx="${size / 2}" cy="${size / 2}" r="${r}" stroke="${col}" stroke-width="${sw}" stroke-dasharray="${C}" stroke-dashoffset="${C}" data-offset="${C * (1 - Math.min(1, k))}"/>` : ''}</svg>
-      <span class="wk-pct">${tot.kcal ? Math.round(k * 100) + '%' : '—'}</span></div>
-      <span class="wk-day">${WD[parseYmd(d).getDay()]}</span><span class="wk-ic st-${st.lvl}" aria-hidden="true">${tot.kcal ? st.icon : ''}</span></div>`;
-  }).join('');
-  const sum = done ? `<p class="wk-sum">Калории в норме <b>${okK} из ${done}</b> ${plural(done, 'дня', 'дней', 'дней')} · белок закрыт <b>${okP} из ${done}</b>.</p>` : '<p class="hint">Завершённых дней с записями пока нет.</p>';
-  return `<div class="wk">${cells}</div>${sum}
-    <div class="heat-legend"><span><i style="background:var(--st-good)"></i>в норме</span><span><i style="background:var(--st-warn)"></i>чуть мимо</span><span><i style="background:var(--st-bad)"></i>перебор</span><span><i style="background:${MAC.kcal.color}"></i>сегодня / без оценки</span></div>`;
-}
-
 const SLOTS = [
   { name: 'Утро', hint: 'до 11:00', from: 0, to: 11 * 60, color: '#F2B48C' },
   { name: 'День', hint: '11–16', from: 11 * 60, to: 16 * 60, color: '#E3874F' },
@@ -487,11 +468,12 @@ function mealTimingCard(d) {
   const days = rangeDays(7, d), acc = SLOTS.map(() => 0);
   for (const x of days) for (const m of mealsOn(x)) { const t = hmToMin(m.time); if (t === null) continue; const i = SLOTS.findIndex(s => t >= s.from && t < s.to); if (i >= 0) acc[i] += num(m.kcal); }
   const tot = acc.reduce((a, b) => a + b, 0);
-  if (!tot) return empty('Записывай время приёмов пищи, и здесь будет видно, когда ты ешь больше всего.');
+  if (!tot) return empty('Здесь будет видно, в какое время ты съедаешь больше всего. Время берётся из записей еды.');
   const segs = SLOTS.map((s, i) => ({ ...s, v: acc[i] }));
   const ring = donut(segs, 168, `<b>7 дн.</b><small>по времени</small>`, (s, sh) => `${s.name} (${s.hint}): ${Math.round(sh * 100)}%`);
   const late = acc[3] / tot;
   return `<div class="split">${ring}<div class="split-rows">${segs.map(s => `<div class="split-row slim"><span class="split-name"><i style="background:${s.color}"></i>${s.name} <small>${s.hint}</small></span><b class="split-pct">${Math.round(s.v / tot * 100)}%</b><span class="muted">${fmtN(s.v / 7)} ккал/день</span></div>`).join('')}
+    <p class="hint" style="margin:0">По времени, указанному в записях за 7 дней.</p>
     ${late > 0.25 ? statusChip({ lvl: 'warn', icon: '▲', text: `Поздно съедается ${Math.round(late * 100)}% калорий — это мешает сну и чаще ведёт к перееданию` }) : statusChip({ lvl: 'good', icon: '✓', text: 'Поздних калорий немного' })}
   </div></div>`;
 }
@@ -530,14 +512,17 @@ function pageFood() {
   const freq = topFoods(8);
   let i = 0;
   return `<section class="page" style="--c:var(--food)">
-    ${topbar('Еда', humanLong(d), { actions: `${photoBtn('btn btn-primary')}<button class="btn ${photoOn ? 'btn-accent' : 'btn-primary'}" style="--c:var(--food)" data-action="add-meal">${I.plus}Приём пищи</button>` })}
+    ${topbar('Еда', live ? `сегодня, ${humanLong(d)}` : humanLong(d), { date: false, actions: live ? '' : `<button class="btn" data-action="date-today">${I.chevL}К сегодня</button>` })}
+    <div class="add-tiles">
+      ${photoOn ? `<label class="add-tile add-photo">${I.camera}<span><b>Сфотографировать еду</b><small>ИИ разберёт тарелку и посчитает ккал и БЖУ</small></span><input type="file" accept="image/*" data-photo hidden></label>` : ''}
+      <button class="add-tile add-manual" data-action="add-meal">${I.plus}<span><b>Записать вручную</b><small>Название и калории, БЖУ по желанию</small></span></button>
+    </div>
     <div class="grid">
-      ${card({ domain: 'food', title: live ? 'Норма на сегодня' : `Норма на ${human(d)}`, span: 12, i: i++, body: dayNormsCard(d, tot, nm, live) + `<p class="hint">Нормы из твоего плана${S.profile ? '' : ' (заполни профиль на вкладке «Цель», чтобы они стали личными)'}: ${fmtN(nm.kcal)} ккал, белок ${nm.p} г, жиры ${nm.f} г, углеводы ${nm.c} г. Второй, тёмный виток кольца — сколько сверх нормы.</p>` })}
-      ${card({ domain: 'food', title: 'Записи за день', span: 7, i: i++, body: ms.length ? `<div class="list">${ms.map(mealItem).join('')}</div>` : empty('За этот день записей нет. Добавь первую — название и калории, остальное по желанию.') })}
+      ${card({ domain: 'food', title: live ? 'Норма на сегодня' : `Норма на ${human(d)}`, span: 12, i: i++, body: dayNormsCard(d, tot, nm, live) + `<p class="hint">${S.profile ? 'Нормы — из твоего плана на вкладке «Цель».' : 'Заполни профиль на вкладке «Цель», чтобы нормы стали личными.'} Тёмный второй виток кольца — сколько сверх нормы.</p>` })}
+      ${card({ domain: 'food', title: live ? 'Записи за сегодня' : `Записи за ${human(d)}`, span: 7, i: i++, body: ms.length ? `<div class="list">${ms.map(mealItem).join('')}</div>` : empty(live ? 'Сегодня ещё ничего не записано. Сфотографируй еду или запиши вручную — кнопки выше.' : 'За этот день записей нет.') })}
       ${card({ domain: 'food', title: 'Календарь питания', span: 5, i: i++, body: foodCalendarCard(nm) })}
-      ${card({ domain: 'food', title: 'Баланс БЖУ за день', span: 5, i: i++, body: macroSplitCard(tot) })}
-      ${card({ domain: 'food', title: 'Неделя: в норме ли', span: 7, i: i++, body: weekNormsCard(d, nm) })}
-      ${card({ domain: 'food', title: 'Когда ешь', span: 12, i: i++, body: mealTimingCard(d) })}
+      ${card({ domain: 'food', title: live ? 'Баланс БЖУ за сегодня' : `Баланс БЖУ за ${human(d)}`, span: 6, i: i++, body: macroSplitCard(tot) })}
+      ${card({ domain: 'food', title: 'Когда ешь · 7 дней', span: 6, i: i++, body: mealTimingCard(d) })}
       ${freq.length ? card({ domain: 'food', title: 'Частое', span: 12, i: i++, body: `<div class="chips">${freq.map(f => `<button class="chip chip-btn" data-action="quick-meal" data-name="${esc(f.name)}"><b>${esc(f.name)}</b>${fmtN(f.kcal)} ккал</button>`).join('')}</div><p class="hint">Нажми, чтобы записать на выбранный день прямо сейчас.</p>` }) : ''}
     </div>
   </section>`;
