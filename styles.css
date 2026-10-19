@@ -915,6 +915,70 @@ mark.hit{background:#F6D96B;color:inherit;border-radius:3px;padding:0 1px}
 .mermaid-wrap pre.mermaid{background:none;color:var(--paper-2);margin:0;padding:0;white-space:pre}
 .mermaid-wrap pre.mermaid[data-processed]{display:flex;justify-content:center}
 
+/* ---------- планы и задачи ---------- */
+.plan-nav{display:flex;align-items:center;gap:8px;margin:-6px 0 16px}
+.plan-nav b{font:800 20px var(--display);letter-spacing:-.01em;min-width:0}
+.plan-nav .btn{margin-left:auto}
+.cbx{flex:none;width:22px;height:22px;border-radius:7px;border:2px solid var(--line-2);background:var(--ink-1);display:grid;place-items:center;cursor:pointer;padding:0;color:#fff;transition:background .15s,border-color .15s}
+.cbx:hover{border-color:var(--orange)}
+.cbx.on{background:var(--st-good);border-color:var(--st-good)}
+.cbx svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:3;stroke-linecap:round;stroke-linejoin:round}
+.goals{display:flex;flex-direction:column;gap:8px}
+.goal{display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:14px;background:var(--ink-2);border:1px solid var(--line)}
+.goal-main{flex:1;min-width:0;cursor:pointer}
+.goal-title{font-weight:700;font-size:14.5px}
+.goal.done .goal-title{text-decoration:line-through;color:var(--paper-3)}
+.goal-sub{font-size:12px;color:var(--paper-3);margin-top:2px}
+.goal-pr{flex:none;display:flex;align-items:center;gap:8px;width:130px}
+.goal-pr .sb-track{flex:1;height:8px}
+.goal-pr b{font-size:12.5px;min-width:34px;text-align:right}
+.goals .link-btn,.plans-up .link-btn{display:inline-flex;align-items:center;gap:5px}
+.goals .link-btn svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2.4}
+.plans-up{margin:12px 0 0;font-size:12.5px;color:var(--paper-3);display:flex;flex-wrap:wrap;gap:4px 12px;align-items:center}
+.plans-up .link-btn{font-size:12.5px;font-weight:600;color:var(--paper-2)}
+.week{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-top:14px}
+@media (min-width:1600px){.week{grid-template-columns:repeat(8,minmax(0,1fr))}}
+.day{display:flex;flex-direction:column;gap:6px;min-width:0;min-height:150px;padding:12px 10px;border-radius:18px;background:var(--ink-1);border:2px solid transparent;transition:border-color .15s,background .15s}
+.day.today{border-color:var(--orange)}
+.day.past{opacity:.85}
+.day.inbox{background:color-mix(in srgb,var(--ink-3) 50%,var(--ink-1))}
+.day.drop-over{border-color:var(--study);background:color-mix(in srgb,var(--study-f) 40%,var(--ink-1))}
+.day-head{display:flex;align-items:baseline;gap:6px;padding:0 4px 4px}
+.day-head b{font:800 15px var(--display);text-transform:capitalize}
+.inbox .day-head b{text-transform:none}
+.day-head span{font-size:12px;color:var(--paper-3)}
+.day-head em{margin-left:auto;font-style:normal;font-size:11px;font-weight:700;color:var(--paper-2);background:var(--ink-3);padding:1px 7px;border-radius:999px}
+.tasks{display:flex;flex-direction:column;gap:5px}
+.task{display:flex;align-items:flex-start;gap:8px;padding:8px 9px;border-radius:12px;background:var(--ink-2);border:1px solid var(--line);cursor:grab}
+.task.dragging{opacity:.4}
+.task.prio{border-left:3px solid var(--orange)}
+.task .cbx{width:19px;height:19px;border-radius:6px;margin-top:1px}
+.task .cbx svg{width:12px;height:12px}
+.task-main{flex:1;min-width:0;cursor:pointer;display:flex;flex-direction:column;gap:1px}
+.task-title{font-size:13.5px;line-height:1.35;overflow-wrap:anywhere}
+.task-prio{color:var(--orange);margin-right:4px}
+.task.done .task-title{text-decoration:line-through;color:var(--paper-3)}
+.task-meta{font-size:11px;color:var(--paper-3)}
+.task-add{width:100%;padding:7px 10px;font-size:13px;border-radius:11px;background:transparent;border:1.5px dashed var(--line-2)}
+.task-add:focus{background:var(--ink-2);border-style:solid}
+.overdue-card .task{border-color:color-mix(in srgb,var(--st-bad) 40%,transparent)}
+.overdue-card .btn{margin-top:10px}
+.mcal{display:grid;grid-template-columns:repeat(7,1fr);gap:5px}
+.mcal-cell{min-height:64px;border:0;border-radius:12px;background:var(--ink-2);cursor:pointer;padding:6px 8px;display:flex;flex-direction:column;align-items:flex-start;gap:4px;font:inherit;color:inherit;text-align:left}
+.mcal-cell.pad{background:none;cursor:default}
+.mcal-cell.today{box-shadow:inset 0 0 0 2px var(--orange)}
+.mcal-cell.all{background:color-mix(in srgb,var(--st-good) 18%,var(--ink-2))}
+.mcal-n{font-weight:700;font-size:13px}
+.mcal-dots{display:flex;gap:3px}
+.mcal-dots i{width:7px;height:7px;border-radius:50%;background:var(--ink-3);border:1.5px solid var(--paper-3)}
+.mcal-dots i.on{background:var(--st-good);border-color:var(--st-good)}
+.mcal-c{font-size:11px;color:var(--paper-3);margin-top:auto}
+.today-goals{display:flex;flex-wrap:wrap;gap:6px 12px;margin-top:12px;font-size:12.5px;color:var(--paper-3)}
+.today-goals a{color:var(--paper-2);font-weight:600;text-decoration:none}
+.tl-task{background:var(--ink-1);border-color:var(--orange)!important;border-width:2.5px!important}
+.tl-task.on{background:var(--st-good);border-color:var(--st-good)!important}
+.top-gear{display:none}
+
 /* ---------- календарь питания ---------- */
 .cal-head{display:flex;align-items:center;justify-content:space-between;margin:-6px 0 8px}
 .cal-head b{font:800 17px var(--display)}
@@ -1048,6 +1112,14 @@ mark.hit{background:#F6D96B;color:inherit;border-radius:3px;padding:0 1px}
   .meters{grid-template-columns:repeat(2,1fr);gap:18px 10px}
   .wk{gap:2px}
   .add-tiles{grid-template-columns:1fr 1fr;gap:10px}
+  .week{grid-template-columns:1fr;gap:8px}
+  .day{padding:10px}
+  .goal-pr{width:90px}
+  .mcal-cell{min-height:48px;padding:5px}
+  .mcal-dots,.mcal-c{display:none}
+  .tab-settings{display:none!important}
+  .top-gear{display:grid;place-items:center;position:absolute;top:12px;right:14px;z-index:5;width:40px;height:40px;border-radius:12px;background:var(--ink-1);color:var(--paper-2)}
+  .top-gear svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round}
   .reader-main{grid-template-columns:1fr}
   .rd-toc{display:none}
   .rd-toc-sel{display:block;flex:1 1 100%}
@@ -1092,6 +1164,7 @@ mark.hit{background:#F6D96B;color:inherit;border-radius:3px;padding:0 1px}
   .onboard::after{width:120px;height:120px;right:-50px;top:-50px}
 }
 @media (min-width:861px) and (max-width:1100px){
+  .week{grid-template-columns:repeat(2,minmax(0,1fr))}
   .card{grid-column:span 6}
   .card-wide{grid-column:1/-1}
 }

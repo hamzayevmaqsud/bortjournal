@@ -9,7 +9,8 @@ const KEY = 'bortjournal.v1'; // старое хранилище браузер�
 const DEF = {
   settings: { kcal: 2200, protein: 140, steps: 10000, study: 60, apiKey: '', aiAuto: false, name: '' },
   meals: [], study: [], workouts: [], days: {}, srs: {}, quizzes: {}, foods: {},
-  profile: null, activity: {}, drinks: [], sets: [], studyTime: {}
+  profile: null, activity: {}, drinks: [], sets: [], studyTime: {},
+  tasks: [], goals: []
 };
 let S = structuredClone(DEF);
 let me = null, rev = 0, photoOn = false;
@@ -163,6 +164,7 @@ const I = {
   download: '<svg viewBox="0 0 24 24"><path d="M12 4v11m-4-4l4 4 4-4M5 20h14"/></svg>',
   upload: '<svg viewBox="0 0 24 24"><path d="M12 15V4m-4 4l4-4 4 4M5 20h14"/></svg>',
   goal: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r=".9"/></svg>',
+  plans: '<svg viewBox="0 0 24 24"><rect x="4" y="4.5" width="16" height="16" rx="3"/><path d="M8 3v3M16 3v3M4 9.5h16M8.5 14l2 2 4-4"/></svg>',
   search: '<svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg>',
   star: '<svg viewBox="0 0 24 24"><path d="M12 3.8l2.5 5.1 5.6.8-4 3.9.9 5.6-5-2.6-5 2.6.9-5.6-4-3.9 5.6-.8z"/></svg>',
   repeat: '<svg viewBox="0 0 24 24"><path d="M4 12a8 8 0 0 1 13.7-5.6M20 4v4h-4M20 12a8 8 0 0 1-13.7 5.6M4 20v-4h4"/></svg>',
@@ -174,7 +176,7 @@ document.querySelectorAll('[data-ico]').forEach(el => { el.innerHTML = I[el.data
 
 /* ---------- состояние представления ---------- */
 const view = { page: 'today', date: ymd(), range: 30, lastPage: null };
-const PAGES = ['today', 'food', 'study', 'quiz', 'gym', 'steps', 'goal', 'stats', 'settings'];
+const PAGES = ['today', 'plans', 'food', 'study', 'quiz', 'gym', 'steps', 'goal', 'stats', 'settings'];
 
 function route() {
   const h = location.hash.replace('#', '') || 'today';
@@ -191,7 +193,7 @@ function render() {
   document.body.classList.toggle('setup-mode', !!view.wizard);
   if (view.wizard) { $('#main').innerHTML = pageWizard(); window.scrollTo({ top: 0, behavior: 'instant' }); return; }
   document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.page === view.page));
-  const pages = { today: pageToday, food: pageFood, study: pageStudy, quiz: pageQuiz, gym: pageGym, steps: pageSteps, goal: pageGoal, stats: pageStats, settings: pageSettings };
+  const pages = { today: pageToday, plans: pagePlans, food: pageFood, study: pageStudy, quiz: pageQuiz, gym: pageGym, steps: pageSteps, goal: pageGoal, stats: pageStats, settings: pageSettings };
   const y = window.scrollY;
   $('#main').innerHTML = pages[view.page]();
   afterRender();
@@ -346,6 +348,7 @@ function pageToday() {
       ${card({ domain: 'steps', title: 'Шаги', i: i++, body: stepsBody, cls: 'tile tile-mustard', action: addBtn('add-steps', 'Записать') })}
       ${card({ domain: 'quiz', title: 'Вопросы дня', span: 7, i: i++, body: quizBody, cls: 'tile tile-orange', action: `<a class="btn btn-accent btn-sm" href="#quiz">Открыть</a>` })}
       ${card({ domain: 'gym', title: 'Зал', span: 5, i: i++, body: gymBody, cls: 'tile tile-sage', action: addBtn('add-gym', 'Тренировка') })}
+      ${card({ domain: 'food', title: d === ymd() ? 'Задачи на сегодня' : `Задачи · ${human(d)}`, span: 12, i: i++, body: todayTasksCard(d), action: `<a class="btn btn-accent btn-sm" href="#plans">Планы</a>` })}
       ${card({ domain: 'paper', title: 'Заметка дня', span: 12, i: i++, body: noteBody, cls: 'tile tile-peach' })}
     </div>
   </section>`;
@@ -399,7 +402,8 @@ function dayTimeline(d) {
     { k: 'drink', icon: I.drop, name: 'Вода', marks: drinkMarks + gap(lastDrink, 150, h => `воды нет ${h} ч`), sum: `${fmt1(dd.hyd / 1000)} из ${fmt1(waterNorm() / 1000)} л` },
     { k: 'study', icon: I.study, name: 'Учёба', marks: studyMarks, sum: sMin ? fmtMin(sMin) : edits.length ? `${edits.length} ${plural(edits.length, 'правка', 'правки', 'правок')} в Obsidian` : '—' },
     { k: 'gym', icon: I.gym, name: 'Зал', marks: gymMarks, sum: gymMin ? fmtMin(gymMin) : gym.length ? `${gym.length} тр.` : '—' },
-    { k: 'quiz', icon: I.quiz, name: 'Вопросы', marks: quizMarks, sum: qItems.length ? `${qDone} из ${qItems.length}` : '—' }
+    { k: 'quiz', icon: I.quiz, name: 'Вопросы', marks: quizMarks, sum: qItems.length ? `${qDone} из ${qItems.length}` : '—' },
+    { k: 'task', icon: I.plans, name: 'Задачи', marks: tasksOn(d).filter(x => x.time).map(x => `<button class="tl-dot tl-task ${x.done ? 'on' : ''}" style="left:${pos(hmToMin(x.time))}%;--s:13px" data-action="task-edit" data-id="${x.id}" ${tip(`${x.time} · ${x.title}${x.done ? ' — сделано' : ''}`)}></button>`).join(''), sum: (() => { const l = tasksOn(d); return l.length ? `${l.filter(x => x.done).length} из ${l.length}` : '—'; })() }
   ];
   return `<section class="tl" aria-label="Лента дня">
     <div class="tl-row tl-axis"><span></span><div class="tl-axis-track">${ticks.map(h => `<span style="left:${pos(h * 60)}%">${h === 24 ? '00' : z(h)}</span>`).join('')}${live ? `<b class="tl-now-label" style="left:${pos(nowMin)}%">сейчас ${nowHM()}</b>` : ''}</div><span></span></div>
@@ -409,6 +413,197 @@ function dayTimeline(d) {
       <div class="tl-sum">${l.sum}</div></div>`).join('')}
     <p class="tl-hint">Нажми на пустое место дорожки — добавишь запись на это время. Нажми на отметку — изменишь её.</p>
   </section>`;
+}
+
+
+/* ============================================================
+   ПЛАНЫ И ЗАДАЧИ
+   ============================================================ */
+const PERIODS = { week: 'Неделя', month: 'Месяц', quarter: 'Квартал', year: 'Год' };
+const PARENT = { week: 'month', month: 'quarter', quarter: 'year', year: null };
+const MONTHS = ['январь', 'февраль', 'март', 'апрель', 'май', 'июнь', 'июль', 'август', 'сентябрь', 'октябрь', 'ноябрь', 'декабрь'];
+function periodKey(kind, d) {
+  const dt = parseYmd(d), y = dt.getFullYear(), m = dt.getMonth();
+  return kind === 'week' ? mondayOf(d) : kind === 'month' ? `${y}-${z(m + 1)}` : kind === 'quarter' ? `${y}-Q${Math.floor(m / 3) + 1}` : `${y}`;
+}
+function periodRange(kind, key) {
+  if (kind === 'week') return [key, addDays(key, 6)];
+  if (kind === 'month') { const [y, m] = key.split('-').map(Number); return [`${key}-01`, ymd(new Date(y, m, 0))]; }
+  if (kind === 'quarter') { const [y, q] = key.split('-Q').map(Number); return [ymd(new Date(y, (q - 1) * 3, 1)), ymd(new Date(y, q * 3, 0))]; }
+  return [`${key}-01-01`, `${key}-12-31`];
+}
+function periodLabel(kind, key) {
+  const [a, b] = periodRange(kind, key), da = parseYmd(a), db = parseYmd(b);
+  if (kind === 'week') return da.getMonth() === db.getMonth() ? `${da.getDate()}–${db.getDate()} ${MONG[db.getMonth()]}` : `${human(a)} – ${human(b)}`;
+  if (kind === 'month') return `${MONTHS[da.getMonth()][0].toUpperCase() + MONTHS[da.getMonth()].slice(1)} ${da.getFullYear()}`;
+  if (kind === 'quarter') return `${key.split('-Q')[1]} квартал ${da.getFullYear()}`;
+  return `${key} год`;
+}
+function shiftDate(kind, d, n) {
+  const dt = parseYmd(d);
+  if (kind === 'week') return addDays(d, 7 * n);
+  if (kind === 'month') return ymd(new Date(dt.getFullYear(), dt.getMonth() + n, 1));
+  if (kind === 'quarter') return ymd(new Date(dt.getFullYear(), dt.getMonth() + 3 * n, 1));
+  return ymd(new Date(dt.getFullYear() + n, 0, 1));
+}
+const goalsOf = (kind, key) => S.goals.filter(g => g.period === kind && g.key === key);
+const tasksOn = d => S.tasks.filter(t => t.date === d).sort((a, b) => (a.done - b.done) || (a.time || '99').localeCompare(b.time || '99') || (b.prio ? 1 : 0) - (a.prio ? 1 : 0));
+const overdueTasks = () => { const t = ymd(); return S.tasks.filter(x => x.date && x.date < t && !x.done).sort((a, b) => a.date.localeCompare(b.date)); };
+/* Прогресс цели: по её задачам и подцелям; если их нет — отметка вручную */
+function goalProgress(g, depth = 0) {
+  const tasks = S.tasks.filter(t => t.goalId === g.id), kids = depth < 4 ? S.goals.filter(x => x.parentId === g.id) : [];
+  if (g.done) return 100;
+  if (!tasks.length && !kids.length) return 0;
+  const parts = [...tasks.map(t => t.done ? 100 : 0), ...kids.map(k => goalProgress(k, depth + 1))];
+  return Math.round(parts.reduce((a, b) => a + b, 0) / parts.length);
+}
+function goalRow(g) {
+  const pr = goalProgress(g), parent = g.parentId && S.goals.find(x => x.id === g.parentId);
+  const nT = S.tasks.filter(t => t.goalId === g.id).length, nK = S.goals.filter(x => x.parentId === g.id).length;
+  return `<div class="goal ${pr >= 100 ? 'done' : ''}">
+    <button class="cbx ${g.done ? 'on' : ''}" data-action="goal-toggle" data-id="${g.id}" aria-label="${g.done ? 'Снять отметку' : 'Отметить выполненной'}">${g.done ? I.check : ''}</button>
+    <div class="goal-main" data-action="goal-edit" data-id="${g.id}">
+      <div class="goal-title">${esc(g.title)}</div>
+      <div class="goal-sub">${parent ? `↳ ${esc(parent.title)} · ` : ''}${nT ? `${S.tasks.filter(t => t.goalId === g.id && t.done).length}/${nT} ${plural(nT, 'задача', 'задачи', 'задач')}` : ''}${nT && nK ? ' · ' : ''}${nK ? `${nK} ${plural(nK, 'подцель', 'подцели', 'подцелей')}` : ''}${!nT && !nK ? 'отметь, когда выполнишь' : ''}</div>
+    </div>
+    <div class="goal-pr"><span class="sb-track"><i data-w="${pr}" style="background:${pr >= 100 ? 'var(--st-good)' : 'var(--orange)'}"></i></span><b>${pr}%</b></div>
+  </div>`;
+}
+function goalsBlock(kind, key) {
+  const gs = goalsOf(kind, key);
+  return `<div class="goals">${gs.map(goalRow).join('') || `<p class="hint" style="margin:0">Целей на ${PERIODS[kind].toLowerCase() === 'неделя' ? 'эту неделю' : periodLabel(kind, key).toLowerCase()} пока нет.</p>`}
+    <button class="link-btn" data-action="goal-add" data-kind="${kind}" data-key="${key}">${I.plus}Цель на ${kind === 'week' ? 'неделю' : kind === 'month' ? 'месяц' : kind === 'quarter' ? 'квартал' : 'год'}</button></div>`;
+}
+function taskRow(t, opts = {}) {
+  const g = t.goalId && S.goals.find(x => x.id === t.goalId);
+  return `<div class="task ${t.done ? 'done' : ''} ${t.prio ? 'prio' : ''}" draggable="true" data-task="${t.id}">
+    <button class="cbx ${t.done ? 'on' : ''}" data-action="task-toggle" data-id="${t.id}" aria-label="${t.done ? 'Вернуть' : 'Выполнено'}">${t.done ? I.check : ''}</button>
+    <div class="task-main" data-action="task-edit" data-id="${t.id}">
+      <span class="task-title">${t.prio ? '<b class="task-prio">!</b>' : ''}${esc(t.title)}</span>
+      ${(() => { const meta = [opts.showDate && t.date ? relDay(t.date) : '', t.time ? esc(t.time) : '', g ? `◎ ${esc(g.title)}` : ''].filter(Boolean).join(' · '); return meta ? `<span class="task-meta">${meta}</span>` : ''; })()}
+    </div>
+  </div>`;
+}
+function quickTask(date) {
+  return `<input class="task-add" data-qtask="${date || ''}" placeholder="+ задача" aria-label="Новая задача${date ? ` на ${human(date)}` : ''}" enterkeyhint="done">`;
+}
+function addTaskFromText(text, date) {
+  let title = String(text).trim(); if (!title) return null;
+  let time = '', prio = false;
+  const tm = /\s(\d{1,2})[:.](\d{2})$/.exec(' ' + title);
+  if (tm && +tm[1] < 24 && +tm[2] < 60) { time = `${z(+tm[1])}:${tm[2]}`; title = title.slice(0, title.length - tm[0].length + 1).trim(); }
+  if (/^!\s*/.test(title)) { prio = true; title = title.replace(/^!\s*/, ''); }
+  if (!title) return null;
+  const t = { id: uid(), title, date: date || null, time, done: false, prio, created: ymd() };
+  S.tasks.push(t); return t;
+}
+
+function weekView(anchor) {
+  const key = periodKey('week', anchor), [mon] = periodRange('week', key), t = ymd();
+  const days = Array.from({ length: 7 }, (_, k) => addDays(mon, k));
+  const od = overdueTasks();
+  const monthKey = periodKey('month', anchor), mg = goalsOf('month', monthKey);
+  const inbox = S.tasks.filter(x => !x.date && !x.done);
+  return `<div class="grid">
+    ${card({ domain: 'food', title: `Цели недели`, span: 12, i: 0, body: goalsBlock('week', key) + (mg.length ? `<p class="plans-up">Цели месяца: ${mg.map(g => `<button class="link-btn" data-action="goal-edit" data-id="${g.id}">${esc(g.title)} · ${goalProgress(g)}%</button>`).join(' ')}</p>` : '') })}
+    ${od.length && days.includes(t) ? card({ domain: 'food', title: `Просрочено · ${od.length}`, span: 12, i: 1, cls: 'overdue-card', body: `<div class="tasks">${od.slice(0, 8).map(x => taskRow(x, { showDate: true })).join('')}</div><button class="btn btn-sm btn-primary" style="--c:var(--orange)" data-action="tasks-to-today">${I.repeat}Перенести все на сегодня</button>` }) : ''}
+  </div>
+  <div class="week">
+    ${days.map(d => { const dt = parseYmd(d), list = tasksOn(d), done = list.filter(x => x.done).length; return `<section class="day ${d === t ? 'today' : ''} ${d < t ? 'past' : ''}" data-drop="${d}">
+      <header class="day-head"><b>${WD[dt.getDay()]}</b><span>${dt.getDate()} ${MON[dt.getMonth()]}</span>${list.length ? `<em>${done}/${list.length}</em>` : ''}</header>
+      <div class="tasks">${list.map(x => taskRow(x)).join('')}</div>
+      ${quickTask(d)}
+    </section>`; }).join('')}
+    <section class="day inbox" data-drop="">
+      <header class="day-head"><b>Без даты</b>${inbox.length ? `<em>${inbox.length}</em>` : ''}</header>
+      <div class="tasks">${inbox.map(x => taskRow(x)).join('')}</div>
+      ${quickTask('')}
+    </section>
+  </div>
+  <p class="hint">Enter — добавить задачу. Время в конце («Позвонить 15:00») попадёт в ленту дня, «!» в начале — важная. Задачи можно перетаскивать между днями, а нажатие на задачу открывает перенос на любую дату и привязку к цели.</p>`;
+}
+function monthView(anchor) {
+  const key = periodKey('month', anchor), [a, b] = periodRange('month', key), t = ymd();
+  const lead = (parseYmd(a).getDay() + 6) % 7, n = parseYmd(b).getDate();
+  const weeks = []; for (let d = mondayOf(a); d <= b; d = addDays(d, 7)) weeks.push(d);
+  const wg = weeks.flatMap(w => goalsOf('week', w));
+  const qk = periodKey('quarter', anchor), qg = goalsOf('quarter', qk);
+  const cells = [];
+  for (let k = 0; k < lead; k++) cells.push('<span class="mcal-cell pad"></span>');
+  for (let k = 1; k <= n; k++) {
+    const d = `${key}-${z(k)}`, list = tasksOn(d), done = list.filter(x => x.done).length;
+    cells.push(`<button class="mcal-cell ${d === t ? 'today' : ''} ${list.length && done === list.length ? 'all' : ''}" data-action="plan-open-week" data-d="${d}" title="${human(d)}: ${list.length ? `${done} из ${list.length} задач` : 'задач нет'}">
+      <span class="mcal-n">${k}</span>${list.length ? `<span class="mcal-dots">${list.slice(0, 5).map(x => `<i class="${x.done ? 'on' : ''}"></i>`).join('')}</span><span class="mcal-c">${done}/${list.length}</span>` : ''}</button>`);
+  }
+  return `<div class="grid">
+    ${card({ domain: 'food', title: 'Цели месяца', span: 6, i: 0, body: goalsBlock('month', key) + (qg.length ? `<p class="plans-up">Цели квартала: ${qg.map(g => `<button class="link-btn" data-action="goal-edit" data-id="${g.id}">${esc(g.title)} · ${goalProgress(g)}%</button>`).join(' ')}</p>` : '') })}
+    ${card({ domain: 'food', title: 'Цели недель месяца', span: 6, i: 1, body: wg.length ? `<div class="goals">${wg.map(goalRow).join('')}</div>` : empty('Цели недель появятся здесь — их ставят на вкладке «Неделя».') })}
+    ${card({ domain: 'food', title: 'Задачи по дням', span: 12, i: 2, body: `<div class="mcal">${['пн', 'вт', 'ср', 'чт', 'пт', 'сб', 'вс'].map(w => `<span class="cal-wd">${w}</span>`).join('')}${cells.join('')}</div><p class="hint">Нажми на день — откроется его неделя.</p>` })}
+  </div>`;
+}
+function bigView(kind, anchor) {
+  const key = periodKey(kind, anchor), [a, b] = periodRange(kind, key);
+  const sub = kind === 'quarter' ? 'month' : 'quarter';
+  const subKeys = []; for (let d = a; d <= b; d = shiftDate(sub, d, 1)) subKeys.push(periodKey(sub, d));
+  return `<div class="grid">
+    ${card({ domain: 'food', title: `Цели · ${periodLabel(kind, key)}`, span: 12, i: 0, body: goalsBlock(kind, key) })}
+    ${subKeys.map((k, n) => card({ domain: 'paper', title: periodLabel(sub, k), span: kind === 'quarter' ? 4 : 3, i: n + 1, body: `${goalsOf(sub, k).map(goalRow).join('') || '<p class="hint" style="margin:0">Целей нет.</p>'}<button class="link-btn" data-action="plan-go" data-kind="${sub}" data-d="${periodRange(sub, k)[0]}">Открыть ›</button>` })).join('')}
+  </div>`;
+}
+function pagePlans() {
+  const kind = view.planKind || 'week', anchor = view.planDate || ymd();
+  const key = periodKey(kind, anchor), isNow = key === periodKey(kind, ymd());
+  const t = ymd(), todayTasks = tasksOn(t), weekTasks = S.tasks.filter(x => x.date >= mondayOf(t) && x.date <= addDays(mondayOf(t), 6));
+  return `<section class="page" style="--c:var(--orange)">
+    ${topbar('Планы', `сегодня ${todayTasks.filter(x => x.done).length} из ${todayTasks.length} задач · неделя ${weekTasks.filter(x => x.done).length} из ${weekTasks.length}`, { date: false, actions: `<div class="seg" role="tablist">${Object.entries(PERIODS).map(([k, n]) => `<button role="tab" class="${k === kind ? 'on' : ''}" data-action="plan-kind" data-v="${k}">${n}</button>`).join('')}</div>` })}
+    <div class="plan-nav">
+      <button class="icon-btn" data-action="plan-shift" data-n="-1" aria-label="Назад">${I.chevL}</button>
+      <b>${periodLabel(kind, key)}</b>
+      <button class="icon-btn" data-action="plan-shift" data-n="1" aria-label="Вперёд">${I.chevR}</button>
+      ${isNow ? '' : `<button class="btn btn-sm" data-action="plan-now">${kind === 'week' ? 'К этой неделе' : kind === 'month' ? 'К этому месяцу' : kind === 'quarter' ? 'К этому кварталу' : 'К этому году'}</button>`}
+    </div>
+    ${kind === 'week' ? weekView(anchor) : kind === 'month' ? monthView(anchor) : bigView(kind, anchor)}
+  </section>`;
+}
+
+function goalForm(g, kind, key) {
+  kind = g ? g.period : kind; key = g ? g.key : key;
+  const pk = PARENT[kind], parents = pk ? goalsOf(pk, periodKey(pk, periodRange(kind, key)[0])) : [];
+  const tasks = g ? S.tasks.filter(t => t.goalId === g.id) : [];
+  openModal({
+    title: g ? 'Цель' : `Цель · ${periodLabel(kind, key)}`, accent: 'var(--orange)', form: 'goal', submit: g ? 'Сохранить' : 'Добавить',
+    body: `<input type="hidden" name="id" value="${g ? g.id : ''}"><input type="hidden" name="kind" value="${kind}"><input type="hidden" name="key" value="${key}">
+      ${field('Цель', `<input name="title" required maxlength="140" placeholder="${kind === 'week' ? 'Например: дочитать раздел CSI и ответить на вопросы' : kind === 'year' ? 'Например: сдать сертификацию OpenShift' : 'Например: закончить PoC и написать отчёт'}" value="${esc(g?.title || '')}">`)}
+      ${pk ? field(`Часть цели на ${pk === 'month' ? 'месяц' : pk === 'quarter' ? 'квартал' : 'год'}`, `<select name="parentId"><option value="">— не связана —</option>${parents.map(x => `<option value="${x.id}" ${g?.parentId === x.id ? 'selected' : ''}>${esc(x.title)}</option>`).join('')}</select>`) : ''}
+      ${field('Заметка', `<textarea name="note" rows="2" placeholder="Зачем, критерий готовности">${esc(g?.note || '')}</textarea>`)}
+      ${tasks.length ? `<div class="field"><label>Задачи цели</label><div class="tasks">${tasks.map(x => taskRow(x, { showDate: true })).join('')}</div></div>` : ''}
+      ${g ? `<button type="button" class="btn btn-danger btn-sm" data-action="goal-del" data-id="${g.id}">${I.trash}Удалить цель</button>` : ''}`
+  });
+}
+function taskForm(t, date) {
+  const d = t ? t.date : date, ref = d || ymd();
+  const goals = [...goalsOf('week', periodKey('week', ref)), ...goalsOf('month', periodKey('month', ref)), ...goalsOf('quarter', periodKey('quarter', ref)), ...goalsOf('year', periodKey('year', ref))];
+  const week = Array.from({ length: 7 }, (_, k) => addDays(mondayOf(ymd()), k));
+  openModal({
+    title: t ? 'Задача' : 'Новая задача', accent: 'var(--orange)', form: 'task', submit: t ? 'Сохранить' : 'Добавить',
+    body: `<input type="hidden" name="id" value="${t ? t.id : ''}">
+      ${field('Что сделать', `<input name="title" required maxlength="200" value="${esc(t?.title || '')}">`)}
+      <div class="field"><label>Когда</label>
+        <div class="chips">${week.map(x => `<button type="button" class="chip chip-btn ${x === d ? 'on' : ''}" data-action="task-day" data-d="${x}">${WD[parseYmd(x).getDay()]} ${parseYmd(x).getDate()}</button>`).join('')}<button type="button" class="chip chip-btn ${!d ? 'on' : ''}" data-action="task-day" data-d="">без даты</button></div>
+        <div class="row row-2" style="margin-top:8px"><input name="date" type="date" value="${d || ''}" aria-label="Дата"><input name="time" type="time" value="${t?.time || ''}" aria-label="Время"></div></div>
+      ${goals.length ? field('Цель', `<select name="goalId"><option value="">— без цели —</option>${goals.map(x => `<option value="${x.id}" ${t?.goalId === x.id ? 'selected' : ''}>${PERIODS[x.period]}: ${esc(x.title)}</option>`).join('')}</select>`) : ''}
+      <label class="switch" style="--c:var(--orange)"><input type="checkbox" name="prio" ${t?.prio ? 'checked' : ''}><span>Важная</span></label>
+      ${field('Заметка', `<textarea name="note" rows="2">${esc(t?.note || '')}</textarea>`)}
+      ${t ? `<button type="button" class="btn btn-danger btn-sm" data-action="task-del" data-id="${t.id}">${I.trash}Удалить задачу</button>` : ''}`
+  });
+}
+function todayTasksCard(d) {
+  const list = tasksOn(d), od = d === ymd() ? overdueTasks() : [];
+  const wg = goalsOf('week', periodKey('week', d)).filter(g => goalProgress(g) < 100);
+  return `<div class="tasks">${list.map(x => taskRow(x)).join('')}</div>
+    ${quickTask(d)}
+    ${od.length ? `<p class="hint" style="margin:10px 0 0">Просрочено: ${od.length} — <button class="link-btn" data-action="tasks-to-today">перенести на сегодня</button></p>` : ''}
+    ${wg.length ? `<div class="today-goals"><span>Цели недели:</span>${wg.slice(0, 3).map(g => `<a href="#plans">${esc(g.title)} · ${goalProgress(g)}%</a>`).join('')}</div>` : ''}`;
 }
 
 /* ============================================================
@@ -2267,9 +2462,23 @@ const ACTIONS = {
     const r = el.getBoundingClientRect(), x = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
     const m = Math.min(23 * 60 + 45, Math.round((+el.dataset.start + x * +el.dataset.span) / 15) * 15);
     view.presetTime = `${z(Math.floor(m / 60))}:${z(m % 60)}`;
-    ({ food: () => mealForm(), drink: () => drinkForm(), study: () => studyForm(), gym: () => gymForm(), quiz: () => { view.presetTime = null; location.hash = '#quiz'; } })[el.dataset.k]?.();
+    ({ food: () => mealForm(), drink: () => drinkForm(), study: () => studyForm(), gym: () => gymForm(), quiz: () => { view.presetTime = null; location.hash = '#quiz'; }, task: () => { const tm = view.presetTime; view.presetTime = null; taskForm(null, view.date); setTimeout(() => { const f = $('#modal-root [data-form=task]'); if (f) f.time.value = tm; }, 0); } })[el.dataset.k]?.();
   },
   'tl-open': () => {},
+  'plan-kind': el => { view.planKind = el.dataset.v; render(); },
+  'plan-shift': el => { const k = view.planKind || 'week'; view.planDate = shiftDate(k, view.planDate || ymd(), +el.dataset.n); render(); },
+  'plan-now': () => { view.planDate = ymd(); render(); },
+  'plan-go': el => { view.planKind = el.dataset.kind; view.planDate = el.dataset.d; render(); },
+  'plan-open-week': el => { view.planKind = 'week'; view.planDate = el.dataset.d; render(); },
+  'goal-add': el => goalForm(null, el.dataset.kind, el.dataset.key),
+  'goal-edit': el => { const g = S.goals.find(x => x.id === el.dataset.id); if (g) goalForm(g); },
+  'goal-toggle': el => { const g = S.goals.find(x => x.id === el.dataset.id); if (!g) return; g.done = !g.done; save(); render(); if (g.done) toast(`Цель выполнена: ${g.title}`); },
+  'goal-del': el => { const g = S.goals.find(x => x.id === el.dataset.id); if (!g || !confirm(`Удалить цель «${g.title}»? Задачи останутся.`)) return; S.goals = S.goals.filter(x => x.id !== g.id); S.goals.forEach(x => { if (x.parentId === g.id) x.parentId = null; }); S.tasks.forEach(t => { if (t.goalId === g.id) t.goalId = null; }); save(); closeModal(); render(); },
+  'task-toggle': el => { const t = S.tasks.find(x => x.id === el.dataset.id); if (!t) return; t.done = !t.done; t.doneAt = t.done ? new Date().toISOString() : null; save(); render(); },
+  'task-edit': el => { const t = S.tasks.find(x => x.id === el.dataset.id); if (t) taskForm(t); },
+  'task-del': el => { S.tasks = S.tasks.filter(x => x.id !== el.dataset.id); save(); closeModal(); render(); toast('Задача удалена'); },
+  'task-day': el => { const f = el.closest('form'); f.date.value = el.dataset.d; f.querySelectorAll('[data-action=task-day]').forEach(b => b.classList.toggle('on', b === el)); },
+  'tasks-to-today': () => { const t = ymd(), od = overdueTasks(); od.forEach(x => { x.date = t; }); save(); render(); toast(`Перенесено на сегодня: ${od.length}`); },
   'rd-open': el => openReader(el.dataset.rel, el.dataset.h || '', view.studyQ || ''),
   'rd-jump': el => { const t = $('.rd-body #' + headId(el.dataset.h)); if (t) t.scrollIntoView({ block: 'start', behavior: 'smooth' }); },
   'rd-link': (el, e) => {
@@ -2400,6 +2609,20 @@ const FORMS = {
     if (idx >= 0) S.drinks[idx] = x; else S.drinks.push(x);
     save(); closeModal(); render(); toast(`${drinkName(x)} ${fmtN(ml)} мл — ${idx >= 0 ? 'сохранено' : 'записано'}`);
   },
+  goal(fd) {
+    const id = fd.get('id'), title = String(fd.get('title') || '').trim(); if (!title) return;
+    const g = id ? S.goals.find(x => x.id === id) : { id: uid(), period: fd.get('kind'), key: fd.get('key'), done: false, created: ymd() };
+    Object.assign(g, { title, parentId: fd.get('parentId') || null, note: String(fd.get('note') || '').trim() });
+    if (!id) S.goals.push(g);
+    save(); closeModal(); render(); toast(id ? 'Сохранено' : 'Цель добавлена');
+  },
+  task(fd) {
+    const id = fd.get('id'), title = String(fd.get('title') || '').trim(); if (!title) return;
+    const t = id ? S.tasks.find(x => x.id === id) : { id: uid(), done: false, created: ymd() };
+    Object.assign(t, { title, date: fd.get('date') || null, time: fd.get('time') || '', goalId: fd.get('goalId') || null, prio: fd.get('prio') === 'on', note: String(fd.get('note') || '').trim() });
+    if (!id) S.tasks.push(t);
+    save(); closeModal(); render(); toast(id ? 'Сохранено' : `Задача на ${t.date ? relDay(t.date) : 'без даты'}`);
+  },
   week(fd) {
     const t = ymd(), w = num(fd.get('weight'));
     S.activity[mondayOf(t)] = String(fd.get('level') || curLevel());
@@ -2488,7 +2711,25 @@ document.addEventListener('change', e => {
     r.readAsText(t.files[0]); t.value = '';
   }
 });
+let dragTask = null;
+document.addEventListener('dragstart', e => { const el = e.target.closest?.('[data-task]'); if (!el) return; dragTask = el.dataset.task; e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', dragTask); el.classList.add('dragging'); });
+document.addEventListener('dragend', e => { e.target.closest?.('[data-task]')?.classList.remove('dragging'); document.querySelectorAll('.drop-over').forEach(x => x.classList.remove('drop-over')); dragTask = null; });
+document.addEventListener('dragover', e => { const z = dragTask && e.target.closest?.('[data-drop]'); if (!z) return; e.preventDefault(); document.querySelectorAll('.drop-over').forEach(x => x !== z && x.classList.remove('drop-over')); z.classList.add('drop-over'); });
+document.addEventListener('drop', e => {
+  const z = dragTask && e.target.closest?.('[data-drop]'); if (!z) return;
+  e.preventDefault();
+  const t = S.tasks.find(x => x.id === dragTask); if (!t) return;
+  t.date = z.dataset.drop || null; save(); render();
+  toast(`«${t.title}» → ${t.date ? `${relDay(t.date)}, ${human(t.date)}` : 'без даты'}`);
+});
 document.addEventListener('keydown', e => {
+  const qt = e.target.dataset?.qtask;
+  if (qt !== undefined && e.key === 'Enter' && !e.isComposing) {
+    e.preventDefault();
+    const t = addTaskFromText(e.target.value, qt || null);
+    if (t) { save(); render(); requestAnimationFrame(() => document.querySelector(`[data-qtask="${qt}"]`)?.focus()); }
+    return;
+  }
   if (e.key === 'Escape') closeModal();
   if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { const f = $('#modal-root form'); if (f) f.requestSubmit(); }
 });
