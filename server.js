@@ -28,8 +28,12 @@ const USERS_FILE = path.join(DATA, 'users.json');
 const SESSIONS_FILE = path.join(DATA, 'sessions.json');
 const SESSION_DAYS = 90;
 const MAX_BODY = 10 * 1024 * 1024;
-const STATIC = { '/': 'index.html', '/index.html': 'index.html', '/app.js': 'app.js', '/styles.css': 'styles.css', '/plan.js': 'plan.js' };
-const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8' };
+const STATIC = {
+  '/': 'index.html', '/index.html': 'index.html', '/app.js': 'app.js', '/styles.css': 'styles.css', '/plan.js': 'plan.js',
+  '/sw.js': 'sw.js', '/manifest.webmanifest': 'manifest.webmanifest',
+  '/icon-192.png': 'icon-192.png', '/icon-512.png': 'icon-512.png', '/apple-touch-icon.png': 'apple-touch-icon.png'
+};
+const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.webmanifest': 'application/manifest+json; charset=utf-8', '.png': 'image/png' };
 
 fs.mkdirSync(STATE_DIR, { recursive: true });
 
@@ -111,10 +115,12 @@ const SCALES = {
   phone: 'Рядом с едой лежит смартфон около 15 × 7 см. Используй его как эталон размера.',
   hand: 'Рядом с едой ладонь взрослого человека: длина ладони без пальцев около 10 см. Используй её как эталон размера.'
 };
-const FOOD_PROMPT = `Ты нутрициолог. По фото оцени, что съедено, и посчитай калории и БЖУ.
+const FOOD_PROMPT = `Ты нутрициолог. По фото и/или текстовому описанию оцени, что съедено, и посчитай калории и БЖУ.
 Правила:
 - Разбей на отдельные позиции: каждый продукт, соус, масло, напиток — отдельной строкой. Названия по-русски, коротко.
 - Для каждой позиции: вес порции в граммах и калории, белки, жиры, углеводы на ВСЮ порцию (не на 100 г). Округляй: граммы до 5, ккал до целых, БЖУ до 0,5.
+- Также на всю порцию: fiber — пищевые волокна (клетчатка), г; sugar — сахара всего, г; salt — соль, г (натрий × 2,5). Округляй до 0,5.
+- Если фото нет, считай только по описанию. Если вес не указан, бери типичную порцию для этого блюда и confidence = "medium".
 - Размер порции оценивай по эталону, если он указан, иначе по тарелке (обычно 24–27 см), приборам и упаковке.
 - Если пользователь в подписи указал вес или состав, это главнее твоей оценки: бери его цифры, source = "user".
 - Если на фото видна этикетка с пищевой ценностью, считай по ней, source = "label". Иначе source = "estimate".
@@ -130,9 +136,10 @@ const FOOD_SCHEMA = {
     items: { type: 'ARRAY', items: { type: 'OBJECT', properties: {
       name: { type: 'STRING' }, grams: { type: 'NUMBER' }, kcal: { type: 'NUMBER' },
       protein: { type: 'NUMBER' }, fat: { type: 'NUMBER' }, carbs: { type: 'NUMBER' },
+      fiber: { type: 'NUMBER' }, sugar: { type: 'NUMBER' }, salt: { type: 'NUMBER' },
       confidence: { type: 'STRING', enum: ['high', 'medium', 'low'] },
       source: { type: 'STRING', enum: ['estimate', 'label', 'user'] }
-    }, required: ['name', 'grams', 'kcal', 'protein', 'fat', 'carbs', 'confidence', 'source'] } },
+    }, required: ['name', 'grams', 'kcal', 'protein', 'fat', 'carbs', 'fiber', 'sugar', 'salt', 'confidence', 'source'] } },
     questions: { type: 'ARRAY', items: { type: 'OBJECT', properties: {
       text: { type: 'STRING' }, options: { type: 'ARRAY', items: { type: 'STRING' } }
     }, required: ['text', 'options'] } },
@@ -153,11 +160,12 @@ async function recognizeFood({ image, mime, note, scale, answers }) {
   const text = [
     FOOD_PROMPT,
     SCALES[scale] || 'Эталона размера в кадре нет.',
-    note ? `Подпись пользователя: ${note}` : '',
+    image ? '' : 'Фото нет — только текстовое описание.',
+    note ? `${image ? 'Подпись пользователя' : 'Описание еды от пользователя'}: ${note}` : '',
     answers && answers.length ? `Ответы пользователя на уточнения:\n${answers.map(a => `- ${a}`).join('\n')}` : ''
   ].filter(Boolean).join('\n\n');
   const body = JSON.stringify({
-    contents: [{ role: 'user', parts: [{ inline_data: { mime_type: mime, data: image } }, { text }] }],
+    contents: [{ role: 'user', parts: image ? [{ inline_data: { mime_type: mime, data: image } }, { text }] : [{ text }] }],
     generationConfig: { responseMimeType: 'application/json', responseSchema: FOOD_SCHEMA }
   });
   let lastErr;
@@ -186,6 +194,7 @@ async function recognizeFood({ image, mime, note, scale, answers }) {
       name: String(it.name || 'Без названия').slice(0, 80),
       grams: numClamp(it.grams, 3000), kcal: Math.round(numClamp(it.kcal, 6000)),
       p: numClamp(it.protein, 500), f: numClamp(it.fat, 500), c: numClamp(it.carbs, 1000),
+      fi: numClamp(it.fiber, 200), su: numClamp(it.sugar, 500), sa: numClamp(it.salt, 50),
       confidence: ['high', 'medium', 'low'].includes(it.confidence) ? it.confidence : 'medium',
       source: ['estimate', 'label', 'user'].includes(it.source) ? it.source : 'estimate'
     }));
@@ -265,11 +274,13 @@ async function api(req, res, url) {
     if (!GEMINI_KEY) return send(res, 503, { error: 'Распознавание не настроено: на сервере нет GEMINI_API_KEY.' });
     if (!photoQuota(user)) return send(res, 429, { error: 'На сегодня лимит фото исчерпан.' });
     const body = await readBody(req);
-    const mime = String(body.mime || '');
-    if (!/^image\/(jpeg|png|webp)$/.test(mime)) return send(res, 400, { error: 'Нужна картинка JPEG, PNG или WebP.' });
-    if (typeof body.image !== 'string' || body.image.length < 100 || body.image.length > 8e6) return send(res, 400, { error: 'Фото пустое или слишком большое.' });
+    const mime = String(body.mime || ''), hasImage = typeof body.image === 'string' && body.image.length > 0;
+    if (hasImage) {
+      if (!/^image\/(jpeg|png|webp)$/.test(mime)) return send(res, 400, { error: 'Нужна картинка JPEG, PNG или WebP.' });
+      if (body.image.length < 100 || body.image.length > 8e6) return send(res, 400, { error: 'Фото пустое или слишком большое.' });
+    } else if (String(body.note || '').trim().length < 2) return send(res, 400, { error: 'Опиши, что съел, или добавь фото.' });
     const out = await recognizeFood({
-      image: body.image, mime,
+      image: hasImage ? body.image : null, mime,
       note: String(body.note || '').slice(0, 300),
       scale: String(body.scale || ''),
       answers: (Array.isArray(body.answers) ? body.answers : []).slice(0, 5).map(a => String(a).slice(0, 200))

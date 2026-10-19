@@ -1,0 +1,16 @@
+{
+  "name": "Бортжурнал",
+  "short_name": "Бортжурнал",
+  "description": "Еда, вода, учёба, зал, шаги и цель в одном журнале",
+  "lang": "ru",
+  "start_url": "/#today",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#EFE3CE",
+  "theme_color": "#EFE3CE",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

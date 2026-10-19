@@ -9,7 +9,7 @@ const KEY = 'bortjournal.v1'; // старое хранилище браузер�
 const DEF = {
   settings: { kcal: 2200, protein: 140, steps: 10000, study: 60, apiKey: '', aiAuto: false, name: '' },
   meals: [], study: [], workouts: [], days: {}, srs: {}, quizzes: {}, foods: {},
-  profile: null, activity: {}, drinks: []
+  profile: null, activity: {}, drinks: [], sets: []
 };
 let S = structuredClone(DEF);
 let me = null, rev = 0, photoOn = false;
@@ -121,7 +121,12 @@ const mealsOn = d => [...S.meals.filter(m => m.date === d), ...drinksOn(d).map(d
 const studyOn = d => S.study.filter(s => s.date === d).sort((a, b) => (a.time || '').localeCompare(b.time || ''));
 const gymOn = d => S.workouts.filter(w => w.date === d).sort((a, b) => (a.time || '').localeCompare(b.time || ''));
 const dayRec = d => S.days[d] || {};
-function sumMeals(ms) { return ms.reduce((a, m) => ({ kcal: a.kcal + num(m.kcal), p: a.p + num(m.p), f: a.f + num(m.f), c: a.c + num(m.c) }), { kcal: 0, p: 0, f: 0, c: 0 }); }
+// fi — клетчатка, su — сахар, sa — соль (есть у еды из фото/текста и у напитков); nut — сколько записей с этими данными
+function sumMeals(ms) {
+  return ms.reduce((a, m) => ({ kcal: a.kcal + num(m.kcal), p: a.p + num(m.p), f: a.f + num(m.f), c: a.c + num(m.c),
+    fi: a.fi + num(m.fi), su: a.su + num(m.su), sa: a.sa + num(m.sa), nut: a.nut + (m.su !== undefined ? 1 : 0), n: a.n + 1 }),
+    { kcal: 0, p: 0, f: 0, c: 0, fi: 0, su: 0, sa: 0, nut: 0, n: 0 });
+}
 const studyMin = d => studyOn(d).reduce((a, s) => a + num(s.minutes), 0);
 function hasAny(d) { return !!(mealsOn(d).length || studyOn(d).length || gymOn(d).length || num(dayRec(d).steps)); }
 function streak() {
@@ -156,6 +161,8 @@ const I = {
   download: '<svg viewBox="0 0 24 24"><path d="M12 4v11m-4-4l4 4 4-4M5 20h14"/></svg>',
   upload: '<svg viewBox="0 0 24 24"><path d="M12 15V4m-4 4l4-4 4 4M5 20h14"/></svg>',
   goal: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r=".9"/></svg>',
+  star: '<svg viewBox="0 0 24 24"><path d="M12 3.8l2.5 5.1 5.6.8-4 3.9.9 5.6-5-2.6-5 2.6.9-5.6-4-3.9 5.6-.8z"/></svg>',
+  repeat: '<svg viewBox="0 0 24 24"><path d="M4 12a8 8 0 0 1 13.7-5.6M20 4v4h-4M20 12a8 8 0 0 1-13.7 5.6M4 20v-4h4"/></svg>',
   drop: '<svg viewBox="0 0 24 24"><path d="M12 3.5c3.2 4 6 7.3 6 10.5a6 6 0 0 1-12 0c0-3.2 2.8-6.5 6-10.5z"/><path d="M9 14.5a3 3 0 0 0 3 3"/></svg>',
   camera: '<svg viewBox="0 0 24 24"><path d="M4 8.5A1.5 1.5 0 0 1 5.5 7h2l1.5-2h6l1.5 2h2A1.5 1.5 0 0 1 20 8.5v9a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 17.5z"/><circle cx="12" cy="12.5" r="3.5"/></svg>',
   logout: '<svg viewBox="0 0 24 24"><path d="M15 4h3a2 2 0 012 2v12a2 2 0 01-2 2h-3M10 16l-4-4 4-4M6 12h10"/></svg>'
@@ -327,6 +334,7 @@ function pageToday() {
         <span class="chip chip-flame">${I.flame}${sk ? `${sk} ${plural(sk, 'день', 'дня', 'дней')} подряд` : 'серия начнётся с первой записи'}</span>
       </div>
     </header>
+    ${nudgeBar()}
     ${ruler(d)}
     <div class="grid">
       ${onboard}
@@ -437,6 +445,25 @@ function donut(segs, size, center, labelFn) {
   return `<div class="meter" style="width:${size}px;height:${size}px"><svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" role="img" aria-label="${esc(segs.map(s => labelFn(s, s.v / tot)).join('; '))}">${arcs}</svg><div class="meter-c">${center}</div></div>`;
 }
 
+/* Клетчатка: EFSA 25 г, для мужчин часто 30 г. Сахар: ВОЗ — свободных сахаров до 10% калорий.
+   Соль: ВОЗ — до 5 г. AI оценивает сахара всего, поэтому предел мягкий. */
+function nutNorms(nm) { return { fi: S.profile?.sex === 'f' ? 25 : 30, su: Math.round(nm.kcal * 0.1 / 4), sa: 5 }; }
+function judgeNut(k, v, norm, live) {
+  const r = norm ? v / norm : 0, n = fmt1(Math.abs(v - norm));
+  if (k === 'fi') return r >= 1 ? { lvl: 'good', icon: '✓', text: 'норма есть' } : live ? { lvl: 'info', icon: '•', text: `ещё ${n} г` } : r >= 0.7 ? { lvl: 'low', icon: '▼', text: `маловато, −${n} г` } : { lvl: 'bad', icon: '▼', text: `мало клетчатки, −${n} г` };
+  if (r > 1.5) return { lvl: 'bad', icon: '▲', text: `много, +${n} г` };
+  if (r > 1) return { lvl: 'warn', icon: '▲', text: `выше предела, +${n} г` };
+  return { lvl: 'good', icon: '✓', text: live ? `можно ещё ${n} г` : 'в пределах' };
+}
+function nutRow(tot, nm, live) {
+  const nn = nutNorms(nm);
+  if (!tot.nut) return `<p class="hint nut-empty">Клетчатка, сахар и соль считаются для еды, записанной по фото или текстом, и для напитков. Пока таких записей за день нет.</p>`;
+  const it = [['fi', 'Клетчатка', '#6B8E23', 'не меньше'], ['su', 'Сахар', '#C2185B', 'до'], ['sa', 'Соль', '#5F6B7A', 'до']];
+  return `<div class="meters meters-sm">${it.map(([k, name, color, pre]) => `<div class="meter-cell">${meterRing(tot[k], nn[k], color, name, 92)}
+      <div class="meter-name"><i style="background:${color}"></i>${name}</div>
+      <div class="meter-val"><b>${fmt1(tot[k])}</b> г · ${pre} ${nn[k]} г</div>${statusChip(judgeNut(k, tot[k], nn[k], live))}</div>`).join('')}</div>
+    <p class="hint">${tot.nut < tot.n ? `Посчитано по ${tot.nut} из ${tot.n} записей — у записанных вручную без этих полей данных нет. ` : ''}Нормы: клетчатка — EFSA, сахар — ВОЗ (до 10% калорий, здесь сахара всего, включая фрукты и молочное), соль — ВОЗ до 5 г.</p>`;
+}
 function dayNormsCard(d, tot, nm, live) {
   return `<div class="meters">${['kcal', 'p', 'f', 'c'].map(k => {
     const v = k === 'kcal' ? tot.kcal : tot[k], m = MAC[k], st = judge(k, v, nm[k], live);
@@ -512,12 +539,44 @@ function foodCalendarCard(nm) {
     <div class="heat-legend"><span><i style="background:var(--st-good)"></i>в норме</span><span><i style="background:var(--st-warn)"></i>мимо нормы</span><span><i style="background:var(--st-bad)"></i>перебор</span><span><i class="cal-p cal-p-l"></i>белок закрыт</span></div>`;
 }
 
-// калорийные напитки видны в блоке «Вода и напитки», здесь — только итог по ним
-function foodListBody(ms, live) {
+
+/* ---------- приёмы пищи ---------- */
+const MEAL_SLOTS = [['breakfast', 'Завтрак'], ['lunch', 'Обед'], ['dinner', 'Ужин'], ['snack', 'Перекусы']];
+const SLOT_NAME = Object.fromEntries(MEAL_SLOTS);
+const SLOT_ONE = { breakfast: 'завтрак', lunch: 'обед', dinner: 'ужин', snack: 'перекус' };
+// по времени: завтрак 5–11, обед 11–16, ужин 18–22, остальное — перекус; можно выбрать вручную
+function slotOf(m) {
+  if (m.slot && SLOT_NAME[m.slot]) return m.slot;
+  const t = hmToMin(m.time);
+  if (t === null) return 'snack';
+  if (t >= 300 && t < 660) return 'breakfast';
+  if (t >= 660 && t < 960) return 'lunch';
+  if (t >= 1080 && t < 1320) return 'dinner';
+  return 'snack';
+}
+function slotSelect(cur) {
+  return `<select name="slot"><option value="">По времени</option>${MEAL_SLOTS.map(([k]) => `<option value="${k}" ${cur === k ? 'selected' : ''}>${SLOT_ONE[k][0].toUpperCase() + SLOT_ONE[k].slice(1)}</option>`).join('')}</select>`;
+}
+const baseName = n => String(n).replace(/,\s*\d[\d\s.,]*\s*(г|мл)\s*$/i, '').trim();
+
+// записи по приёмам пищи; калорийные напитки — одной строкой (они в блоке «Вода и напитки»)
+function foodListBody(ms, d, live) {
   const food = ms.filter(m => !m.drink), dr = ms.filter(m => m.drink), dk = dr.reduce((a, m) => a + m.kcal, 0);
-  const extra = dr.length ? `<p class="drinks-sum">${I.drop}<span>+ напитки: <b>${fmtN(dk)} ккал</b> (${dr.map(m => m.name.split(',')[0]).join(', ')}) — уже в норме дня</span></p>` : '';
-  if (!food.length) return (dr.length ? '' : empty(live ? 'Сегодня ещё ничего не записано. Сфотографируй еду или запиши вручную — кнопки выше.' : 'За этот день записей нет.')) + extra;
-  return `<div class="list">${food.map(mealItem).join('')}</div>${extra}`;
+  const prev = addDays(d, -1), prevFood = S.meals.filter(m => m.date === prev);
+  const extra = dr.length ? `<p class="drinks-sum">${I.drop}<span>+ напитки: <b>${fmtN(dk)} ккал</b> (${dr.map(m => baseName(m.name)).join(', ')}) — уже в норме дня</span></p>` : '';
+  const groups = MEAL_SLOTS.map(([k, name]) => {
+    const items = food.filter(m => slotOf(m) === k), kc = items.reduce((a, m) => a + num(m.kcal), 0);
+    const yest = prevFood.filter(m => slotOf(m) === k), yk = yest.reduce((a, m) => a + num(m.kcal), 0);
+    if (!items.length && !(live && yest.length)) return '';
+    return `<div class="slot">
+      <div class="slot-head"><b>${name}</b>${items.length ? `<span class="slot-kcal">${fmtN(kc)} ккал</span>` : ''}
+        ${items.length ? `<button class="slot-btn" data-action="save-set" data-slot="${k}" data-d="${d}" title="Сохранить в избранное">${I.star}В избранное</button>` : ''}</div>
+      ${items.length ? `<div class="list">${items.map(mealItem).join('')}</div>` : ''}
+      ${!items.length && yest.length ? `<button class="slot-repeat" data-action="repeat-slot" data-slot="${k}" data-from="${prev}">${I.repeat}Повторить вчерашний ${SLOT_ONE[k]}: ${esc(yest.map(m => baseName(m.name)).slice(0, 3).join(', '))}${yest.length > 3 ? '…' : ''} · ${fmtN(yk)} ккал</button>` : ''}
+    </div>`;
+  }).join('');
+  if (!food.length && !groups) return (dr.length ? '' : empty(live ? 'Сегодня ещё ничего не записано. Сфотографируй еду, опиши текстом или запиши вручную — кнопки выше.' : 'За этот день записей нет.')) + extra;
+  return groups + extra;
 }
 function pageFood() {
   const d = view.date, ms = mealsOn(d), tot = sumMeals(ms), nm = norms(), live = d === ymd();
@@ -525,19 +584,23 @@ function pageFood() {
   let i = 0;
   return `<section class="page" style="--c:var(--food)">
     ${topbar('Еда', live ? `сегодня, ${humanLong(d)}` : humanLong(d), { date: false, actions: live ? '' : `<button class="btn" data-action="date-today">${I.chevL}К сегодня</button>` })}
+    ${nudgeBar()}
     <div class="add-tiles">
-      ${photoOn ? `<label class="add-tile add-photo">${I.camera}<span><b>Сфотографировать еду</b><small>ИИ разберёт тарелку и посчитает ккал и БЖУ</small></span><input type="file" accept="image/*" data-photo hidden></label>` : ''}
-      <button class="add-tile add-manual" data-action="add-meal">${I.plus}<span><b>Записать вручную</b><small>Название и калории, БЖУ по желанию</small></span></button>
+      ${photoOn ? `<label class="add-tile add-photo">${I.camera}<span><b>Фото еды</b><small>ИИ разберёт тарелку и посчитает ккал и БЖУ</small></span><input type="file" accept="image/*" data-photo hidden></label>` : ''}
+      ${photoOn ? `<button class="add-tile add-text" data-action="add-text">${I.spark}<span><b>Описать текстом</b><small>«гречка 200 г, грудка» — ИИ посчитает</small></span></button>` : ''}
+      <button class="add-tile add-manual" data-action="add-meal">${I.plus}<span><b>Вручную</b><small>Название и калории, БЖУ по желанию</small></span></button>
       <button class="add-tile add-drink" data-action="add-drink">${I.drop}<span><b>Вода и напитки</b><small>Вода, чай, кофе, сок, газировка — по мл</small></span></button>
     </div>
     <div class="grid">
-      ${card({ domain: 'food', title: live ? 'Норма на сегодня' : `Норма на ${human(d)}`, span: 12, i: i++, body: dayNormsCard(d, tot, nm, live) + `<p class="hint">${S.profile ? 'Нормы — из твоего плана на вкладке «Цель».' : 'Заполни профиль на вкладке «Цель», чтобы нормы стали личными.'} Тёмный второй виток кольца — сколько сверх нормы.</p>` })}
+      ${card({ domain: 'food', title: live ? 'Норма на сегодня' : `Норма на ${human(d)}`, span: 12, i: i++, body: dayNormsCard(d, tot, nm, live) + `<p class="hint">${S.profile ? 'Нормы — из твоего плана на вкладке «Цель».' : 'Заполни профиль на вкладке «Цель», чтобы нормы стали личными.'} Тёмный второй виток кольца — сколько сверх нормы.</p>` + nutRow(tot, nm, live) })}
+      ${live ? card({ domain: 'gym', title: 'Чем закрыть норму', span: 12, i: i++, body: closeGapCard(tot, nm) }) : ''}
       ${card({ domain: 'steps', title: live ? 'Вода и напитки сегодня' : `Вода и напитки за ${human(d)}`, span: 12, i: i++, body: drinksCard(d, live) })}
-      ${card({ domain: 'food', title: live ? 'Записи за сегодня' : `Записи за ${human(d)}`, span: 7, i: i++, body: foodListBody(ms, live) })}
+      ${card({ domain: 'food', title: live ? 'Записи за сегодня' : `Записи за ${human(d)}`, span: 7, i: i++, body: foodListBody(ms, d, live) })}
       ${card({ domain: 'food', title: 'Календарь питания', span: 5, i: i++, body: foodCalendarCard(nm) })}
       ${card({ domain: 'food', title: live ? 'Баланс БЖУ за сегодня' : `Баланс БЖУ за ${human(d)}`, span: 6, i: i++, body: macroSplitCard(tot) })}
       ${card({ domain: 'food', title: 'Когда ешь · 7 дней', span: 6, i: i++, body: mealTimingCard(d) })}
-      ${freq.length ? card({ domain: 'food', title: 'Частое', span: 12, i: i++, body: `<div class="chips">${freq.map(f => `<button class="chip chip-btn" data-action="quick-meal" data-name="${esc(f.name)}"><b>${esc(f.name)}</b>${fmtN(f.kcal)} ккал</button>`).join('')}</div><p class="hint">Нажми, чтобы записать на выбранный день прямо сейчас.</p>` }) : ''}
+      ${card({ domain: 'food', title: 'Избранное и частое', span: 12, i: i++, body: favCard(freq) })}
+      ${card({ domain: 'paper', title: 'Отчёт за неделю', span: 12, i: i++, body: weekReportCard(nm) })}
     </div>
   </section>`;
 }
@@ -556,6 +619,7 @@ function rememberFood(m) {
   const k = m.name.trim().toLowerCase(); if (!k) return;
   const f = S.foods[k] || { name: m.name.trim(), count: 0 };
   Object.assign(f, { kcal: num(m.kcal), p: num(m.p), f: num(m.f), c: num(m.c), count: f.count + 1, last: ymd() });
+  for (const k of ['fi', 'su', 'sa']) if (m[k] !== undefined) f[k] = num(m[k]); else delete f[k];
   S.foods[k] = f;
 }
 function mealForm(m) {
@@ -572,15 +636,151 @@ function mealForm(m) {
         ${field('Жиры, г', `<input name="f" type="number" min="0" step="0.1" inputmode="decimal" placeholder="0" value="${m?.f ?? ''}">`)}
         ${field('Углев., г', `<input name="c" type="number" min="0" step="0.1" inputmode="decimal" placeholder="0" value="${m?.c ?? ''}">`)}
       </div>
-      <div class="row row-2">
+      <div class="row">
+        ${field('Приём пищи', slotSelect(m?.slot || ''))}
         ${field('Время', `<input name="time" type="time" value="${m ? m.time : (view.date === ymd() ? nowHM() : '12:00')}">`)}
         ${field('Дата', `<input name="date" type="date" value="${m ? m.date : view.date}">`)}
-      </div>`,
+      </div>
+      <details class="more-fields" ${m && (m.fi !== undefined || m.su !== undefined || m.sa !== undefined) ? 'open' : ''}><summary>Клетчатка, сахар, соль</summary>
+        <div class="row">
+          ${field('Клетчатка, г', `<input name="fi" type="number" min="0" step="0.1" inputmode="decimal" placeholder="—" value="${m?.fi ?? ''}">`)}
+          ${field('Сахар, г', `<input name="su" type="number" min="0" step="0.1" inputmode="decimal" placeholder="—" value="${m?.su ?? ''}">`)}
+          ${field('Соль, г', `<input name="sa" type="number" min="0" step="0.1" inputmode="decimal" placeholder="—" value="${m?.sa ?? ''}">`)}
+        </div></details>`,
     submit: m ? 'Сохранить' : 'Записать'
   });
 }
 
 
+
+
+/* ============================================================
+   ИЗБРАННОЕ, «ЧЕМ ЗАКРЫТЬ НОРМУ», ОТЧЁТ ЗА НЕДЕЛЮ
+   ============================================================ */
+const setItem = m => { const o = { name: m.name, kcal: num(m.kcal), p: num(m.p), f: num(m.f), c: num(m.c) }; if (m.su !== undefined) Object.assign(o, { fi: num(m.fi), su: num(m.su), sa: num(m.sa) }); return o; };
+function addSet(name, meals) {
+  const items = meals.filter(m => !m.drink).map(setItem);
+  if (!items.length) return null;
+  const set = { id: uid(), name: String(name).trim().slice(0, 40) || 'Набор', items };
+  S.sets.push(set); return set;
+}
+function useSet(set, date = view.date) {
+  const time = date === ymd() ? nowHM() : '12:00';
+  for (const it of set.items) { const m = { id: uid(), date, time, ...it }; S.meals.push(m); rememberFood(m); }
+}
+const setKcal = set => set.items.reduce((a, x) => a + num(x.kcal), 0);
+function favCard(freq) {
+  const sets = S.sets.map(st => `<span class="fav"><button class="fav-use" data-action="use-set" data-id="${st.id}" title="${esc(st.items.map(x => x.name).join(', '))}">${I.star}<b>${esc(st.name)}</b>${fmtN(setKcal(st))} ккал · ${st.items.length} ${plural(st.items.length, 'позиция', 'позиции', 'позиций')}</button><button class="icon-btn" data-action="del-set" data-id="${st.id}" aria-label="Удалить набор">${I.x}</button></span>`).join('');
+  return `${sets ? `<div class="favs">${sets}</div>` : '<p class="hint" style="margin:0 0 10px">Наборов пока нет. Нажми «В избранное» у приёма пищи в записях — и он будет записываться одним нажатием.</p>'}
+    ${freq.length ? `<div class="fav-sub">Часто ешь</div><div class="chips">${freq.map(f => `<button class="chip chip-btn" data-action="quick-meal" data-name="${esc(f.name)}"><b>${esc(f.name)}</b>${fmtN(f.kcal)} ккал</button>`).join('')}</div>` : ''}
+    <p class="hint">Нажми — запишется на ${view.date === ymd() ? 'сегодня, сейчас' : human(view.date)}.</p>`;
+}
+
+// типичные порции, если в истории мало белковой еды
+const SUGGEST = [
+  { name: 'Творог 5%, 200 г', kcal: 242, p: 34, f: 10, c: 6 },
+  { name: 'Куриная грудка, 150 г', kcal: 165, p: 35, f: 2.5, c: 0 },
+  { name: 'Яйца варёные, 2 шт.', kcal: 157, p: 13, f: 11, c: 1 },
+  { name: 'Греческий йогурт 2%, 150 г', kcal: 110, p: 15, f: 3, c: 6 },
+  { name: 'Тунец в собственном соку, 120 г', kcal: 125, p: 28, f: 1, c: 0 },
+  { name: 'Кефир 1%, 500 мл', kcal: 200, p: 15, f: 5, c: 20 },
+  { name: 'Креветки варёные, 150 г', kcal: 150, p: 30, f: 2, c: 0 },
+  { name: 'Сыр 17%, 50 г', kcal: 135, p: 14, f: 8.5, c: 0 },
+  { name: 'Чечевица варёная, 200 г', kcal: 232, p: 18, f: 1, c: 40 },
+  { name: 'Овощной салат без масла, 250 г', kcal: 60, p: 3, f: 0.5, c: 11 }
+];
+function closeGapCard(tot, nm) {
+  const remK = nm.kcal - tot.kcal, remP = nm.p - tot.p;
+  const pool = [...SUGGEST, ...Object.values(S.foods).filter(f => num(f.kcal) > 30).map(f => ({ name: f.name, kcal: num(f.kcal), p: num(f.p), f: num(f.f), c: num(f.c), mine: true }))];
+  const uniq = [...new Map(pool.map(x => [baseName(x.name).toLowerCase(), x])).values()];
+  const line = (combo, why) => {
+    const k = combo.reduce((a, x) => a + x.kcal, 0), p = combo.reduce((a, x) => a + x.p, 0);
+    return `<div class="gap-opt"><div class="gap-main"><b>${combo.map(x => esc(x.name)).join(' + ')}</b>
+      <span>${fmtN(k)} ккал · белок ${fmt1(p)} г${combo.some(x => x.mine) ? ' · из твоего' : ''}</span><small>${why(k, p)}</small></div>
+      <button class="btn btn-accent btn-sm" data-action="gap-add" data-items="${esc(JSON.stringify(combo.map(({ mine, ...x }) => x)))}">${I.plus}Записать</button></div>`;
+  };
+  if (remK <= 50) {
+    const lean = uniq.filter(x => x.p >= 10).sort((a, b) => a.kcal / a.p - b.kcal / b.p)[0];
+    return `<p class="gap-head">${remK < -50 ? `Калории уже выше нормы на ${fmtN(-remK)}.` : 'Калории на сегодня закрыты.'} ${remP > 10 ? `Белка не хватает ${fmtN(remP)} г.` : 'Белок тоже в порядке.'}</p>
+      ${remP > 10 && lean ? line([lean], (k, p) => `если голоден — самый лёгкий способ добрать белок: ${fmtN(k / p * 10)} ккал на 10 г белка`) : '<p class="hint" style="margin:0">Дальше — вода, чай, овощи без масла.</p>'}`;
+  }
+  let opts = [];
+  if (remP > 8) {
+    const cands = uniq.filter(x => x.p >= 5 && x.kcal <= remK + 60);
+    const combos = [];
+    for (let a = 0; a < cands.length; a++) {
+      combos.push([cands[a]]);
+      for (let b = a + 1; b < cands.length; b++) if (cands[a].kcal + cands[b].kcal <= remK + 60) combos.push([cands[a], cands[b]]);
+    }
+    const score = c => { const k = c.reduce((s, x) => s + x.kcal, 0), p = c.reduce((s, x) => s + x.p, 0); return Math.min(p, remP) / remP * 100 - Math.max(0, k - remK) / 5 - Math.max(0, p - remP * 1.3) * 0.5 - (c.length - 1) * 4 + (c.some(x => x.mine) ? 6 : 0); };
+    opts = combos.sort((x, y) => score(y) - score(x)).filter((c, i, arr) => arr.findIndex(o => o[0].name === c[0].name) === i).slice(0, 3);
+  } else {
+    opts = uniq.filter(x => x.kcal <= remK && x.kcal >= Math.min(remK * 0.4, 150)).sort((a, b) => (b.mine ? 1 : 0) - (a.mine ? 1 : 0) || b.kcal - a.kcal).slice(0, 3).map(x => [x]);
+  }
+  return `<p class="gap-head">Осталось <b>${fmtN(remK)} ккал</b>${remP > 0 ? ` и <b>${fmtN(remP)} г белка</b>` : ', белок закрыт'}.</p>
+    ${opts.length ? opts.map(c => line(c, (k, p) => `${remP > 8 ? (p >= remP * 0.9 ? 'белок закрыт' : `белка останется ${fmtN(remP - p)} г`) : 'по калориям'}, ${k <= remK ? `останется ${fmtN(remK - k)} ккал` : `перебор ${fmtN(k - remK)} ккал`}`)).join('') : '<p class="hint" style="margin:0">Подходящих вариантов не нашлось — запиши побольше своей еды, и подсказки станут точнее.</p>'}`;
+}
+
+function weekReportCard(nm) {
+  const t = ymd(), days = rangeDays(7, addDays(t, -1)).filter(d => mealsOn(d).length);
+  if (days.length < 2) return empty('Отчёт появится, когда за последнюю неделю будет хотя бы 2 дня с записями.');
+  const rows = days.map(d => { const ms = mealsOn(d), tot = sumMeals(ms); return { d, ms, tot, st: judge('kcal', tot.kcal, nm.kcal, false), sp: judge('p', tot.p, nm.p, false) }; });
+  const n = rows.length, avg = k => rows.reduce((a, r) => a + r.tot[k], 0) / n;
+  const aK = avg('kcal'), aP = avg('p'), ok = rows.filter(r => r.st.lvl === 'good').length, okP = rows.filter(r => r.sp.lvl === 'good').length;
+  const best = rows.slice().sort((a, b) => Math.abs(a.tot.kcal - nm.kcal) - Math.abs(b.tot.kcal - nm.kcal))[0];
+  const worst = rows.slice().sort((a, b) => b.tot.kcal - a.tot.kcal)[0];
+  const src = new Map(); let all = 0, late = 0, drinkK = 0;
+  for (const r of rows) for (const m of r.ms) {
+    const k = baseName(m.name); src.set(k, (src.get(k) || 0) + num(m.kcal)); all += num(m.kcal);
+    if (m.drink) drinkK += num(m.kcal);
+    const tm = hmToMin(m.time); if (tm !== null && tm >= 21 * 60) late += num(m.kcal);
+  }
+  const top = [...src.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5), mx = top[0]?.[1] || 1;
+  const nut = rows.filter(r => r.tot.nut), nn = nutNorms(nm);
+  const notes = [];
+  notes.push(aK > nm.kcal * 1.05 ? `В среднем на ${fmtN(aK - nm.kcal)} ккал в день больше нормы — это ≈${fmt2((aK - nm.kcal) * 7 / 7700)} кг лишнего за неделю.` : aK < nm.kcal * 0.8 ? `В среднем сильно меньше нормы (−${fmtN(nm.kcal - aK)} ккал). Проверь, всё ли записываешь: сильный недобор тормозит обмен.` : 'По калориям в среднем — в норме.');
+  if (aP < nm.p * 0.9) notes.push(`Белка в среднем ${fmtN(aP)} г из ${nm.p}. Добавь белковый продукт в 1–2 приёма — подсказки в «Чем закрыть норму».`);
+  if (top[0] && top[0][1] / all > 0.15) notes.push(`«${top[0][0]}» дал ${Math.round(top[0][1] / all * 100)}% всех калорий недели.`);
+  if (drinkK / all > 0.1) notes.push(`Напитки — ${Math.round(drinkK / all * 100)}% калорий. Замена на воду или «без сахара» — самый простой резерв.`);
+  if (late / all > 0.25) notes.push(`После 21:00 съедается ${Math.round(late / all * 100)}% калорий.`);
+  if (nut.length >= 2) { const f = nut.reduce((a, r) => a + r.tot.fi, 0) / nut.length; if (f < nn.fi * 0.7) notes.push(`Клетчатки в среднем ${fmt1(f)} г из ${nn.fi} — больше овощей, круп, бобовых.`); }
+  return `<div class="report">
+    <div class="report-kpis">
+      <div><b>${fmtN(aK)}</b><span>ккал в среднем<br>норма ${fmtN(nm.kcal)}</span></div>
+      <div><b>${fmtN(aP)} г</b><span>белка в среднем<br>норма ${nm.p} г</span></div>
+      <div><b>${ok} из ${n}</b><span>дней в норме<br>по калориям</span></div>
+      <div><b>${okP} из ${n}</b><span>дней белок<br>закрыт</span></div>
+    </div>
+    <div class="report-cols">
+      <div><div class="fav-sub">Главные источники калорий</div><div class="hbars">${top.map(([k, v]) => `<div class="hbar"><span class="hbar-label" title="${esc(k)}">${esc(k)}</span><span class="hbar-track"><i data-w="${v / mx * 100}" style="background:${MAC.kcal.color}"></i></span><span class="hbar-val">${Math.round(v / all * 100)}%</span></div>`).join('')}</div></div>
+      <div><div class="fav-sub">Что видно</div><ul class="goal-lines">${notes.map(x => `<li>${x}</li>`).join('')}
+        <li>Ближе всего к норме — ${human(best.d)} (${fmtN(best.tot.kcal)} ккал), больше всего — ${human(worst.d)} (${fmtN(worst.tot.kcal)} ккал).</li></ul></div>
+    </div>
+    <p class="hint">За ${n} ${plural(n, 'день', 'дня', 'дней')} с записями из последних 7 (без сегодняшнего).</p>
+  </div>`;
+}
+
+
+/* ---------- напоминания внутри приложения ---------- */
+// без https push-уведомления недоступны, поэтому подсказываем, когда журнал открыт
+function nudges() {
+  const t = ymd(), now = new Date(), h = now.getHours() + now.getMinutes() / 60, out = [];
+  if (view.date !== t || h < 9 || h >= 23) return out;
+  view.nudgeOff = view.nudgeOff || {};
+  const dr = drinksOn(t), hyd = drinkDay(t).hyd, norm = waterNorm();
+  const expect = norm * Math.min(1, Math.max(0, (h - 8) / 13));
+  const last = dr.filter(x => x.time).map(x => hmToMin(x.time)).sort((a, b) => b - a)[0];
+  const sinceLast = last === undefined ? Infinity : now.getHours() * 60 + now.getMinutes() - last;
+  if (!view.nudgeOff.water && hyd < expect - 400 && sinceLast > 120)
+    out.push({ k: 'water', icon: I.drop, text: `${last === undefined ? 'Сегодня воды ещё не было' : `Воды не было ${Math.floor(sinceLast / 60)} ч`} — выпито ${fmt1(hyd / 1000)} из ${fmt1(norm / 1000)} л.`, btn: `<button class="btn btn-sm btn-primary" style="--c:#2A7FB8" data-action="quick-drink" data-type="water" data-ml="250">${I.plus}Стакан воды</button>` });
+  const meals = S.meals.filter(m => m.date === t);
+  if (!view.nudgeOff.food && h >= 13 && !meals.length)
+    out.push({ k: 'food', icon: I.food, text: 'Еды за сегодня ещё не записано. Запиши, пока помнишь — хватит фото или пары слов.', btn: `<a class="btn btn-sm btn-primary" href="#food">Записать</a>` });
+  return out;
+}
+function nudgeBar() {
+  return nudges().map(n => `<div class="nudge">${n.icon}<span>${n.text}</span>${n.btn}<button class="icon-btn" data-action="nudge-off" data-k="${n.k}" aria-label="Скрыть">${I.x}</button></div>`).join('');
+}
 
 /* ============================================================
    ВОДА И НАПИТКИ
@@ -612,7 +812,7 @@ function drinkTotals(x) {
 function drinkName(x) { return x.type === 'custom' ? (x.name || 'Напиток') : DRINKS[x.type]?.name || 'Напиток'; }
 function drinkAsMeal(x) {
   const t = drinkTotals(x);
-  return { id: 'drink:' + x.id, drinkId: x.id, drink: true, date: x.date, time: x.time, name: `${drinkName(x)}, ${fmtN(x.ml)} мл`, kcal: t.kcal, p: t.p, f: t.f, c: t.c, sugar: t.sugar };
+  return { id: 'drink:' + x.id, drinkId: x.id, drink: true, date: x.date, time: x.time, name: `${drinkName(x)}, ${fmtN(x.ml)} мл`, kcal: t.kcal, p: t.p, f: t.f, c: t.c, sugar: t.sugar, fi: 0, su: t.sugar, sa: 0 };
 }
 /* Норма питья: EFSA — общая вода 2,5 л мужчинам / 2,0 л женщинам, ~80% из напитков; плюс тренировки */
 function waterNorm() {
@@ -631,7 +831,6 @@ function drinksCard(d, live) {
     : wr >= 1 ? { lvl: 'good', icon: '✓', text: 'норма выпита' }
     : live ? { lvl: 'info', icon: '•', text: `ещё ${fmt1((norm - tot.hyd) / 1000)} л` }
     : wr >= 0.75 ? { lvl: 'low', icon: '▼', text: `чуть меньше нормы, −${fmtN(norm - tot.hyd)} мл` } : { lvl: 'bad', icon: '▼', text: `мало воды, −${fmtN(norm - tot.hyd)} мл` };
-  const sst = tot.sugar > SUGAR_MAX * 2 ? { lvl: 'bad', icon: '▲', text: `много сахара: ${fmtN(tot.sugar)} г` } : tot.sugar > SUGAR_MAX ? { lvl: 'warn', icon: '▲', text: `выше ${SUGAR_MAX} г` } : { lvl: 'good', icon: '✓', text: tot.sugar ? 'в пределах' : 'без сахара' };
   const cst = tot.caf > CAF_MAX ? { lvl: 'bad', icon: '▲', text: `больше ${CAF_MAX} мг` } : tot.caf > CAF_MAX * 0.75 ? { lvl: 'warn', icon: '▲', text: 'близко к пределу' } : { lvl: 'good', icon: '✓', text: tot.caf ? 'в пределах' : 'без кофеина' };
   const small = (val, max, color, label, unit, st) => `<div class="meter-cell">${meterRing(val, max, color, label, 96)}
     <div class="meter-name"><i style="background:${color}"></i>${label}</div><div class="meter-val"><b>${fmtN(val)}</b> / ${fmtN(max)} ${unit}</div>${statusChip(st)}</div>`;
@@ -641,7 +840,6 @@ function drinksCard(d, live) {
         <div class="meter-name"><i style="background:#2A7FB8"></i>Вода</div>
         <div class="meter-val"><b>${fmt1(tot.hyd / 1000)}</b> / ${fmt1(norm / 1000)} л</div>${statusChip(wst)}</div>
       <div class="drinks-side">
-        ${small(tot.sugar, SUGAR_MAX, '#B8432E', 'Сахар из напитков', 'г', sst)}
         ${small(tot.caf, CAF_MAX, '#5A3A22', 'Кофеин', 'мг', cst)}
       </div>
     </div>
@@ -651,7 +849,7 @@ function drinksCard(d, live) {
       <button class="btn" data-action="add-drink">${I.plus}Другой напиток</button>
     </div>
     ${list.length ? `<div class="drinks-list">${list.map(x => { const t = drinkTotals(x), c = DRINKS[x.type] || DRINKS.custom; return `<span class="drink-chip" title="${esc(drinkName(x))}: ${fmtN(x.ml)} мл${t.kcal ? `, ${t.kcal} ккал` : ''}${t.caf ? `, кофеин ${fmtN(t.caf)} мг` : ''}"><i style="background:${c.color}"></i><span class="drink-t">${esc(x.time || '')}</span><b>${esc(drinkName(x))}</b> ${fmtN(x.ml)} мл${t.kcal ? ` · ${t.kcal} ккал` : ''}<button class="icon-btn" data-action="edit-drink" data-id="${x.id}" aria-label="Изменить">${I.edit}</button><button class="icon-btn danger" data-action="del-drink" data-id="${x.id}" aria-label="Удалить">${I.x}</button></span>`; }).join('')}</div>` : ''}
-    <p class="hint">Норма питья — по рекомендации EFSA (${S.profile?.sex === 'f' ? '≈1,6' : '≈2'} л напитков в день${waterNorm() > (S.profile?.sex === 'f' ? 1600 : 2000) ? ', плюс добавка за тренировки этой недели' : ''}). Чай и кофе засчитываются в воду, пиво — нет. Сахар — ориентир ВОЗ до ${SUGAR_MAX} г добавленного сахара в день, кофеин — до ${CAF_MAX} мг. Калорийные напитки сами попадают в калории и БЖУ дня.</p>
+    <p class="hint">Норма питья — по рекомендации EFSA (${S.profile?.sex === 'f' ? '≈1,6' : '≈2'} л напитков в день${waterNorm() > (S.profile?.sex === 'f' ? 1600 : 2000) ? ', плюс добавка за тренировки этой недели' : ''}). Чай и кофе засчитываются в воду, пиво — нет. Кофеин — до ${CAF_MAX} мг в день. Калории и сахар напитков сами попадают в нормы дня выше.</p>
   </div>`;
 }
 
@@ -710,25 +908,35 @@ async function shrinkImage(file) {
   const url = cv.toDataURL('image/jpeg', 0.85);
   return { url, b64: url.slice(url.indexOf(',') + 1), mime: 'image/jpeg' };
 }
+function startText() {
+  ph = { url: null, b64: null, mime: null, text: true, note: '', scale: '', stage: 'setup', rows: [], questions: [], answers: {}, comment: '', time: view.date === ymd() ? nowHM() : '12:00', date: view.date, err: '', setName: '' };
+  renderPhoto();
+  setTimeout(() => $('#modal-root [data-ph=note]')?.focus(), 80);
+}
 async function startPhoto(file) {
   try {
     const img = await shrinkImage(file);
-    ph = { ...img, note: '', scale: '', stage: 'setup', rows: [], questions: [], answers: {}, comment: '', time: view.date === ymd() ? nowHM() : '12:00', date: view.date, err: '' };
+    ph = { ...img, note: '', scale: '', stage: 'setup', rows: [], questions: [], answers: {}, comment: '', time: view.date === ymd() ? nowHM() : '12:00', date: view.date, err: '', setName: '' };
     renderPhoto();
   } catch { toast('Не получилось открыть фото. Попробуй JPEG или PNG.', true); }
 }
 function phTotals() {
-  return ph.rows.reduce((a, r) => ({ kcal: a.kcal + num(r.kcal), p: a.p + num(r.p), f: a.f + num(r.f), c: a.c + num(r.c), g: a.g + num(r.grams) }), { kcal: 0, p: 0, f: 0, c: 0, g: 0 });
+  return ph.rows.reduce((a, r) => ({ kcal: a.kcal + num(r.kcal), p: a.p + num(r.p), f: a.f + num(r.f), c: a.c + num(r.c), g: a.g + num(r.grams), fi: a.fi + num(r.fi), su: a.su + num(r.su), sa: a.sa + num(r.sa) }), { kcal: 0, p: 0, f: 0, c: 0, g: 0, fi: 0, su: 0, sa: 0 });
 }
 function phTotalsHtml() {
   const t = phTotals();
-  return `<b>${fmtN(t.kcal)} ккал</b> · Б ${fmt1(t.p)} · Ж ${fmt1(t.f)} · У ${fmt1(t.c)} · ${fmtN(t.g)} г`;
+  return `<b>${fmtN(t.kcal)} ккал</b> · Б ${fmt1(t.p)} · Ж ${fmt1(t.f)} · У ${fmt1(t.c)} · ${fmtN(t.g)} г<span class="ph-nut">клетчатка ${fmt1(t.fi)} г · сахар ${fmt1(t.su)} г · соль ${fmt1(t.sa)} г</span>`;
 }
 function renderPhoto() {
   const root = $('#modal-root'), st = ph.stage;
   let body = '', foot = '';
-  const img = `<img class="ph-img" src="${ph.url}" alt="Фото еды">`;
-  if (st === 'setup' || st === 'loading') {
+  const img = ph.url ? `<img class="ph-img" src="${ph.url}" alt="Фото еды">` : '';
+  const topCls = ph.url ? '' : ' ph-noimg';
+  if ((st === 'setup' || st === 'loading') && ph.text) {
+    body = `${field('Что съел', `<textarea data-ph="note" rows="4" placeholder="Например: гречка 200 г, куриная грудка 150 г, огурец, чай с сахаром" ${st === 'loading' ? 'disabled' : ''}>${esc(ph.note)}</textarea>`)}
+      <p class="hint" style="margin:0">Пиши как удобно, через запятую. Укажешь граммы — посчитает точнее, не укажешь — возьмёт обычную порцию.</p>`;
+    foot = `<button type="button" class="btn btn-ghost" data-action="close-modal">Отмена</button><button type="button" class="btn btn-primary ${st === 'loading' ? 'busy' : ''}" data-action="ph-go">${st === 'loading' ? 'Считаю…' : `${I.spark}Посчитать`}</button>`;
+  } else if (st === 'setup' || st === 'loading') {
     body = `<div class="ph-top">${img}<div class="ph-side">
         ${field('Подпись (необязательно)', `<textarea data-ph="note" rows="3" placeholder="Например: гречка 200 г, куриная грудка, соус сметанный" ${st === 'loading' ? 'disabled' : ''}>${esc(ph.note)}</textarea>`)}
         <div class="field"><label>Что лежит рядом для масштаба</label>
@@ -739,7 +947,7 @@ function renderPhoto() {
   } else {
     const qs = ph.questions.length ? `<div class="ph-qs">${ph.questions.map((q, qi) => `<div class="ph-q"><div class="ph-q-text">${esc(q.text)}</div><div class="chips">${q.options.map(o => `<button type="button" class="chip chip-btn ${ph.answers[qi] === o ? 'on' : ''}" data-action="ph-ans" data-q="${qi}" data-o="${esc(o)}">${esc(o)}</button>`).join('')}</div></div>`).join('')}
       <button type="button" class="btn btn-accent btn-sm" data-action="ph-go" ${Object.keys(ph.answers).length ? '' : 'disabled'}>${I.spark}Пересчитать с ответами</button></div>` : '';
-    body = `<div class="ph-top ph-top-sm">${img}<div class="ph-side">
+    body = `<div class="ph-top ph-top-sm${topCls}">${img}<div class="ph-side">
         ${ph.comment ? `<p class="ph-comment">${esc(ph.comment)}</p>` : ''}
         <div class="ph-total" id="ph-total">${phTotalsHtml()}</div>
         <p class="hint" style="margin:0">Проверь вес порций: поменяешь граммы — ккал и БЖУ пересчитаются.</p>
@@ -757,18 +965,20 @@ function renderPhoto() {
       <div class="row row-2">
         ${field('Время', `<input data-ph="time" type="time" value="${ph.time}">`)}
         ${field('Дата', `<input data-ph="date" type="date" value="${ph.date}">`)}
-      </div>`;
-    foot = `<button type="button" class="btn btn-ghost" data-action="ph-back">Другое фото</button><span class="spacer"></span><button type="button" class="btn btn-primary" data-action="ph-save" ${ph.rows.length ? '' : 'disabled'}>${I.check}Согласен, записать</button>`;
+      </div>
+      ${field('Сохранить в избранное как (необязательно)', `<input data-ph="setName" value="${esc(ph.setName || '')}" placeholder="Например: мой завтрак">`)}`;
+    foot = `<button type="button" class="btn btn-ghost" data-action="ph-back">${ph.text ? 'Изменить описание' : 'Другое фото'}</button><span class="spacer"></span><button type="button" class="btn btn-primary" data-action="ph-save" ${ph.rows.length ? '' : 'disabled'}>${I.check}Согласен, записать</button>`;
   }
   const wasOpen = root.classList.contains('open') && root.querySelector('.ph-sheet');
   root.innerHTML = `<div class="overlay" data-action="close-modal"><div class="sheet ph-sheet" style="--c:var(--food)" role="dialog" aria-modal="true" aria-label="Фото еды">
-    <header class="sheet-head"><h2>${st === 'review' ? 'Проверь, что получилось' : 'Еда по фото'}</h2><button type="button" class="icon-btn" data-action="close-modal" aria-label="Закрыть">${I.x}</button></header>
+    <header class="sheet-head"><h2>${st === 'review' ? 'Проверь, что получилось' : ph.text ? 'Еда по описанию' : 'Еда по фото'}</h2><button type="button" class="icon-btn" data-action="close-modal" aria-label="Закрыть">${I.x}</button></header>
     <div class="sheet-form">${body}${ph.err ? `<p class="auth-err" role="alert">${esc(ph.err)}</p>` : ''}<footer class="sheet-foot">${foot}</footer></div>
   </div></div>`;
   if (!wasOpen) requestAnimationFrame(() => root.classList.add('open'));
 }
 async function photoGo() {
   if (!ph || ph.stage === 'loading') return;
+  if (ph.text && ph.note.trim().length < 2) { ph.err = 'Напиши, что съел.'; renderPhoto(); return; }
   const answers = ph.questions.map((q, qi) => ph.answers[qi] ? `${q.text} — ${ph.answers[qi]}` : '').filter(Boolean);
   // ручные правки при пересчёте не теряем: отдаём их модели как факт
   if (ph.stage === 'review') for (const r of ph.rows) {
@@ -781,8 +991,8 @@ async function photoGo() {
   try {
     const r = await apiFetch('/api/food/photo', { method: 'POST', body: JSON.stringify({ image: ph.b64, mime: ph.mime, note: ph.note, scale: ph.scale, answers }) });
     if (!ph) return;
-    if (!r.isFood) { ph.stage = 'setup'; ph.err = r.comment || 'На фото не видно еды.'; renderPhoto(); return; }
-    ph.rows = r.items.map(it => ({ ...it, base: { grams: it.grams, kcal: it.kcal, p: it.p, f: it.f, c: it.c } }));
+    if (!r.isFood) { ph.stage = 'setup'; ph.err = r.comment || (ph.text ? 'Не понял, что за еда. Опиши подробнее.' : 'На фото не видно еды.'); renderPhoto(); return; }
+    ph.rows = r.items.map(it => ({ ...it, base: { grams: it.grams, kcal: it.kcal, p: it.p, f: it.f, c: it.c, fi: it.fi, su: it.su, sa: it.sa } }));
     ph.questions = answers.length ? [] : r.questions; ph.answers = {};
     ph.comment = r.comment; ph.stage = 'review';
   } catch (e) {
@@ -794,10 +1004,13 @@ async function photoGo() {
 function photoSave() {
   const rows = ph.rows.filter(r => String(r.name).trim() && (num(r.kcal) || num(r.grams)));
   if (!rows.length) { ph.err = 'Нечего записывать.'; renderPhoto(); return; }
+  const saved = [];
   for (const r of rows) {
     const m = { id: uid(), date: ph.date || view.date, time: ph.time || '', name: `${String(r.name).trim()}${num(r.grams) ? `, ${fmtN(r.grams)} г` : ''}`, kcal: Math.round(num(r.kcal)), p: num(r.p), f: num(r.f), c: num(r.c) };
-    S.meals.push(m); rememberFood(m);
+    if (r.su !== undefined) Object.assign(m, { fi: num(r.fi), su: num(r.su), sa: num(r.sa) });
+    S.meals.push(m); rememberFood(m); saved.push(m);
   }
+  if (String(ph.setName || '').trim()) addSet(ph.setName, saved);
   const t = rows.reduce((a, r) => a + num(r.kcal), 0);
   ph = null; save(); closeModal(); render();
   toast(`Записано: ${rows.length} ${plural(rows.length, 'позиция', 'позиции', 'позиций')}, ${fmtN(t)} ккал`);
@@ -1637,7 +1850,9 @@ function closeModal() {
   ph = null;
   const root = $('#modal-root'); if (!root.innerHTML) return;
   root.classList.remove('open');
-  setTimeout(() => { root.innerHTML = ''; }, reduceMotion ? 0 : 220);
+  const html = root.innerHTML;
+  // чистим, только если за это время не открыли новое окно
+  setTimeout(() => { if (root.innerHTML === html && !root.classList.contains('open')) root.innerHTML = ''; }, reduceMotion ? 0 : 220);
 }
 function toast(msg, err = false) {
   const el = document.createElement('div'); el.className = 'toast' + (err ? ' err' : ''); el.textContent = msg;
@@ -1656,6 +1871,27 @@ const ACTIONS = {
   'close-modal': (el, e) => { if (el.classList.contains('overlay') && e.target !== el) return; closeModal(); },
   'add-meal': () => mealForm(),
   'add-drink': () => drinkForm(),
+  'add-text': () => startText(),
+  'nudge-off': el => { view.nudgeOff = { ...(view.nudgeOff || {}), [el.dataset.k]: true }; render(); },
+  'use-set': el => { const st = S.sets.find(x => x.id === el.dataset.id); if (!st) return; useSet(st); save(); render(); toast(`«${st.name}» — записано, ${fmtN(setKcal(st))} ккал`); },
+  'del-set': el => { const st = S.sets.find(x => x.id === el.dataset.id); if (!st || !confirm(`Удалить набор «${st.name}»?`)) return; S.sets = S.sets.filter(x => x.id !== st.id); save(); render(); },
+  'save-set': el => {
+    const items = S.meals.filter(m => m.date === el.dataset.d && slotOf(m) === el.dataset.slot);
+    openModal({ title: 'В избранное', accent: 'var(--food)', form: 'set', submit: 'Сохранить',
+      body: `<input type="hidden" name="d" value="${el.dataset.d}"><input type="hidden" name="slot" value="${el.dataset.slot}">
+        ${field('Название набора', `<input name="name" required maxlength="40" value="Мой ${SLOT_ONE[el.dataset.slot]}">`)}
+        <p class="hint" style="margin:0">${esc(items.map(m => m.name).join(', '))} · ${fmtN(items.reduce((a, m) => a + num(m.kcal), 0))} ккал</p>` });
+  },
+  'repeat-slot': el => {
+    const items = S.meals.filter(m => m.date === el.dataset.from && slotOf(m) === el.dataset.slot);
+    for (const m of items) { const { id, date, ...rest } = m; S.meals.push({ ...rest, id: uid(), date: view.date }); }
+    save(); render(); toast(`Повторено: ${items.length} ${plural(items.length, 'позиция', 'позиции', 'позиций')}`);
+  },
+  'gap-add': el => {
+    const items = JSON.parse(el.dataset.items), time = nowHM();
+    for (const it of items) { const m = { id: uid(), date: view.date, time, ...it }; S.meals.push(m); rememberFood(m); }
+    save(); render(); toast(`Записано: ${items.map(x => baseName(x.name)).join(', ')}`);
+  },
   'edit-drink': el => drinkForm(S.drinks.find(x => x.id === el.dataset.id)),
   'del-drink': el => { S.drinks = S.drinks.filter(x => x.id !== el.dataset.id); save(); render(); toast('Удалено'); },
   'quick-drink': el => addDrink(el.dataset.type, +el.dataset.ml),
@@ -1677,6 +1913,7 @@ const ACTIONS = {
   'quick-meal': el => {
     const f = S.foods[el.dataset.name.toLowerCase()]; if (!f) return;
     const m = { id: uid(), date: view.date, time: view.date === ymd() ? nowHM() : '12:00', name: f.name, kcal: f.kcal, p: f.p, f: f.f, c: f.c };
+    for (const k of ['fi', 'su', 'sa']) if (f[k] !== undefined) m[k] = f[k];
     S.meals.push(m); rememberFood(m); save(); render(); toast(`${f.name} — записано`);
   },
   'fill-food': el => {
@@ -1726,6 +1963,9 @@ const FORMS = {
   meal(fd) {
     const id = fd.get('id') || uid();
     const m = { id, date: fd.get('date') || view.date, time: fd.get('time') || '', name: String(fd.get('name')).trim(), kcal: num(fd.get('kcal')), p: num(fd.get('p')), f: num(fd.get('f')), c: num(fd.get('c')) };
+    if (fd.get('slot')) m.slot = String(fd.get('slot'));
+    // клетчатка/сахар/соль — только если что-то введено, иначе запись не считается в этих нормах
+    if (['fi', 'su', 'sa'].some(k => String(fd.get(k) || '').trim() !== '')) for (const k of ['fi', 'su', 'sa']) m[k] = num(fd.get(k));
     if (!m.name) return;
     const idx = S.meals.findIndex(x => x.id === id);
     if (idx >= 0) S.meals[idx] = m; else { S.meals.push(m); rememberFood(m); }
@@ -1762,6 +2002,11 @@ const FORMS = {
     S.settings.apiKey = String(fd.get('apiKey') || '').trim();
     S.settings.aiAuto = fd.get('aiAuto') === 'on';
     save(); toast(S.settings.apiKey ? 'Ключ сохранён' : 'Ключ удалён');
+  },
+  set(fd) {
+    const items = S.meals.filter(m => m.date === fd.get('d') && slotOf(m) === fd.get('slot'));
+    const st = addSet(fd.get('name'), items); if (!st) return;
+    save(); closeModal(); render(); toast(`«${st.name}» в избранном`);
   },
   drink(fd) {
     const id = fd.get('id') || uid(), type = String(fd.get('type') || 'water'), ml = Math.round(num(fd.get('ml')));
@@ -1819,7 +2064,8 @@ document.addEventListener('input', e => {
       // поменяли вес — пропорционально пересчитываем ккал и БЖУ от оценки
       if (f === 'grams' && r.base && r.base.grams > 0) {
         const k = r.grams / r.base.grams, row = t.closest('.ph-row');
-        for (const x of ['kcal', 'p', 'f', 'c']) {
+        for (const x of ['kcal', 'p', 'f', 'c', 'fi', 'su', 'sa']) {
+          if (r.base[x] === undefined) continue;
           r[x] = x === 'kcal' ? Math.round(r.base[x] * k) : Math.round(r.base[x] * k * 10) / 10;
           const inp = row.querySelector(`[data-f="${x}"]`); if (inp) inp.value = r[x];
         }
@@ -1931,3 +2177,4 @@ async function boot() {
   await loadState();
 }
 boot();
+if ('serviceWorker' in navigator && window.isSecureContext) navigator.serviceWorker.register('/sw.js').catch(() => {});
