@@ -34,7 +34,7 @@ const SESSIONS_FILE = path.join(DATA, 'sessions.json');
 const SESSION_DAYS = 90;
 const MAX_BODY = 10 * 1024 * 1024;
 const STATIC = {
-  '/': 'index.html', '/index.html': 'index.html', '/app.js': 'app.js', '/styles.css': 'styles.css', '/plan.js': 'plan.js',
+  '/': 'index.html', '/index.html': 'index.html', '/app.js': 'app.js', '/styles.css': 'styles.css', '/plan.js': 'plan.js', '/foods.js': 'foods.js',
   '/sw.js': 'sw.js', '/manifest.webmanifest': 'manifest.webmanifest',
   '/icon-192.png': 'icon-192.png', '/icon-512.png': 'icon-512.png', '/apple-touch-icon.png': 'apple-touch-icon.png'
 };

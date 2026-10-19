@@ -1144,13 +1144,49 @@ function rememberFood(m) {
   for (const k of ['fi', 'su', 'sa']) if (m[k] !== undefined) f[k] = num(m[k]); else delete f[k];
   S.foods[k] = f;
 }
+
+/* ---------- поиск еды без ИИ: своя история + справочник ---------- */
+// «гречка 200» — сразу с граммами
+const fsParse = q => { const m = /^(.*?)\s*(\d+(?:[.,]\d+)?)\s*(г|гр|грамм|g)?\.?$/i.exec(String(q).trim()); return m && m[1] ? { q: m[1], g: num(m[2]) } : { q: String(q), g: 0 }; };
+function fsResults(q) {
+  const { q: text, g } = fsParse(q), nq = FoodDB.norm(text);
+  const mine = Object.values(S.foods).filter(f => !nq || FoodDB.norm(f.name).includes(nq)).sort((a, b) => (b.count || 0) - (a.count || 0)).slice(0, nq ? 4 : 6);
+  const db = nq ? FoodDB.search(text, 8 - Math.min(mine.length, 3)) : [];
+  if (!mine.length && !db.length) return nq ? `<p class="hint" style="margin:0">Не нашёл «${esc(text)}». Впиши калории вручную ниже — блюдо запомнится.</p>` : '';
+  return `<div class="fs-list">${mine.map(f => `<button type="button" class="fs-i mine" data-action="fs-add" data-src="h" data-k="${esc(FoodDB.norm(f.name))}"><b>${esc(f.name)}</b><span>${fmtN(f.kcal)} ккал · порция${f.count > 1 ? ` · было ${f.count}×` : ''}</span><em>моё</em></button>`).join('')}
+    ${db.map(x => `<button type="button" class="fs-i" data-action="fs-add" data-src="d" data-k="${x.id}" data-g="${g || x.g}"><b>${esc(x.name)}</b><span>${fmtN(x.kcal * (g || x.g) / 100)} ккал · ${g || x.g} г${!g && x.unit ? ` (${esc(x.unit)})` : ''}</span></button>`).join('')}</div>`;
+}
+function fsSelHtml() {
+  const sel = view.fsel || [];
+  if (!sel.length) return '';
+  return `<div class="fs-sel">${sel.map((x, i) => `<div class="fs-row">
+      <b>${esc(x.name)}</b>
+      ${x.per ? `<label class="fs-amt"><input data-fsg="${i}" type="number" min="0" step="any" inputmode="numeric" value="${x.g}"> г</label>` : `<label class="fs-amt">×<input data-fsn="${i}" type="number" min="0" step="any" inputmode="decimal" value="${x.n}"></label>`}
+      <span class="fs-k">${fmtN(fsItem(x).kcal)} ккал</span>
+      <button type="button" class="icon-btn" data-action="fs-del" data-i="${i}" aria-label="Убрать">${I.x}</button></div>`).join('')}
+    <p class="fs-sum">Итого: <b>${fmtN(fsTotal().kcal)} ккал</b> · Б ${fmt1(fsTotal().p)} · Ж ${fmt1(fsTotal().f)} · У ${fmt1(fsTotal().c)}</p></div>`;
+}
+const fsItem = x => x.per ? { kcal: x.per.kcal * x.g / 100, p: x.per.p * x.g / 100, f: x.per.f * x.g / 100, c: x.per.c * x.g / 100 } : { kcal: x.unit.kcal * x.n, p: x.unit.p * x.n, f: x.unit.f * x.n, c: x.unit.c * x.n };
+const fsTotal = () => (view.fsel || []).map(fsItem).reduce((a, x) => ({ kcal: a.kcal + x.kcal, p: a.p + x.p, f: a.f + x.f, c: a.c + x.c }), { kcal: 0, p: 0, f: 0, c: 0 });
+// выбранное → поля формы (их всё равно можно поправить руками)
+function fsApply() {
+  const f = $('#modal-root [data-form=meal]'); if (!f) return;
+  const sel = view.fsel || [], t = fsTotal();
+  const box = $('#fs-sel'); if (box) box.innerHTML = fsSelHtml();
+  if (!sel.length) return;
+  f.name.value = sel.map(x => x.per ? `${x.name}, ${fmtN(x.g)} г` : x.n !== 1 ? `${x.name} ×${fmt1(x.n)}` : x.name).join(' + ').slice(0, 200);
+  f.kcal.value = Math.round(t.kcal); f.p.value = Math.round(t.p * 10) / 10; f.f.value = Math.round(t.f * 10) / 10; f.c.value = Math.round(t.c * 10) / 10;
+}
 function mealForm(m) {
+  view.fsel = [];
   const foods = Object.values(S.foods);
   const chips = topFoods(6);
   openModal({
     title: m ? 'Изменить запись' : 'Приём пищи', accent: 'var(--food)', form: 'meal',
     body: `<input type="hidden" name="id" value="${m ? m.id : ''}">
-      ${chips.length && !m ? `<div class="chips">${chips.map(f => `<button type="button" class="chip chip-btn" data-action="fill-food" data-name="${esc(f.name)}"><b>${esc(f.name)}</b>${fmtN(f.kcal)}</button>`).join('')}</div>` : ''}
+      ${!m ? `<div class="fs"><div class="search-box">${I.search}<input data-food-q placeholder="Найти: гречка 200, плов, яйцо…" autocomplete="off" enterkeyhint="search" aria-label="Поиск продукта"></div>
+        <div id="fs-res">${fsResults('')}</div><div id="fs-sel"></div>
+        <p class="hint" style="margin:0">Из справочника и твоей истории. Можно собрать приём из нескольких продуктов — калории и БЖУ сложатся.</p></div>` : ''}
       ${field('Что ел', `<input name="name" list="foods" required autocomplete="off" placeholder="Овсянка с бананом" value="${esc(m?.name || '')}">${datalist('foods', foods.map(f => f.name))}`)}
       <div class="row">
         ${field('Ккал', `<input name="kcal" type="number" min="0" step="1" inputmode="numeric" required placeholder="0" value="${m ? m.kcal : ''}">`)}
@@ -3948,6 +3984,12 @@ function toast(msg, err = false) {
    ДЕЙСТВИЯ
    ============================================================ */
 const ACTIONS = {
+  'fs-add': el => { const sel = view.fsel = view.fsel || [];
+    if (el.dataset.src === 'd') { const x = FoodDB.FOODS.find(y => y.id === el.dataset.k); if (x) sel.push({ name: x.name, per: { kcal: x.kcal, p: x.p, f: x.f, c: x.c }, g: +el.dataset.g || x.g }); }
+    else { const f = S.foods[el.dataset.k]; if (f) sel.push({ name: f.name, unit: { kcal: num(f.kcal), p: num(f.p), f: num(f.f), c: num(f.c) }, n: 1 }); }
+    const q = $('[data-food-q]'); if (q) { q.value = ''; $('#fs-res').innerHTML = fsResults(''); }
+    fsApply(); },
+  'fs-del': el => { (view.fsel || []).splice(+el.dataset.i, 1); fsApply(); if (!view.fsel.length) { const f = $('#modal-root [data-form=meal]'); if (f) ['name', 'kcal', 'p', 'f', 'c'].forEach(k => { f[k].value = ''; }); } },
   'plan-from': el => { const w = S.workouts.find(x => x.id === el.dataset.id); if (w) planForm(null, w); },
   'plan-edit': el => { const p = S.gymPlans.find(x => x.id === el.dataset.id); if (p) planForm(p); },
   'plan-del': el => { const p = S.gymPlans.find(x => x.id === el.dataset.id); closeModal(); if (p) removeItems('gymPlans', x => x.id === p.id, `План «${p.name}» удалён`); },
@@ -4416,6 +4458,8 @@ let noteTimer;
 document.addEventListener('input', e => {
   const t = e.target;
   if (t.dataset.comp && ['title', 'note'].includes(t.dataset.f)) { const c = view.comp?.[t.dataset.comp]; if (c) c[t.dataset.f] = t.value; }
+  if (t.dataset.foodQ !== undefined) { const r = $('#fs-res'); if (r) r.innerHTML = fsResults(t.value); }
+  if (t.dataset.fsg !== undefined || t.dataset.fsn !== undefined) { const x = view.fsel?.[+(t.dataset.fsg ?? t.dataset.fsn)]; if (x) { if (t.dataset.fsg !== undefined) x.g = Math.max(0, num(t.value)); else x.n = Math.max(0, num(t.value)); const f = $('#modal-root [data-form=meal]'), tot = fsTotal(); if (f) { f.name.value = view.fsel.map(y => y.per ? `${y.name}, ${fmtN(y.g)} г` : y.n !== 1 ? `${y.name} ×${fmt1(y.n)}` : y.name).join(' + ').slice(0, 200); f.kcal.value = Math.round(tot.kcal); f.p.value = Math.round(tot.p * 10) / 10; f.f.value = Math.round(tot.f * 10) / 10; f.c.value = Math.round(tot.c * 10) / 10; } t.closest('.fs-row').querySelector('.fs-k').textContent = `${fmtN(fsItem(x).kcal)} ккал`; const sum = $('.fs-sum'); if (sum) sum.innerHTML = `Итого: <b>${fmtN(tot.kcal)} ккал</b> · Б ${fmt1(tot.p)} · Ж ${fmt1(tot.f)} · У ${fmt1(tot.c)}`; } }
   if (t.dataset.bkSearch !== undefined) { clearTimeout(bkTimer); const v = t.value; bkTimer = setTimeout(() => bookSearch(v), 350); }
   if (t.dataset.bookNote) { const b = bookById(t.dataset.bookNote); if (b) { b.notes = t.value.slice(0, 5000); save(); } }
   if (t.dataset.search !== undefined) { clearTimeout(searchTimer); const v = t.value; searchTimer = setTimeout(() => runSearch(v), 250); }

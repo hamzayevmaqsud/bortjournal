@@ -1,8 +1,8 @@
 /* Бортжурнал — service worker: страница открывается и без сети.
    Файлы приложения — сначала из сети (чтобы обновления приходили сразу), без сети — из кэша.
    Запросы к /api/ не кэшируются: данные всегда с сервера. */
-const CACHE = 'bortjournal-v8';
-const SHELL = ['/', '/app.js', '/plan.js', '/styles.css', '/manifest.webmanifest', '/icon-192.png', '/icon-512.png', '/apple-touch-icon.png'];
+const CACHE = 'bortjournal-v9';
+const SHELL = ['/', '/app.js', '/plan.js', '/foods.js', '/styles.css', '/manifest.webmanifest', '/icon-192.png', '/icon-512.png', '/apple-touch-icon.png'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));
