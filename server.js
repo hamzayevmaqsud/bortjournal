@@ -10,6 +10,8 @@ const fsp = require('node:fs/promises');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const os = require('node:os');
+const { promisify } = require('node:util');
+const scryptAsync = promisify(crypto.scrypt);
 
 // .env в папке проекта: KEY=value построчно (не попадает в git)
 try {
@@ -20,7 +22,10 @@ try {
 } catch (e) { if (e.code !== 'ENOENT') throw e; }
 
 const PORT = +process.env.PORT || 3333;
-const HOST = process.env.HOST || '0.0.0.0';
+// по умолчанию только этот компьютер; доступ с телефона — через Tailscale (https), см. README
+const HOST = process.env.HOST || '127.0.0.1';
+const ALLOW_REGISTER = /^(1|true|yes)$/i.test(process.env.ALLOW_REGISTER || '');
+const ALLOWED_HOSTS = (process.env.ALLOWED_HOSTS || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
 const ROOT = __dirname;
 const DATA = process.env.DATA_DIR || path.join(ROOT, 'data');
 const STATE_DIR = path.join(DATA, 'state');
@@ -51,57 +56,73 @@ function writeJson(file, data) {
     await fsp.rename(tmp, file);
   });
   queues.set(file, next);
+  next.catch(e => console.error(`Не удалось записать ${path.basename(file)}: ${e.message}`));
   return next;
 }
+// последняя страховка: ошибка в фоне не должна останавливать сервер
+process.on('unhandledRejection', e => console.error('Необработанная ошибка:', e?.message || e));
 
-let users = readJson(USERS_FILE, {});
-let sessions = readJson(SESSIONS_FILE, {});
+let users = Object.assign(Object.create(null), readJson(USERS_FILE, {}));
+let sessions = Object.assign(Object.create(null), readJson(SESSIONS_FILE, {}));
 const stateFile = u => path.join(STATE_DIR, `${u}.json`);
+const userRec = u => Object.hasOwn(users, u) ? users[u] : null;
+const RESERVED = new Set(['__proto__', 'constructor', 'prototype', 'admin', 'root']);
 
 /* ---------- пароли и сессии ---------- */
-function hashPassword(pw, salt = crypto.randomBytes(16).toString('hex')) {
-  const hash = crypto.scryptSync(pw, salt, 64, { N: 16384, r: 8, p: 1 }).toString('hex');
+async function hashPassword(pw, salt = crypto.randomBytes(16).toString('hex')) {
+  const hash = (await scryptAsync(String(pw), salt, 64, { N: 16384, r: 8, p: 1 })).toString('hex');
   return { salt, hash };
 }
-function checkPassword(pw, rec) {
-  const { hash } = hashPassword(pw, rec.salt);
-  return crypto.timingSafeEqual(Buffer.from(hash, 'hex'), Buffer.from(rec.hash, 'hex'));
+// для несуществующего логина считаем тот же хеш, чтобы по времени ответа нельзя было узнать, есть ли он
+const DUMMY = { salt: crypto.randomBytes(16).toString('hex'), hash: '0'.repeat(128) };
+async function checkPassword(pw, rec) {
+  const r = rec && typeof rec.salt === 'string' && typeof rec.hash === 'string' ? rec : DUMMY;
+  const { hash } = await hashPassword(pw, r.salt);
+  return rec === r && crypto.timingSafeEqual(Buffer.from(hash, 'hex'), Buffer.from(r.hash, 'hex'));
 }
 const sha = s => crypto.createHash('sha256').update(s).digest('hex');
 function newSession(username) {
   const token = crypto.randomBytes(32).toString('base64url');
   sessions[sha(token)] = { u: username, exp: Date.now() + SESSION_DAYS * 864e5 };
-  writeJson(SESSIONS_FILE, sessions);
+  writeJson(SESSIONS_FILE, sessions).catch(() => {});
   return token;
 }
 function sessionUser(req) {
   const m = /(?:^|;\s*)bj_session=([^;]+)/.exec(req.headers.cookie || '');
   if (!m) return null;
   const s = sessions[sha(m[1])];
-  if (!s || s.exp < Date.now() || !users[s.u]) return null;
+  if (!s || s.exp < Date.now() || !userRec(s.u)) return null;
   return s.u;
 }
-function sessionCookie(token, maxAge) {
-  return `bj_session=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${maxAge}`;
+// через Tailscale (https) кука помечается Secure
+const isHttps = req => req.headers['x-forwarded-proto'] === 'https' || /\.ts\.net$/i.test(hostOf(req));
+function sessionCookie(req, token, maxAge) {
+  return `bj_session=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${maxAge}${isHttps(req) ? '; Secure' : ''}`;
 }
 // чистка просроченных сессий раз в час
 setInterval(() => {
   const now = Date.now(); let changed = false;
   for (const k of Object.keys(sessions)) if (sessions[k].exp < now) { delete sessions[k]; changed = true; }
-  if (changed) writeJson(SESSIONS_FILE, sessions);
+  if (changed) writeJson(SESSIONS_FILE, sessions).catch(() => {});
+  // чистим счётчики попыток и лимитов
+  for (const [k, a] of attempts) if (now - a.t > 15 * 60e3) attempts.delete(k);
+  const today = localDay();
+  for (const m of [photoUse, aiUse]) for (const k of m.keys()) if (!k.endsWith(today)) m.delete(k);
 }, 36e5).unref();
 
 /* ---------- защита от перебора ---------- */
 const attempts = new Map();
-function tooMany(ip) {
-  const a = attempts.get(ip);
-  return a && a.n >= 10 && Date.now() - a.t < 15 * 60e3;
+const LIMIT = 10;
+function tooMany(...keys) {
+  return keys.some(k => { const a = attempts.get(k); return a && a.n >= LIMIT && Date.now() - a.t < 15 * 60e3; });
 }
-function failed(ip) {
-  const a = attempts.get(ip);
-  if (!a || Date.now() - a.t > 15 * 60e3) attempts.set(ip, { n: 1, t: Date.now() });
-  else a.n++;
+function failed(...keys) {
+  for (const k of keys) {
+    const a = attempts.get(k);
+    if (!a || Date.now() - a.t > 15 * 60e3) attempts.set(k, { n: 1, t: Date.now() }); else a.n++;
+  }
 }
+const localDay = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
 
 /* ---------- распознавание еды по фото (Google Gemini) ---------- */
@@ -150,9 +171,9 @@ const FOOD_SCHEMA = {
 // мягкий лимит на пользователя, чтобы один не выел общую бесплатную квоту
 const photoUse = new Map();
 function photoQuota(user) {
-  const day = new Date().toISOString().slice(0, 10), k = `${user}:${day}`;
+  const day = localDay(), k = `${user}:${day}`;
   const n = (photoUse.get(k) || 0) + 1; photoUse.set(k, n);
-  return n <= (+process.env.PHOTO_DAILY_LIMIT || 60);
+  return n <= (+process.env.PHOTO_DAILY_LIMIT || 60) && aiQuota(user, 'photo');
 }
 const numClamp = (v, max) => Math.max(0, Math.min(max, Math.round((+v || 0) * 2) / 2));
 
@@ -220,29 +241,42 @@ const obsidian = OBS_VAULT && OBS_USER ? require('./obsidian.js')({
   dataDir: DATA, gemini: GEMINI_KEY ? gemini : null
 }) : null;
 const aiUse = new Map();
-function aiQuota(user) {
-  const k = `${user}:${new Date().toISOString().slice(0, 10)}`, n = (aiUse.get(k) || 0) + 1;
-  aiUse.set(k, n); return n <= (+process.env.AI_DAILY_LIMIT || 200);
+function aiQuota(user, kind = 'ai') {
+  const day = localDay(), k = `${user}:${kind}:${day}`, g = `*:${day}`;
+  const limit = kind === 'regen' ? 30 : (+process.env.AI_DAILY_LIMIT || 200);
+  const n = (aiUse.get(k) || 0) + 1, gn = (aiUse.get(g) || 0) + 1;
+  // общий потолок на всех — бесплатная квота Gemini одна
+  if (n > limit || gn > (+process.env.AI_GLOBAL_LIMIT || 400)) return false;
+  aiUse.set(k, n); aiUse.set(g, gn); return true;
 }
 
 /* ---------- HTTP ---------- */
 function send(res, code, body, headers = {}) {
   const isJson = typeof body !== 'string' && !Buffer.isBuffer(body);
+  const type = isJson ? 'application/json; charset=utf-8' : headers['Content-Type'] || 'text/plain; charset=utf-8';
   res.writeHead(code, {
-    'Content-Type': isJson ? 'application/json; charset=utf-8' : headers['Content-Type'] || 'text/plain; charset=utf-8',
+    'Content-Type': type,
     'Cache-Control': 'no-store',
     'X-Content-Type-Options': 'nosniff',
+    'X-Frame-Options': 'DENY',
+    'Referrer-Policy': 'no-referrer',
+    ...(type.startsWith('text/html') ? { 'Content-Security-Policy': CSP } : {}),
     ...headers
   });
   res.end(isJson ? JSON.stringify(body) : body);
 }
-function readBody(req) {
+const CSP = [
+  "default-src 'self'", "script-src 'self' https://cdn.jsdelivr.net", "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+  "font-src 'self' https://fonts.gstatic.com", "img-src 'self' data: blob:", "connect-src 'self'", "obj" + "ect-src 'none'",
+  "base-uri 'none'", "form-action 'self'", "frame-ancestors 'none'", "manifest-src 'self'", "worker-src 'self'"
+].join('; ');
+function readBody(req, max = MAX_BODY) {
   return new Promise((resolve, reject) => {
     if (!/^application\/json/.test(req.headers['content-type'] || '')) return reject(Object.assign(new Error('Ожидается JSON'), { code: 415 }));
     const chunks = []; let size = 0;
     req.on('data', c => {
       size += c.length;
-      if (size > MAX_BODY) { reject(Object.assign(new Error('Слишком большой запрос'), { code: 413 })); req.destroy(); }
+      if (size > max) { reject(Object.assign(new Error('Слишком большой запрос'), { code: 413 })); req.destroy(); }
       else chunks.push(c);
     });
     req.on('end', () => { try { resolve(JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}')); } catch { reject(Object.assign(new Error('Битый JSON'), { code: 400 })); } });
@@ -250,29 +284,47 @@ function readBody(req) {
   });
 }
 const USER_RE = /^[a-z0-9_.-]{3,32}$/;
+function hostOf(req) { return String(req.headers.host || '').toLowerCase().replace(/:\d+$/, '').replace(/^\[|\]$/g, ''); }
+const MY_HOST = os.hostname().toLowerCase();
+function hostOk(req) {
+  const h = hostOf(req);
+  if (!h) return false;
+  if (/^(\d{1,3}\.){3}\d{1,3}$/.test(h) || h.includes(':')) return true; // IP-адрес
+  return h === 'localhost' || h.endsWith('.ts.net') || h.endsWith('.local') || h === MY_HOST || h === MY_HOST.replace(/\.local$/, '') || ALLOWED_HOSTS.includes(h);
+}
+const canRegister = () => ALLOW_REGISTER || Object.keys(users).length === 0;
+
+const stateCache = new Map();
+function loadState(user) {
+  if (!stateCache.has(user)) stateCache.set(user, readJson(stateFile(user), { rev: 0, state: null }));
+  return stateCache.get(user);
+}
 
 async function api(req, res, url) {
   const ip = req.socket.remoteAddress;
   const route = `${req.method} ${url.pathname}`;
 
+  if (route === 'GET /api/config') return send(res, 200, { register: canRegister(), firstRun: Object.keys(users).length === 0 });
   if (route === 'POST /api/register' || route === 'POST /api/login') {
-    if (tooMany(ip)) return send(res, 429, { error: 'Слишком много попыток. Подожди 15 минут.' });
-    const body = await readBody(req);
-    const username = String(body.username || '').trim().toLowerCase();
-    const password = String(body.password || '');
+    const body = await readBody(req, 16e3);
+    const username = String(body.username || '').trim().toLowerCase().slice(0, 64);
+    const password = String(body.password || '').slice(0, 512);
+    if (tooMany(ip, 'u:' + username)) return send(res, 429, { error: 'Слишком много попыток. Подожди 15 минут.' });
     if (route === 'POST /api/register') {
-      if (!USER_RE.test(username)) return send(res, 400, { error: 'Логин: 3–32 символа, латиница, цифры, точка, дефис или подчёркивание.' });
+      if (!canRegister()) { failed(ip); return send(res, 403, { error: 'Регистрация закрыта.' }); }
+      failed('reg:' + ip);
+      if (tooMany('reg:' + ip)) return send(res, 429, { error: 'Слишком много попыток. Подожди 15 минут.' });
+      if (!USER_RE.test(username) || RESERVED.has(username)) return send(res, 400, { error: 'Логин: 3–32 символа, латиница, цифры, точка, дефис или подчёркивание.' });
       if (password.length < 6) return send(res, 400, { error: 'Пароль должен быть не короче 6 символов.' });
-      if (users[username]) return send(res, 409, { error: 'Такой логин уже занят.' });
-      users[username] = { ...hashPassword(password), created: new Date().toISOString() };
+      if (userRec(username)) return send(res, 409, { error: 'Такой логин уже занят.' });
+      users[username] = { ...(await hashPassword(password)), created: new Date().toISOString() };
       await writeJson(USERS_FILE, users);
     } else {
-      const rec = users[username];
-      if (!rec || !checkPassword(password, rec)) { failed(ip); return send(res, 401, { error: 'Неверный логин или пароль.' }); }
+      if (!(await checkPassword(password, userRec(username)))) { failed(ip, 'u:' + username); return send(res, 401, { error: 'Неверный логин или пароль.' }); }
+      attempts.delete(ip); attempts.delete('u:' + username);
     }
-    attempts.delete(ip);
     const token = newSession(username);
-    return send(res, 200, { username }, { 'Set-Cookie': sessionCookie(token, SESSION_DAYS * 86400) });
+    return send(res, 200, { username }, { 'Set-Cookie': sessionCookie(req, token, SESSION_DAYS * 86400) });
   }
 
   const user = sessionUser(req);
@@ -281,7 +333,7 @@ async function api(req, res, url) {
   if (route === 'POST /api/logout') {
     const m = /(?:^|;\s*)bj_session=([^;]+)/.exec(req.headers.cookie || '');
     if (m) { delete sessions[sha(m[1])]; await writeJson(SESSIONS_FILE, sessions); }
-    return send(res, 200, { ok: true }, { 'Set-Cookie': sessionCookie('', 0) });
+    return send(res, 200, { ok: true }, { 'Set-Cookie': sessionCookie(req, '', 0) });
   }
   if (route === 'GET /api/me') return send(res, 200, { username: user, photo: !!GEMINI_KEY });
   if (route === 'GET /api/obsidian') return send(res, 200, obsidian && user === OBS_USER ? obsidian.publicState() : { enabled: false });
@@ -303,6 +355,7 @@ async function api(req, res, url) {
   }
   if (route === 'POST /api/obsidian/regen') {
     if (!obsidian || user !== OBS_USER) return send(res, 404, { error: 'Obsidian не подключён.' });
+    if (!aiQuota(user, 'regen')) return send(res, 429, { error: 'Пересобирать вопросы можно до 30 раз в день.' });
     const body = await readBody(req); obsidian.regen(String(body.noteId || ''), body.key ? String(body.key) : null);
     return send(res, 200, { ok: true });
   }
@@ -344,33 +397,37 @@ async function api(req, res, url) {
     });
     return send(res, 200, out);
   }
-  if (route === 'GET /api/state') {
-    const rec = readJson(stateFile(user), { rev: 0, state: null });
-    return send(res, 200, rec);
-  }
+  if (route === 'GET /api/state') return send(res, 200, loadState(user));
   if (route === 'PUT /api/state') {
     const body = await readBody(req);
-    if (!body.state || typeof body.state !== 'object') return send(res, 400, { error: 'Нет данных.' });
-    const cur = readJson(stateFile(user), { rev: 0, state: null });
-    // защита от перезаписи: сохраняем, только если клиент видел последнюю версию
+    if (!body.state || typeof body.state !== 'object' || Array.isArray(body.state)) return send(res, 400, { error: 'Нет данных.' });
+    const cur = loadState(user);
+    // защита от перезаписи: сохраняем, только если клиент видел последнюю версию.
+    // Проверка и новая версия — синхронно, до записи на диск, поэтому два запроса с одной версией не пройдут оба
     if (body.rev !== cur.rev) return send(res, 409, cur);
     const rec = { rev: cur.rev + 1, savedAt: new Date().toISOString(), state: body.state };
+    stateCache.set(user, rec);
     await writeJson(stateFile(user), rec);
     return send(res, 200, { rev: rec.rev, savedAt: rec.savedAt });
   }
   if (route === 'POST /api/password') {
     const body = await readBody(req);
-    if (!checkPassword(String(body.current || ''), users[user])) return send(res, 401, { error: 'Текущий пароль неверный.' });
+    if (!(await checkPassword(String(body.current || ''), userRec(user)))) return send(res, 401, { error: 'Текущий пароль неверный.' });
     if (String(body.next || '').length < 6) return send(res, 400, { error: 'Новый пароль должен быть не короче 6 символов.' });
-    users[user] = { ...users[user], ...hashPassword(String(body.next)) };
+    users[user] = { ...users[user], ...(await hashPassword(String(body.next).slice(0, 512))) };
     await writeJson(USERS_FILE, users);
-    return send(res, 200, { ok: true });
+    // выходим на всех остальных устройствах
+    const mine = sha(/(?:^|;\s*)bj_session=([^;]+)/.exec(req.headers.cookie || '')?.[1] || '');
+    for (const k of Object.keys(sessions)) if (sessions[k].u === user && k !== mine) delete sessions[k];
+    await writeJson(SESSIONS_FILE, sessions);
+    return send(res, 200, { ok: true, others: 'closed' });
   }
   return send(res, 404, { error: 'Нет такого метода.' });
 }
 
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://x');
+  if (!hostOk(req)) return send(res, 421, 'Unknown host');
   try {
     if (url.pathname.startsWith('/api/')) return await api(req, res, url);
     const file = STATIC[url.pathname];
@@ -390,6 +447,8 @@ server.on('error', e => {
 });
 server.listen(PORT, HOST, () => {
   console.log(`Бортжурнал запущен: http://localhost:${PORT}`);
+  if (HOST === '127.0.0.1' || HOST === 'localhost') console.log('  только на этом компьютере; с телефона — через Tailscale (см. README)');
+  if (!canRegister()) console.log('  регистрация закрыта (ALLOW_REGISTER=1 в .env, чтобы открыть)');
   if (HOST === '0.0.0.0') {
     for (const list of Object.values(os.networkInterfaces()))
       for (const a of list || []) if (a.family === 'IPv4' && !a.internal) console.log(`  в локальной сети: http://${a.address}:${PORT}`);

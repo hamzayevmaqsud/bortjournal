@@ -7,7 +7,7 @@
 /* ---------- хранилище ---------- */
 const KEY = 'bortjournal.v1'; // старое хранилище браузера, нужно только для переноса
 const DEF = {
-  settings: { kcal: 2200, protein: 140, steps: 10000, study: 60, apiKey: '', aiAuto: false, name: '' },
+  settings: { kcal: 2200, protein: 140, steps: 10000, study: 60, name: '' },
   meals: [], study: [], workouts: [], days: {}, srs: {}, quizzes: {}, foods: {},
   profile: null, activity: {}, drinks: [], sets: [], studyTime: {},
   tasks: [], goals: []
@@ -18,10 +18,44 @@ let me = null, rev = 0, photoOn = false;
 let OBS = { enabled: false, notes: [], diary: [] };
 
 function normalize(d) {
-  const out = Object.assign(structuredClone(DEF), d || {});
+  const out = Object.assign(structuredClone(DEF), d && typeof d === 'object' && !Array.isArray(d) ? d : {});
+  // типы полей: на случай битого импорта или старых версий
+  for (const [k, v] of Object.entries(DEF)) {
+    if (Array.isArray(v) && !Array.isArray(out[k])) out[k] = [];
+    else if (v && typeof v === 'object' && !Array.isArray(v) && (typeof out[k] !== 'object' || out[k] === null || Array.isArray(out[k]))) out[k] = structuredClone(v);
+  }
   out.settings = Object.assign({}, DEF.settings, (d && d.settings) || {});
+  delete out.settings.apiKey; delete out.settings.aiAuto; // ключ Claude больше не храним
   return out;
 }
+/* Слияние трёх версий: base — что было на сервере, когда мы начали править, mine — наше, theirs — новое с сервера.
+   Свои правки накладываем поверх чужих; массивы записей сливаем по id. */
+const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+function merge3(base, mine, theirs) {
+  if (same(mine, base)) return theirs;
+  if (same(theirs, base) || theirs === undefined) return mine;
+  if (Array.isArray(mine) && Array.isArray(theirs)) {
+    const all = [...mine, ...theirs, ...(Array.isArray(base) ? base : [])];
+    if (!all.every(x => x && typeof x === 'object' && 'id' in x)) return mine;
+    const bm = new Map((Array.isArray(base) ? base : []).map(x => [x.id, x])), mm = new Map(mine.map(x => [x.id, x]));
+    const out = new Map(theirs.map(x => [x.id, x]));
+    for (const [id, x] of mm) if (!bm.has(id) || !same(bm.get(id), x)) out.set(id, x);
+    for (const id of bm.keys()) if (!mm.has(id)) out.delete(id);
+    return [...out.values()];
+  }
+  if (mine && theirs && typeof mine === 'object' && typeof theirs === 'object' && !Array.isArray(mine) && !Array.isArray(theirs)) {
+    const b = base && typeof base === 'object' ? base : {}, out = {};
+    for (const k of new Set([...Object.keys(mine), ...Object.keys(theirs), ...Object.keys(b)])) {
+      const inM = k in mine, inT = k in theirs, inB = k in b;
+      if (!inM && inB) { if (inT && !same(theirs[k], b[k])) out[k] = theirs[k]; continue; } // удалили у нас
+      if (!inT && inB) { if (inM && !same(mine[k], b[k])) out[k] = mine[k]; continue; } // удалили на сервере
+      out[k] = !inM ? theirs[k] : !inT ? mine[k] : merge3(b[k], mine[k], theirs[k]);
+    }
+    return out;
+  }
+  return mine;
+}
+let base = null; // последняя известная серверная версия (строка JSON)
 
 /* ---------- сервер ---------- */
 async function apiFetch(path, opts = {}) {
@@ -38,16 +72,21 @@ async function flush() {
   while (saving) await saving;
   if (!dirty || !me) return;
   dirty = false;
-  const body = JSON.stringify({ rev, state: S });
+  const sent = JSON.stringify(S), body = `{"rev":${rev},"state":${sent}}`;
   saving = (async () => {
     try {
       const r = await apiFetch('/api/state', { method: 'PUT', body });
-      rev = r.rev;
+      rev = r.rev; base = sent;
       if (offline) { offline = false; toast('Связь с сервером есть, всё сохранено'); }
     } catch (e) {
       if (e.status === 409) {
-        rev = e.data.rev; S = normalize(e.data.state); render();
-        toast('Данные изменились на другом устройстве. Показываю свежую версию, последнее изменение повтори.', true);
+        // на другом устройстве сохранили раньше: накладываем наши правки поверх свежей версии и сохраняем ещё раз
+        const theirs = normalize(e.data.state);
+        S = normalize(merge3(base ? JSON.parse(base) : theirs, JSON.parse(sent), theirs));
+        rev = e.data.rev; base = JSON.stringify(theirs);
+        dirty = true; saveTimer = setTimeout(flush, 50);
+        if (!typingNow()) render();
+        toast('Подтянул изменения с другого устройства — твои правки сохранены поверх.');
       } else if (e.status === 401) {
         showAuth('Сессия закончилась, войди снова.');
       } else {
@@ -60,20 +99,40 @@ async function flush() {
   return saving;
 }
 window.addEventListener('pagehide', () => {
-  if (dirty && me) fetch('/api/state', { method: 'PUT', keepalive: true, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ rev, state: S }) });
+  if (!dirty || !me) return;
+  const body = JSON.stringify({ rev, state: S });
+  // keepalive-запрос браузер принимает только до ~64 КБ; больше — успеет обычное сохранение при скрытии вкладки
+  if (body.length < 60000) fetch('/api/state', { method: 'PUT', keepalive: true, headers: { 'Content-Type': 'application/json' }, body });
 });
+const typingNow = () => { const a = document.activeElement; return !!(a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) && a.type !== 'checkbox' && a.type !== 'radio'); };
 // вернулся во вкладку — подтягиваем изменения с других устройств
 document.addEventListener('visibilitychange', async () => {
   if (!me) return;
   if (document.hidden) { flush(); return; }
-  const a = document.activeElement;
-  if (dirty || saving || $('#modal-root .overlay') || (a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName))) return;
+  checkDay();
+  if (dirty || saving || $('#modal-root .overlay') || typingNow()) return;
   try {
     const r = await apiFetch('/api/state');
-    if (r.rev !== rev && !view.wizard) { rev = r.rev; S = normalize(r.state); render(); }
+    if (r.rev !== rev && !view.wizard) { rev = r.rev; S = normalize(r.state); base = JSON.stringify(S); render(); }
     maybeWeekly();
   } catch (e) { if (e.status === 401) showAuth('Сессия закончилась, войди снова.'); }
 });
+
+/* ---------- смена дня при открытом журнале ---------- */
+// если журнал не закрывали на ночь, утром «сегодня» должно стать новым днём
+let knownToday = null;
+function checkDay() {
+  const t = ymd();
+  if (knownToday === null) { knownToday = t; return; }
+  if (t === knownToday) return;
+  const old = knownToday; knownToday = t;
+  if (view.date === old) view.date = t;
+  if (view.planDay === old) view.planDay = t;
+  if (view.planDate === old) view.planDate = t;
+  if (me && !view.wizard && !typingNow() && !$('#modal-root .overlay')) { render(); maybeWeekly(); }
+}
+setInterval(checkDay, 60e3);
+window.addEventListener('focus', checkDay);
 
 /* ---------- утилиты ---------- */
 const uid = () => Math.random().toString(36).slice(2, 8) + Date.now().toString(36).slice(-4);
@@ -1518,7 +1577,7 @@ function renderMermaid(root) {
   if (!nodes.length) return;
   mermaidLoading = mermaidLoading || new Promise((ok, fail) => {
     if (window.mermaid) return ok();
-    const sc = document.createElement('script'); sc.src = 'https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.min.js';
+    const sc = document.createElement('script'); sc.src = 'https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.min.js'; sc.integrity = 'sha384-rbtjAdnIQE/aQJGEgXrVUlMibdfTSa4PQju4HDhN3sR2PmaKFzhEafuePsl9H/9I'; sc.crossOrigin = 'anonymous'; // контрольная сумма: подменённый файл браузер не запустит
     sc.onload = ok; sc.onerror = fail; document.head.appendChild(sc);
   }).then(() => window.mermaid.initialize({ startOnLoad: false, theme: 'base', securityLevel: 'strict', fontFamily: 'Onest, sans-serif',
     themeVariables: { primaryColor: '#FBF4E6', primaryBorderColor: '#2F3B4F', primaryTextColor: '#2B3445', lineColor: '#6E6758', secondaryColor: '#F4D4BE', tertiaryColor: '#C8D8BD', clusterBkg: '#EFE3CE', clusterBorder: '#A19682' } }));
@@ -1710,11 +1769,11 @@ function buildQuiz(date, pool) {
   const picked = shuffle(pool, r).slice(0, 6);
   return { items: picked.map(c => quizItemFrom(c, r)), source: 'local', created: Date.now() };
 }
-const plainText = h => { const el = document.createElement('div'); el.innerHTML = String(h); return el.textContent.trim(); };
+// DOMParser не запускает скрипты и не грузит картинки из разбираемого HTML
+const plainText = h => new DOMParser().parseFromString(String(h), 'text/html').body.textContent.trim();
 function quizItemFrom(c, r) {
   const q = makeQuestion(c, r);
-  const ctx = c.type === 'obs' ? '' : c.session.notes ? c.session.notes.join('\n') : '';
-  return { cardId: c.id, kind: q.kind, meta: q.meta, q: q.q, a: q.a, result: null, revealed: false, noteId: c.noteId || null, key: c.key || null, ctx: ctx.slice(0, 1500) };
+  return { cardId: c.id, kind: q.kind, meta: q.meta, q: q.q, a: q.a, result: null, revealed: false, noteId: c.noteId || null, key: c.key || null };
 }
 function ensureQuiz(date) {
   if (S.quizzes[date]) return S.quizzes[date];
@@ -1733,12 +1792,11 @@ function gradeCard(cardId, g) {
   S.srs[cardId] = { interval, ease, reps, due: addDays(ymd(), interval), last: ymd() };
 }
 
+const quizDay = () => view.quizDay || ymd();
 function pageQuiz() {
-  const d = ymd();
+  const d = ymd(); view.quizDay = d;
   const quiz = ensureQuiz(d);
-  const hasKey = !!S.settings.apiKey;
   const dueN = dueCards(d).length, total = allCards().length;
-  const aiBtn = hasKey ? `<button class="btn btn-accent" style="--c:var(--quiz)" data-action="ai-quiz" id="ai-btn">${I.spark}Переформулировать через Claude</button>` : '';
   const hist = quizHistory(14);
 
   if (!quiz) {
@@ -1764,7 +1822,7 @@ function pageQuiz() {
   const good = quiz.items.filter(i => i.result === 'good').length;
   const doneAll = curIdx === -1;
   return `<section class="page" style="--c:var(--quiz)">
-    ${topbar('Вопросы дня', `${humanLong(d)} · ${quiz.source === 'ai' ? 'сформулировал Claude' : 'из твоих конспектов'}`, { date: false, actions: aiBtn })}
+    ${topbar('Вопросы дня', `${humanLong(d)} · из твоих конспектов`, { date: false })}
     <div class="quiz-head">
       <div class="quiz-progress">${quiz.items.map((it, k) => `<i class="${it.result || (k === curIdx ? 'cur' : '')}"></i>`).join('')}</div>
       <span class="muted mono" style="font-size:12px">${answered} / ${quiz.items.length}</span>
@@ -1799,46 +1857,6 @@ function quizHistory(n) {
   const days = rangeDays(n).map(d => { const q = S.quizzes[d]; const items = q ? q.items.filter(i => i.result) : []; const good = items.filter(i => i.result === 'good').length; return { label: parseYmd(d).getDate(), v: items.length ? good / items.length * 100 : 0, hint: items.length ? `${human(d)}: ${good}/${items.length}` : `${human(d)}: нет ответов`, empty: !items.length }; });
   if (!days.some(x => !x.empty)) return '';
   return barChart(days, { color: 'var(--quiz)', max: 100, unit: '%', labelEvery: 2 });
-}
-
-/* ---------- Claude ---------- */
-async function aiQuiz() {
-  const key = S.settings.apiKey;
-  if (!key) { toast('Сначала вставь API-ключ в настройках', true); return; }
-  const d = ymd();
-  const existing = S.quizzes[d];
-  const pool = existing
-    ? existing.items.filter(i => !i.result).map(i => withState().find(c => c.id === i.cardId)).filter(Boolean)
-    : dueCards(d).slice(0, 6);
-  if (!pool.length) { toast('Нет карточек для вопросов', true); return; }
-  const payload = pool.map(c => ({
-    id: c.id, topic: c.session.topic, category: c.session.category, date: c.session.date,
-    content: c.type === 'qa' ? `Вопрос: ${c.q}\nОтвет: ${c.a}` : c.type === 'summary' ? c.session.notes.join('\n') : c.text
-  }));
-  const system = 'Ты наставник по IT и помогаешь ученику повторять материал по его собственным конспектам. Для каждой карточки составь один проверочный вопрос на русском: он должен требовать вспомнить или применить суть записи, но не должен содержать ответ. Если карточка — список тезисов по теме, задай вопрос на пересказ или применение темы целиком. Ответ — краткий эталон, 1–3 предложения, опираясь на текст карточки. Верни строго JSON-массив без пояснений и без markdown: [{"id":"...","q":"...","a":"..."}]. Сохраняй id без изменений, по одному объекту на карточку.';
-  const user = `Карточки ученика:\n${JSON.stringify(payload, null, 1)}`;
-  const btn = $('#ai-btn'); btn && btn.classList.add('busy');
-  const headers = { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' };
-  const body = { model: 'claude-opus-5-5', max_tokens: 8000, system, messages: [{ role: 'user', content: user }] };
-  try {
-    let res = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { ...headers, 'anthropic-beta': 'server-side-fallback-2026-07-01' }, body: JSON.stringify({ ...body, fallbacks: 'default' }) });
-    if (res.status === 400) res = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers, body: JSON.stringify(body) });
-    if (!res.ok) { const t = await res.text(); throw new Error(`${res.status} — ${t.slice(0, 180)}`); }
-    const data = await res.json();
-    if (data.stop_reason === 'refusal') throw new Error('модель отклонила запрос');
-    const text = (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('');
-    const arr = JSON.parse(text.slice(text.indexOf('['), text.lastIndexOf(']') + 1));
-    const byId = Object.fromEntries(arr.map(x => [x.id, x]));
-    const items = pool.filter(c => byId[c.id]).map(c => ({ cardId: c.id, kind: 'Вопрос от Claude', meta: `${c.session.topic} · ${human(c.session.date)}`, q: esc(byId[c.id].q), a: esc(byId[c.id].a), result: null, revealed: false }));
-    if (!items.length) throw new Error('пустой ответ');
-    const kept = existing ? existing.items.filter(i => i.result) : [];
-    S.quizzes[d] = { items: [...kept, ...items], source: 'ai', created: Date.now() };
-    save(); render(); toast('Вопросы переформулированы');
-  } catch (err) {
-    console.error(err);
-    toast(`Не получилось: ${err.message}`, true);
-    btn && btn.classList.remove('busy');
-  }
 }
 
 /* ============================================================
@@ -2438,7 +2456,7 @@ function pageSettings() {
   const s = S.settings;
   const size = new Blob([JSON.stringify(S)]).size;
   return `<section class="page">
-    ${topbar('Настройки', 'аккаунт, цели, Claude, данные', { date: false })}
+    ${topbar('Настройки', 'аккаунт, цели, данные', { date: false })}
     <div class="grid">
       ${card({ domain: 'study', title: 'Аккаунт', span: 12, cls: 'tile tile-navy', body: `<div class="account">
         <div class="account-who"><div class="big"><b>${esc(me)}</b></div><p class="hint" style="margin:6px 0 0">Ты вошёл в аккаунт. Данные хранятся на сервере и доступны с любого устройства, где ты войдёшь.</p></div>
@@ -2459,11 +2477,6 @@ function pageSettings() {
           ${field('Учёба, мин', `<input name="study" type="number" min="0" step="5" value="${s.study}" style="--c:var(--study)">`)}
         </div>
         <div><button class="btn btn-primary" type="submit">Сохранить цели</button></div></form>` })}
-      ${card({ domain: 'quiz', title: 'Вопросы через Claude', span: 6, body: `<form data-form="ai" class="form-stack">
-        <p class="hint" style="margin:0">Без ключа вопросы собираются локально из твоих тезисов. С ключом Claude переформулирует их в живые вопросы на понимание. Ключ хранится в твоём аккаунте на сервере и уходит напрямую в Anthropic API.</p>
-        ${field('API-ключ Anthropic', `<input name="apiKey" type="password" autocomplete="off" placeholder="sk-ant-…" value="${esc(s.apiKey)}">`)}
-        <label class="switch" style="--c:var(--quiz)"><input type="checkbox" name="aiAuto" ${s.aiAuto ? 'checked' : ''}><span>Автоматически переформулировать вопросы дня при открытии</span></label>
-        <div><button class="btn btn-primary" style="--c:var(--quiz)" type="submit">Сохранить</button></div></form>` })}
       ${card({ domain: 'paper', title: 'Данные', span: 12, body: `
         <p class="hint" style="margin:0 0 12px">Записи аккаунта «${esc(me)}» хранятся на сервере (${(size / 1024).toFixed(1)} КБ). Экспорт в JSON нужен для резервной копии или переноса.</p>
         <div class="chips" style="gap:8px">
@@ -2603,12 +2616,12 @@ const ACTIONS = {
     if (hit) openReader(hit.rel, h); else toast(`Заметка «${note}» не найдена в хранилище`, true);
   },
   'q-check': async el => {
-    const d = ymd(), q = S.quizzes[d], it = q.items[+el.dataset.k];
+    const d = quizDay(), q = S.quizzes[d], it = q?.items[+el.dataset.k]; if (!it) return render();
     const ta = document.querySelector(`[data-qans="${el.dataset.k}"]`); it.answer = (ta?.value || it.answer || '').trim();
     if (!it.answer) { toast('Сначала напиши ответ — или нажми «Не знаю»', true); return; }
     el.classList.add('busy');
     try {
-      it.check = await apiFetch('/api/study/check', { method: 'POST', body: JSON.stringify({ question: plainText(it.q), reference: plainText(it.a), answer: it.answer, noteId: it.noteId, key: it.key, context: it.ctx || '' }) });
+      it.check = await apiFetch('/api/study/check', { method: 'POST', body: JSON.stringify({ question: plainText(it.q), reference: plainText(it.a), answer: it.answer, noteId: it.noteId, key: it.key, context: (() => { const c = allCards().find(x => x.id === it.cardId); return c && c.type !== 'obs' && c.session.notes ? c.session.notes.join('\n').slice(0, 1500) : ''; })() }) });
       it.revealed = true; save(); render();
     } catch (e) { el.classList.remove('busy'); toast(e.message, true); }
   },
@@ -2629,14 +2642,13 @@ const ACTIONS = {
   'obs-regen': async el => { await apiFetch('/api/obsidian/regen', { method: 'POST', body: JSON.stringify({ noteId: el.dataset.id, key: el.dataset.key || null }) }).catch(e => toast(e.message, true)); toast('Вопросы пересоберутся в фоне'); setTimeout(() => loadObs(true), 1500); },
   'cheat': el => openCheat(el.dataset.id, false),
   'cheat-new': el => openCheat(el.dataset.id, true),
-  'reveal': el => { const q = S.quizzes[ymd()]; q.items[+el.dataset.k].revealed = true; save(); render(); },
+  'reveal': el => { const q = S.quizzes[quizDay()]; if (!q) return render(); q.items[+el.dataset.k].revealed = true; save(); render(); },
   'grade': el => {
-    const q = S.quizzes[ymd()], it = q.items[+el.dataset.k];
+    const q = S.quizzes[quizDay()], it = q?.items[+el.dataset.k]; if (!it) return render();
     it.result = el.dataset.g; it.at = nowHM(); gradeCard(it.cardId, el.dataset.g); save(); render();
   },
   'quiz-early': () => { const d = ymd(); const pool = soonestCards(5, d); if (!pool.length) return; S.quizzes[d] = buildQuiz(d, pool); save(); render(); },
   'quiz-more': () => { const d = ymd(), q = S.quizzes[d]; const have = new Set(q.items.map(i => i.cardId)); const pool = dueCards(d).filter(c => !have.has(c.id)); const extra = buildQuiz(d + ':' + q.items.length, pool); q.items.push(...extra.items); save(); render(); },
-  'ai-quiz': () => aiQuiz(),
   'export': () => {
     const blob = new Blob([JSON.stringify(S, null, 2)], { type: 'application/json' });
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `bortjournal-${ymd()}.json`; a.click();
@@ -2703,11 +2715,6 @@ const FORMS = {
   settings(fd) {
     Object.assign(S.settings, { name: String(fd.get('name') || '').trim(), kcal: num(fd.get('kcal')) || 2200, protein: num(fd.get('protein')), steps: num(fd.get('steps')) || 10000, study: num(fd.get('study')) || 60 });
     save(); render(); toast('Цели обновлены');
-  },
-  ai(fd) {
-    S.settings.apiKey = String(fd.get('apiKey') || '').trim();
-    S.settings.aiAuto = fd.get('aiAuto') === 'on';
-    save(); toast(S.settings.apiKey ? 'Ключ сохранён' : 'Ключ удалён');
   },
   set(fd) {
     const items = S.meals.filter(m => m.date === fd.get('d') && slotOf(m) === fd.get('slot'));
@@ -2778,7 +2785,7 @@ document.addEventListener('input', e => {
   if (t.dataset.comp && ['title', 'note'].includes(t.dataset.f)) { const c = view.comp?.[t.dataset.comp]; if (c) c[t.dataset.f] = t.value; }
   if (t.dataset.search !== undefined) { clearTimeout(searchTimer); const v = t.value; searchTimer = setTimeout(() => runSearch(v), 250); }
   if (t.dataset.rdFind !== undefined) { clearTimeout(searchTimer); const v = t.value; searchTimer = setTimeout(() => rdFind(v), 250); }
-  if (t.dataset.qans !== undefined) { const it = S.quizzes[ymd()]?.items[+t.dataset.qans]; if (it) it.answer = t.value; }
+  if (t.dataset.qans !== undefined) { const it = S.quizzes[quizDay()]?.items[+t.dataset.qans]; if (it) it.answer = t.value; }
   if (t.dataset.dmin !== undefined) { const v = Math.max(0, Math.round(num(t.value))); if (v) S.studyTime[t.dataset.dmin] = v; else delete S.studyTime[t.dataset.dmin]; save(); }
   if (ph && t.dataset.ph) ph[t.dataset.ph] = t.value;
   if (ph && t.dataset.phRow !== undefined) {
@@ -2821,7 +2828,8 @@ document.addEventListener('change', e => {
         const d = JSON.parse(r.result);
         if (!d || !Array.isArray(d.meals) || !Array.isArray(d.study)) throw new Error('не похоже на экспорт Бортжурнала');
         if (!confirm('Заменить текущие данные импортированными?')) return;
-        S = normalize(d); save(); render(); toast('Импортировано');
+        const clean = normalize(d); clean.quizzes = {}; // вопросы дня пересоберутся сами
+        S = clean; save(); render(); toast('Импортировано');
       } catch (err) { toast(`Импорт не удался: ${err.message}`, true); }
     };
     r.readAsText(t.files[0]); t.value = '';
@@ -2857,20 +2865,17 @@ document.addEventListener('keydown', e => {
   if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { const f = $('#modal-root form'); if (f) f.requestSubmit(); }
 });
 
-// Автоподстановка через Claude при открытии вопросов, если включено
-window.addEventListener('hashchange', () => {
-  if (view.page === 'quiz' && S.settings.aiAuto && S.settings.apiKey) {
-    const q = S.quizzes[ymd()];
-    if (q && q.source !== 'ai' && q.items.every(i => !i.result)) aiQuiz();
-  }
-});
-
 /* ============================================================
    ВХОД И ЗАПУСК
    ============================================================ */
 let authMode = 'login';
+let regOpen = null, stash = null;
 function showAuth(msg = '') {
+  // несохранённые правки не выбрасываем: после входа наложим их поверх данных с сервера
+  if (me && dirty) stash = { user: me, state: JSON.stringify(S), base };
   me = null; rev = 0; dirty = false; clearTimeout(saveTimer); S = structuredClone(DEF); view.wizard = null;
+  if (regOpen === null) apiFetch('/api/config').then(c => { regOpen = !!c.register; if (c.firstRun) authMode = 'register'; if (!me) showAuth(msg); }).catch(() => {});
+  if (regOpen === false) authMode = 'login';
   document.body.classList.remove('setup-mode');
   document.body.classList.add('auth-mode');
   const reg = authMode === 'register';
@@ -2878,13 +2883,13 @@ function showAuth(msg = '') {
     <div class="auth-hero">
       <div class="auth-kicker">Бортжурнал</div>
       <h1>Еда, учёба, зал и шаги в одном журнале</h1>
-      <p>У каждого свой аккаунт. Записи хранятся на сервере, поэтому их видно с любого устройства, где ты войдёшь.</p>
+      <p>Записи хранятся на твоём сервере, поэтому их видно с любого твоего устройства, где ты войдёшь.</p>
     </div>
     <form class="auth-card" data-form="auth" novalidate>
-      <div class="seg" role="tablist">
+      ${regOpen ? `<div class="seg" role="tablist">
         <button type="button" class="${reg ? '' : 'on'}" data-action="auth-mode" data-mode="login">Вход</button>
         <button type="button" class="${reg ? 'on' : ''}" data-action="auth-mode" data-mode="register">Регистрация</button>
-      </div>
+      </div>` : ''}
       <h2>${reg ? 'Новый аккаунт' : 'С возвращением'}</h2>
       ${field('Логин', `<input name="username" autocomplete="username" autocapitalize="off" spellcheck="false" required ${reg ? 'placeholder="латиница, цифры, . _ -"' : ''}>`)}
       ${field('Пароль', `<input name="password" type="password" autocomplete="${reg ? 'new-password' : 'current-password'}" required ${reg ? 'placeholder="не короче 6 символов"' : ''}>`)}
@@ -2896,15 +2901,20 @@ function showAuth(msg = '') {
   $('#main [name=username]').focus();
 }
 async function loadObs(rerender = false) {
+  const before = JSON.stringify(OBS);
   try { OBS = await apiFetch('/api/obsidian'); } catch { OBS = { enabled: false, notes: [], diary: [] }; }
   OBS.notes = OBS.notes || []; OBS.diary = OBS.diary || [];
-  if (rerender && ['study', 'quiz', 'today'].includes(view.page) && !$('#modal-root .overlay')) render();
+  // перерисовываем, только если что-то изменилось и человек ничего не печатает
+  if (rerender && JSON.stringify(OBS) !== before && ['study', 'quiz', 'today'].includes(view.page) && !$('#modal-root .overlay') && !typingNow()) render();
 }
 // пока открыта учёба или вопросы — подтягиваем свежие вопросы, которые сервер генерирует в фоне
 setInterval(() => { if (me && !document.hidden && ['study', 'quiz'].includes(view.page)) loadObs(true); }, 30e3);
 async function loadState() {
   const r = await apiFetch('/api/state');
-  rev = r.rev; S = normalize(r.state);
+  rev = r.rev; S = normalize(r.state); base = JSON.stringify(S); checkDay();
+  if (r.state && r.state.settings && 'apiKey' in r.state.settings) save(); // убрать старый ключ Claude с сервера
+  if (stash && stash.user === me) { S = normalize(merge3(stash.base ? JSON.parse(stash.base) : S, JSON.parse(stash.state), S)); save(); toast('Несохранённые правки восстановлены'); }
+  stash = null;
   document.body.classList.remove('auth-mode');
   view.wizard = null;
   await loadObs();

@@ -89,7 +89,8 @@ module.exports = function createObsidian({ vault, user, folder = 'Учёба', c
     let entries;
     try { entries = await fsp.readdir(dir, { withFileTypes: true }); } catch (e) { if (e.code === 'ENOENT') return null; throw e; }
     for (const e of entries) {
-      if (e.name.startsWith('.')) continue;
+      // скрытые папки и ссылки-ярлыки пропускаем: ярлык может вести за пределы хранилища
+      if (e.name.startsWith('.') || e.isSymbolicLink()) continue;
       const p = path.join(dir, e.name);
       if (e.isDirectory()) out.push(...(await walk(p)) || []);
       else if (e.name.endsWith('.md')) out.push(p);
@@ -105,6 +106,7 @@ module.exports = function createObsidian({ vault, user, folder = 'Учёба', c
     for (const h of added) if (!e.added.includes(h)) e.added.push(h);
     for (const h of changed) if (!e.changed.includes(h) && !e.added.includes(h)) e.changed.push(h);
     e.at = new Date().toISOString();
+    if (store.diary.length > 2000) store.diary.splice(0, store.diary.length - 2000);
   }
 
   let syncing = null;
@@ -241,9 +243,13 @@ ${raw.slice(0, 60000)}`;
     await fsp.mkdir(dir, { recursive: true });
     let rel = path.join(cheatsFolder, `${safeName(shortTitle(note.title))} — шпаргалка.md`);
     // чужой файл с таким именем не перезаписываем
-    try { const cur = await fsp.readFile(path.join(vault, rel), 'utf8'); if (!/^source:\s*bortjournal/m.test(cur)) rel = path.join(cheatsFolder, `${safeName(shortTitle(note.title))} — шпаргалка (журнал).md`); } catch {}
-    const content = `---\nsource: bortjournal\nnote: "[[${note.rel.replace(/\.md$/, '')}]]"\nupdated: ${ymd()}\ntags: [шпаргалка${note.tags.length ? ', ' + note.tags.join(', ') : ''}]\n---\n\n# ${shortTitle(note.title)} — шпаргалка\n\n${md}\n`;
-    await fsp.writeFile(path.join(vault, rel), content);
+    // перезаписываем только свой файл: метка source: bortjournal должна быть в шапке, а не где угодно в тексте
+    try { const cur = await fsp.readFile(path.join(vault, rel), 'utf8'); if (!/^---\r?\n(?:[^\n]*\n)*?source:\s*bortjournal\s*\r?\n(?:[^\n]*\n)*?---/.test(cur)) rel = path.join(cheatsFolder, `${safeName(shortTitle(note.title))} — шпаргалка (журнал).md`); } catch {}
+    const yq = v => JSON.stringify(String(v));
+    const content = `---\nsource: bortjournal\nnote: ${yq(`[[${note.rel.replace(/\.md$/, '')}]]`)}\nupdated: ${ymd()}\ntags: [${['шпаргалка', ...note.tags].map(yq).join(', ')}]\n---\n\n# ${shortTitle(note.title)} — шпаргалка\n\n${md}\n`;
+    const tmp = path.join(vault, `${rel}.${process.pid}.tmp`);
+    await fsp.writeFile(tmp, content);
+    await fsp.rename(tmp, path.join(vault, rel));
     note.cheat = { rel, updated: ymd() };
     await persist();
     return { markdown: md, rel, link: link(rel) };
@@ -310,7 +316,13 @@ ${raw.slice(0, 60000)}`;
     const full = path.resolve(vault, String(rel));
     if (!full.startsWith(path.resolve(vault) + path.sep) || !full.endsWith('.md')) throw Object.assign(new Error('Неверный путь.'), { code: 400 });
     let raw, stat;
-    try { [raw, stat] = await Promise.all([fsp.readFile(full, 'utf8'), fsp.stat(full)]); } catch { throw Object.assign(new Error('Заметка не найдена.'), { code: 404 }); }
+    try {
+      // настоящий путь (после ярлыков) тоже должен быть внутри хранилища
+      const [real, root] = await Promise.all([fsp.realpath(full), fsp.realpath(vault)]);
+      if (!real.startsWith(root + path.sep)) throw new Error('outside');
+      [raw, stat] = await Promise.all([fsp.readFile(real, 'utf8'), fsp.lstat(full)]);
+      if (stat.isSymbolicLink()) throw new Error('symlink');
+    } catch { throw Object.assign(new Error('Заметка не найдена.'), { code: 404 }); }
     const r = path.relative(vault, full), n = parseNote(raw, r, stat);
     const note = Object.values(store.notes).find(x => x.rel === r);
     return { rel: r, title: n.title, tags: n.tags, date: n.date, link: link(r), noteId: note?.id || null, cheat: note?.cheat ? { ...note.cheat, link: link(note.cheat.rel) } : null,
