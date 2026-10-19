@@ -360,22 +360,154 @@ function ruler(d) {
 /* ============================================================
    ЕДА
    ============================================================ */
+/* ---------- нормы и оценка дня ---------- */
+// цвета прошли проверку палитры (различимость при дальтонизме, контраст к фону)
+const MAC = {
+  kcal: { name: 'Калории', unit: 'ккал', color: '#D9622B' },
+  p:    { name: 'Белки',   unit: 'г',    color: '#3F6FB5' },
+  f:    { name: 'Жиры',    unit: 'г',    color: '#B07D0A' },
+  c:    { name: 'Углеводы', unit: 'г',   color: '#1F9473' }
+};
+// доля калорий из Б/Ж/У: Acceptable Macronutrient Distribution Ranges (Institute of Medicine, 2005)
+const AMDR = { p: [10, 35], f: [20, 35], c: [45, 65] };
+function norms() {
+  const k = num(S.settings.kcal) || 2200, p = num(S.settings.protein) || 0;
+  const f = S.profile ? Math.min(planNow().fat, Math.round(k * 0.35 / 9)) : Math.round(k * 0.28 / 9);
+  return { kcal: k, p, f, c: Math.max(0, Math.round((k - p * 4 - f * 9) / 4)) };
+}
+const ST = { good: '✓', warn: '▲', bad: '▲', low: '▼', info: '•' };
+/* Статус показателя: live — день ещё идёт (сегодня), тогда «мало» не ругаем */
+function judge(key, val, norm, live) {
+  const r = norm ? val / norm : 0, d = Math.abs(val - norm), u = MAC[key].unit, n = key === 'kcal' ? fmtN(d) : fmt1(d);
+  const S_ = (lvl, text, icon = ST[lvl]) => ({ lvl, text, icon });
+  if (!val) return S_('info', live ? 'пока ничего' : 'нет записей');
+  if (key === 'kcal') {
+    if (r > 1.1) return S_('bad', `перебор +${n} ${u}`);
+    if (r > 1.03) return S_('warn', `чуть больше нормы, +${n}`);
+    if (live) return S_('info', `осталось ${n} ${u}`);
+    if (r < 0.7) return S_('low', `мало: −${n} ${u}. Сильный недобор тормозит обмен`, '▼');
+    return S_('good', 'в норме');
+  }
+  if (key === 'p') {
+    if (r > 1.6) return S_('warn', `много: +${n} ${u}`);
+    if (r >= 0.9) return S_('good', 'норма закрыта');
+    if (live) return S_('info', `ещё ${n} ${u}`);
+    return r >= 0.7 ? S_('low', `маловато, −${n} ${u}`, '▼') : S_('bad', `мало белка, −${n} ${u}`, '▼');
+  }
+  if (key === 'f') {
+    if (r > 1.3) return S_('bad', `много жиров, +${n} ${u}`);
+    if (r > 1.15) return S_('warn', `выше нормы, +${n} ${u}`);
+    if (live) return S_('info', `осталось ${n} ${u}`);
+    return r < 0.6 ? S_('low', `мало жиров, −${n} ${u}: нужны для гормонов`, '▼') : S_('good', 'в норме');
+  }
+  if (r > 1.3) return S_('bad', `много углеводов, +${n} ${u}`);
+  if (r > 1.15) return S_('warn', `выше нормы, +${n} ${u}`);
+  return live ? S_('info', `осталось ${n} ${u}`) : S_('good', 'в норме');
+}
+function statusChip(st) { return `<span class="st st-${st.lvl}"><i aria-hidden="true">${st.icon}</i>${st.text}</span>`; }
+
+/* Кольцо «факт / норма»: второй виток тёмнее — сколько сверх нормы */
+function meterRing(val, norm, color, label, size = 132) {
+  const sw = 12, r = (size - sw) / 2, C = 2 * Math.PI * r, k = norm ? val / norm : 0;
+  const a1 = Math.min(1, k), a2 = Math.min(1, Math.max(0, k - 1));
+  const arc = (p, col, cls = '') => `<circle class="ring-fg ${cls}" cx="${size / 2}" cy="${size / 2}" r="${r}" stroke="${col}" stroke-width="${sw}" stroke-dasharray="${C}" stroke-dashoffset="${C}" data-offset="${C * (1 - p)}"/>`;
+  return `<div class="meter" style="width:${size}px;height:${size}px"><svg class="ring" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" role="img" aria-label="${label}: ${Math.round(k * 100)}% нормы">
+      <title>${label}: ${Math.round(k * 100)}% нормы</title>
+      <circle class="ring-bg" cx="${size / 2}" cy="${size / 2}" r="${r}" stroke-width="${sw}"/>
+      ${a1 ? arc(a1, color) : ''}${a2 ? arc(a2, `color-mix(in srgb, ${color} 60%, #000)`, 'ring-over') : ''}
+    </svg><div class="meter-c"><b>${Math.round(k * 100)}%</b><small>нормы</small></div></div>`;
+}
+
+/* Кольцо из сегментов с зазором 2px между ними */
+function donut(segs, size, center, labelFn) {
+  const sw = 22, r = (size - sw) / 2, C = 2 * Math.PI * r, tot = segs.reduce((a, s) => a + s.v, 0);
+  if (!tot) return '';
+  const gap = segs.filter(s => s.v > 0).length > 1 ? 2 + sw * 0 : 0;
+  let acc = 0;
+  const arcs = segs.map(s => {
+    if (!s.v) return '';
+    const len = C * s.v / tot, start = acc; acc += len;
+    return `<circle cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none" stroke="${s.color}" stroke-width="${sw}" stroke-dasharray="${Math.max(0.1, len - gap)} ${C}" stroke-dashoffset="${-start}" transform="rotate(-90 ${size / 2} ${size / 2})"><title>${labelFn(s, s.v / tot)}</title></circle>`;
+  }).join('');
+  return `<div class="meter" style="width:${size}px;height:${size}px"><svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" role="img" aria-label="${esc(segs.map(s => labelFn(s, s.v / tot)).join('; '))}">${arcs}</svg><div class="meter-c">${center}</div></div>`;
+}
+
+function dayNormsCard(d, tot, nm, live) {
+  return `<div class="meters">${['kcal', 'p', 'f', 'c'].map(k => {
+    const v = k === 'kcal' ? tot.kcal : tot[k], m = MAC[k], st = judge(k, v, nm[k], live);
+    return `<div class="meter-cell">${meterRing(v, nm[k], m.color, m.name)}
+      <div class="meter-name"><i style="background:${m.color}"></i>${m.name}</div>
+      <div class="meter-val"><b>${k === 'kcal' ? fmtN(v) : fmt1(v)}</b> / ${fmtN(nm[k])} ${m.unit}</div>
+      ${statusChip(st)}</div>`;
+  }).join('')}</div>`;
+}
+
+function macroSplitCard(tot) {
+  const e = { p: tot.p * 4, f: tot.f * 9, c: tot.c * 4 }, sum = e.p + e.f + e.c;
+  if (!sum) return empty('Запиши еду с БЖУ, и здесь появится баланс.');
+  const segs = ['p', 'f', 'c'].map(k => ({ k, v: e[k], color: MAC[k].color }));
+  const ring = donut(segs, 168, `<b>${fmtN(sum)}</b><small>ккал из БЖУ</small>`, (s, sh) => `${MAC[s.k].name}: ${Math.round(sh * 100)}% калорий`);
+  const rows = segs.map(s => {
+    const pct = Math.round(s.v / sum * 100), [lo, hi] = AMDR[s.k];
+    const st = pct < lo ? { lvl: 'low', icon: '▼', text: `ниже нормы ${lo}–${hi}%` } : pct > hi ? { lvl: 'warn', icon: '▲', text: `выше нормы ${lo}–${hi}%` } : { lvl: 'good', icon: '✓', text: `норма ${lo}–${hi}%` };
+    return `<div class="split-row"><span class="split-name"><i style="background:${s.color}"></i>${MAC[s.k].name}</span>
+      <span class="split-bar"><span class="split-band" style="left:${lo}%;width:${hi - lo}%"></span><span class="split-mark" style="left:${Math.min(100, pct)}%;background:${s.color}"></span></span>
+      <b class="split-pct">${pct}%</b>${statusChip(st)}</div>`;
+  }).join('');
+  const note = S.profile?.goal === 'lose' && e.p / sum > 0.25 ? '<p class="hint">На похудении белка больше обычного — это нормально: он сохраняет мышцы. Углеводы при этом могут быть ниже 45%.</p>' : '';
+  return `<div class="split">${ring}<div class="split-rows">${rows}<p class="hint" style="margin:2px 0 0">Полоса — здоровый диапазон доли калорий (AMDR), точка — твой день.</p>${note}</div></div>`;
+}
+
+function weekNormsCard(end, nm) {
+  const days = rangeDays(7, end), t = ymd();
+  let okK = 0, okP = 0, done = 0;
+  const cells = days.map(d => {
+    const tot = sumMeals(mealsOn(d)), live = d === t, st = judge('kcal', tot.kcal, nm.kcal, live), sp = judge('p', tot.p, nm.p, live);
+    if (!live && tot.kcal) { done++; if (st.lvl === 'good') okK++; if (sp.lvl === 'good') okP++; }
+    const col = st.lvl === 'good' ? 'var(--st-good)' : st.lvl === 'bad' ? 'var(--st-bad)' : st.lvl === 'warn' || st.lvl === 'low' ? 'var(--st-warn)' : MAC.kcal.color;
+    const k = nm.kcal ? tot.kcal / nm.kcal : 0, size = 58, sw = 7, r = (size - sw) / 2, C = 2 * Math.PI * r;
+    return `<div class="wk-cell ${live ? 'today' : ''}" title="${human(d)}: ${fmtN(tot.kcal)} из ${fmtN(nm.kcal)} ккал · ${st.text}">
+      <div class="wk-ring"><svg class="ring" viewBox="0 0 ${size} ${size}"><circle class="ring-bg" cx="${size / 2}" cy="${size / 2}" r="${r}" stroke-width="${sw}"/>
+      ${tot.kcal ? `<circle class="ring-fg" cx="${size / 2}" cy="${size / 2}" r="${r}" stroke="${col}" stroke-width="${sw}" stroke-dasharray="${C}" stroke-dashoffset="${C}" data-offset="${C * (1 - Math.min(1, k))}"/>` : ''}</svg>
+      <span class="wk-pct">${tot.kcal ? Math.round(k * 100) + '%' : '—'}</span></div>
+      <span class="wk-day">${WD[parseYmd(d).getDay()]}</span><span class="wk-ic st-${st.lvl}" aria-hidden="true">${tot.kcal ? st.icon : ''}</span></div>`;
+  }).join('');
+  const sum = done ? `<p class="wk-sum">Калории в норме <b>${okK} из ${done}</b> ${plural(done, 'дня', 'дней', 'дней')} · белок закрыт <b>${okP} из ${done}</b>.</p>` : '<p class="hint">Завершённых дней с записями пока нет.</p>';
+  return `<div class="wk">${cells}</div>${sum}
+    <div class="heat-legend"><span><i style="background:var(--st-good)"></i>в норме</span><span><i style="background:var(--st-warn)"></i>чуть мимо</span><span><i style="background:var(--st-bad)"></i>перебор</span><span><i style="background:${MAC.kcal.color}"></i>сегодня / без оценки</span></div>`;
+}
+
+const SLOTS = [
+  { name: 'Утро', hint: 'до 11:00', from: 0, to: 11 * 60, color: '#F2B48C' },
+  { name: 'День', hint: '11–16', from: 11 * 60, to: 16 * 60, color: '#E3874F' },
+  { name: 'Вечер', hint: '16–21', from: 16 * 60, to: 21 * 60, color: '#B9531F' },
+  { name: 'Поздно', hint: 'после 21:00', from: 21 * 60, to: 24 * 60, color: '#7A2A17' }
+];
+function mealTimingCard(d) {
+  const days = rangeDays(7, d), acc = SLOTS.map(() => 0);
+  for (const x of days) for (const m of mealsOn(x)) { const t = hmToMin(m.time); if (t === null) continue; const i = SLOTS.findIndex(s => t >= s.from && t < s.to); if (i >= 0) acc[i] += num(m.kcal); }
+  const tot = acc.reduce((a, b) => a + b, 0);
+  if (!tot) return empty('Записывай время приёмов пищи, и здесь будет видно, когда ты ешь больше всего.');
+  const segs = SLOTS.map((s, i) => ({ ...s, v: acc[i] }));
+  const ring = donut(segs, 168, `<b>7 дн.</b><small>по времени</small>`, (s, sh) => `${s.name} (${s.hint}): ${Math.round(sh * 100)}%`);
+  const late = acc[3] / tot;
+  return `<div class="split">${ring}<div class="split-rows">${segs.map(s => `<div class="split-row slim"><span class="split-name"><i style="background:${s.color}"></i>${s.name} <small>${s.hint}</small></span><b class="split-pct">${Math.round(s.v / tot * 100)}%</b><span class="muted">${fmtN(s.v / 7)} ккал/день</span></div>`).join('')}
+    ${late > 0.25 ? statusChip({ lvl: 'warn', icon: '▲', text: `Поздно съедается ${Math.round(late * 100)}% калорий — это мешает сну и чаще ведёт к перееданию` }) : statusChip({ lvl: 'good', icon: '✓', text: 'Поздних калорий немного' })}
+  </div></div>`;
+}
+
 function pageFood() {
-  const d = view.date, set = S.settings, ms = mealsOn(d), tot = sumMeals(ms);
-  const week = rangeDays(7, d).map(x => ({ label: WD[parseYmd(x).getDay()], v: sumMeals(mealsOn(x)).kcal, hint: `${human(x)}: ${fmtN(sumMeals(mealsOn(x)).kcal)} ккал` }));
+  const d = view.date, ms = mealsOn(d), tot = sumMeals(ms), nm = norms(), live = d === ymd();
   const freq = topFoods(8);
   let i = 0;
   return `<section class="page" style="--c:var(--food)">
     ${topbar('Еда', humanLong(d), { actions: `${photoBtn('btn btn-primary')}<button class="btn ${photoOn ? 'btn-accent' : 'btn-primary'}" style="--c:var(--food)" data-action="add-meal">${I.plus}Приём пищи</button>` })}
-    <div class="kpis">
-      ${kpi('Калории', `${fmtN(tot.kcal)}<small>/ ${fmtN(set.kcal)}</small>`, 'food', i++, tot.kcal > set.kcal ? `Перебор ${fmtN(tot.kcal - set.kcal)}` : `Осталось ${fmtN(set.kcal - tot.kcal)}`)}
-      ${kpi('Белки', `${fmtN(tot.p)}<small>/ ${set.protein} г</small>`, 'food', i++, tot.p >= set.protein ? 'Норма закрыта' : `Ещё ${fmtN(set.protein - tot.p)} г`)}
-      ${kpi('Жиры', `${fmtN(tot.f)}<small>г</small>`, 'paper', i++)}
-      ${kpi('Углеводы', `${fmtN(tot.c)}<small>г</small>`, 'paper', i++)}
-    </div>
     <div class="grid">
+      ${card({ domain: 'food', title: live ? 'Норма на сегодня' : `Норма на ${human(d)}`, span: 12, i: i++, body: dayNormsCard(d, tot, nm, live) + `<p class="hint">Нормы из твоего плана${S.profile ? '' : ' (заполни профиль на вкладке «Цель», чтобы они стали личными)'}: ${fmtN(nm.kcal)} ккал, белок ${nm.p} г, жиры ${nm.f} г, углеводы ${nm.c} г. Второй, тёмный виток кольца — сколько сверх нормы.</p>` })}
       ${card({ domain: 'food', title: 'Записи за день', span: 7, i: i++, body: ms.length ? `<div class="list">${ms.map(mealItem).join('')}</div>` : empty('За этот день записей нет. Добавь первую — название и калории, остальное по желанию.') })}
-      ${card({ domain: 'food', title: 'Неделя', span: 5, i: i++, body: barChart(week, { color: 'var(--food)', target: set.kcal, unit: 'ккал' }) })}
+      ${card({ domain: 'food', title: 'Баланс БЖУ за день', span: 5, i: i++, body: macroSplitCard(tot) })}
+      ${card({ domain: 'food', title: 'Неделя: в норме ли', span: 7, i: i++, body: weekNormsCard(d, nm) })}
+      ${card({ domain: 'food', title: 'Когда ешь', span: 5, i: i++, body: mealTimingCard(d) })}
       ${freq.length ? card({ domain: 'food', title: 'Частое', span: 12, i: i++, body: `<div class="chips">${freq.map(f => `<button class="chip chip-btn" data-action="quick-meal" data-name="${esc(f.name)}"><b>${esc(f.name)}</b>${fmtN(f.kcal)} ккал</button>`).join('')}</div><p class="hint">Нажми, чтобы записать на выбранный день прямо сейчас.</p>` }) : ''}
     </div>
   </section>`;

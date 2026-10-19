@@ -566,6 +566,48 @@ details.theses li{margin:3px 0}
 .seg-wrap{flex-wrap:wrap;border-radius:18px}
 .kpi-val{overflow-wrap:anywhere}
 
+/* ---------- нормы еды ---------- */
+:root{--st-good:#3C5B38;--st-warn:#A06A00;--st-bad:#B8432E}
+.meters{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+.meter-cell{display:flex;flex-direction:column;align-items:center;text-align:center;gap:6px;min-width:0}
+.meter{position:relative;flex:none}
+.meter .ring-bg{stroke:var(--ink-3)}
+.meter-c{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1.05}
+.meter-c b{font:800 24px var(--display);letter-spacing:-.02em;color:var(--paper)}
+.meter-c small{font:600 10px var(--sans);letter-spacing:.12em;text-transform:uppercase;color:var(--paper-3);margin-top:3px}
+.meter-name{display:flex;align-items:center;gap:6px;font:700 11px var(--sans);letter-spacing:.14em;text-transform:uppercase;color:var(--paper-2);margin-top:4px}
+.meter-name i,.split-name i{width:9px;height:9px;border-radius:3px;display:inline-block}
+.meter-val{font-size:13px;color:var(--paper-2)}
+.meter-val b{color:var(--paper);font-size:15px}
+.st{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--paper-2);line-height:1.35;text-align:left}
+.st i{font-style:normal;font-size:10px;width:18px;height:18px;flex:none;border-radius:50%;display:inline-grid;place-items:center;color:#fff;background:var(--paper-3)}
+.st-good i{background:var(--st-good)}.st-warn i,.st-low i{background:var(--st-warn)}.st-bad i{background:var(--st-bad)}
+.st-bad{color:var(--st-bad)}
+.split{display:flex;align-items:center;gap:20px;flex-wrap:wrap}
+.split-rows{flex:1 1 220px;display:flex;flex-direction:column;gap:12px;min-width:0}
+.split-row{display:grid;grid-template-columns:96px 1fr 42px;grid-template-areas:"n b p" "s s s";align-items:center;gap:4px 10px}
+.split-row .split-name{grid-area:n}.split-row .split-bar{grid-area:b}.split-row .split-pct{grid-area:p;text-align:right}.split-row .st{grid-area:s}
+.split-row.slim{grid-template-columns:1fr 42px auto;grid-template-areas:"n p m"}
+.split-row.slim .muted{grid-area:m;font-size:12px;text-align:right;min-width:92px}
+.split-name{display:flex;align-items:center;gap:7px;font-weight:700;font-size:13px}
+.split-name small{font-weight:500;color:var(--paper-3);white-space:nowrap}
+.split-row.slim .split-name{flex-wrap:wrap;column-gap:6px}
+.split-pct{font:800 15px var(--display)}
+.split-bar{position:relative;height:10px;border-radius:5px;background:var(--ink-3)}
+.split-band{position:absolute;top:0;bottom:0;border-radius:5px;background:color-mix(in srgb,var(--st-good) 28%,transparent)}
+.split-mark{position:absolute;top:50%;width:14px;height:14px;margin:-7px 0 0 -7px;border-radius:50%;box-shadow:0 0 0 2px var(--ink-1)}
+.wk{display:grid;grid-template-columns:repeat(7,1fr);gap:6px}
+.wk-cell{position:relative;display:flex;flex-direction:column;align-items:center;gap:4px;padding:8px 0 6px;border-radius:14px}
+.wk-cell.today{background:var(--ink-2)}
+.wk-cell .ring-bg{stroke:var(--ink-3)}
+.wk-ring{position:relative;width:100%;max-width:58px;aspect-ratio:1}
+.wk-ring svg{width:100%;height:100%;display:block}
+.wk-pct{position:absolute;inset:0;display:grid;place-items:center;font:700 11px var(--sans);color:var(--paper)}
+.wk-cell{min-width:0}
+.wk-day{font:700 11px var(--sans);text-transform:uppercase;letter-spacing:.08em;color:var(--paper-2)}
+.wk-ic{font-size:10px;height:12px}.wk-ic.st-good{color:var(--st-good)}.wk-ic.st-warn,.wk-ic.st-low{color:var(--st-warn)}.wk-ic.st-bad{color:var(--st-bad)}
+.wk-sum{margin:12px 0 0;font-size:14px}
+
 /* ---------- фото еды ---------- */
 .card-actions{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
 .opts-5{grid-template-columns:repeat(5,1fr)}
@@ -671,6 +713,10 @@ details.theses li{margin:3px 0}
   .wiz-card{padding:22px 18px 20px;border-radius:24px}
   .opts-3{grid-template-columns:1fr}
   .opts-5{grid-template-columns:repeat(3,1fr)}
+  .meters{grid-template-columns:repeat(2,1fr);gap:18px 10px}
+  .wk{gap:2px}
+  .wk-pct{font-size:9.5px}
+  .wk-cell{padding:6px 0 4px}
   .ph-top,.ph-top-sm{grid-template-columns:1fr}
   .ph-top .ph-img{max-height:240px;aspect-ratio:auto}
   .ph-top-sm .ph-img{max-height:160px}
