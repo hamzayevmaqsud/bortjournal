@@ -465,16 +465,16 @@ const SLOTS = [
   { name: 'Поздно', hint: 'после 21:00', from: 21 * 60, to: 24 * 60, color: '#7A2A17' }
 ];
 function mealTimingCard(d) {
-  const days = rangeDays(7, d), acc = SLOTS.map(() => 0);
-  for (const x of days) for (const m of mealsOn(x)) { const t = hmToMin(m.time); if (t === null) continue; const i = SLOTS.findIndex(s => t >= s.from && t < s.to); if (i >= 0) acc[i] += num(m.kcal); }
-  const tot = acc.reduce((a, b) => a + b, 0);
+  const days = rangeDays(7, d), acc = SLOTS.map(() => 0), logged = new Set();
+  for (const x of days) for (const m of mealsOn(x)) { const t = hmToMin(m.time); if (t === null) continue; const i = SLOTS.findIndex(s => t >= s.from && t < s.to); if (i >= 0) { acc[i] += num(m.kcal); logged.add(x); } }
+  const tot = acc.reduce((a, b) => a + b, 0), n = logged.size;
   if (!tot) return empty('Здесь будет видно, в какое время ты съедаешь больше всего. Время берётся из записей еды.');
   const segs = SLOTS.map((s, i) => ({ ...s, v: acc[i] }));
-  const ring = donut(segs, 168, `<b>7 дн.</b><small>по времени</small>`, (s, sh) => `${s.name} (${s.hint}): ${Math.round(sh * 100)}%`);
+  const ring = donut(segs, 168, `<b>${n} ${plural(n, 'день', 'дня', 'дней')}</b><small>с записями</small>`, (s, sh) => `${s.name} (${s.hint}): ${Math.round(sh * 100)}%`);
   const late = acc[3] / tot;
-  return `<div class="split">${ring}<div class="split-rows">${segs.map(s => `<div class="split-row slim"><span class="split-name"><i style="background:${s.color}"></i>${s.name} <small>${s.hint}</small></span><b class="split-pct">${Math.round(s.v / tot * 100)}%</b><span class="muted">${fmtN(s.v / 7)} ккал/день</span></div>`).join('')}
-    <p class="hint" style="margin:0">По времени, указанному в записях за 7 дней.</p>
-    ${late > 0.25 ? statusChip({ lvl: 'warn', icon: '▲', text: `Поздно съедается ${Math.round(late * 100)}% калорий — это мешает сну и чаще ведёт к перееданию` }) : statusChip({ lvl: 'good', icon: '✓', text: 'Поздних калорий немного' })}
+  return `<div class="split">${ring}<div class="split-rows">${segs.map(s => `<div class="split-row slim"><span class="split-name"><i style="background:${s.color}"></i>${s.name} <small>${s.hint}</small></span><b class="split-pct">${Math.round(s.v / tot * 100)}%</b><span class="muted">${fmtN(s.v / n)} ккал/день</span></div>`).join('')}
+    <p class="hint" style="margin:0">По времени из записей. «ккал/день» — в среднем за ${n} ${plural(n, 'день', 'дня', 'дней')} с записями из последних 7${n < 3 ? '. Пока записей мало — картина станет точнее через несколько дней' : ''}.</p>
+    ${n < 3 ? '' : late > 0.25 ? statusChip({ lvl: 'warn', icon: '▲', text: `Поздно съедается ${Math.round(late * 100)}% калорий — это мешает сну и чаще ведёт к перееданию` }) : statusChip({ lvl: 'good', icon: '✓', text: 'Поздних калорий немного' })}
   </div></div>`;
 }
 
