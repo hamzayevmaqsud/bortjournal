@@ -189,7 +189,10 @@ function sumMeals(ms) {
     fi: a.fi + num(m.fi), su: a.su + num(m.su), sa: a.sa + num(m.sa), nut: a.nut + (m.su !== undefined ? 1 : 0), n: a.n + 1 }),
     { kcal: 0, p: 0, f: 0, c: 0, fi: 0, su: 0, sa: 0, nut: 0, n: 0 });
 }
-const studyMin = d => studyOn(d).reduce((a, s) => a + num(s.minutes), 0) + (OBS.diary || []).filter(e => e.date === d).reduce((a, e) => a + num(S.studyTime[e.id]), 0);
+// S.studyTime[id] = { m: минуты, d: дата } (раньше — просто число)
+const stMin = v => typeof v === 'object' && v ? num(v.m) : num(v);
+const studyMin = d => studyOn(d).reduce((a, s) => a + num(s.minutes), 0)
+  + Object.entries(S.studyTime).reduce((a, [id, v]) => a + (typeof v === 'object' && v ? (v.d === d ? num(v.m) : 0) : ((OBS.diary || []).some(e => e.id === id && e.date === d) ? num(v) : 0)), 0);
 function hasAny(d) { return !!(mealsOn(d).length || studyOn(d).length || gymOn(d).length || num(dayRec(d).steps)); }
 function streak() {
   let d = ymd();
@@ -690,6 +693,8 @@ function pagePlans() {
 function goalForm(g, kind, key) {
   kind = g ? g.period : kind; key = g ? g.key : key;
   const pk = PARENT[kind], parents = pk ? goalsOf(pk, periodKey(pk, periodRange(kind, key)[0])) : [];
+  const curParent = g?.parentId && S.goals.find(x => x.id === g.parentId);
+  if (curParent && !parents.includes(curParent)) parents.unshift(curParent);
   const tasks = g ? S.tasks.filter(t => t.goalId === g.id) : [];
   openModal({
     title: g ? 'Цель' : `Цель · ${periodLabel(kind, key)}`, accent: 'var(--orange)', form: 'goal', submit: g ? 'Сохранить' : 'Добавить',
@@ -704,6 +709,9 @@ function goalForm(g, kind, key) {
 function taskForm(t, date) {
   const d = t ? t.date : date, ref = d || ymd();
   const goals = [...goalsOf('week', periodKey('week', ref)), ...goalsOf('month', periodKey('month', ref)), ...goalsOf('quarter', periodKey('quarter', ref)), ...goalsOf('year', periodKey('year', ref))];
+  // текущая цель задачи остаётся в списке, даже если она из другого периода
+  const curGoal = t?.goalId && S.goals.find(x => x.id === t.goalId);
+  if (curGoal && !goals.includes(curGoal)) goals.unshift(curGoal);
   const week = Array.from({ length: 7 }, (_, k) => addDays(mondayOf(ymd()), k));
   openModal({
     title: t ? 'Задача' : 'Новая задача', accent: 'var(--orange)', form: 'task', submit: t ? 'Сохранить' : 'Добавить',
@@ -1456,17 +1464,17 @@ async function photoGo() {
     if (!r.base) answers.push(`Добавлено вручную: ${r.name}, ${fmtN(r.grams)} г`);
     else if (num(r.grams) !== r.base.grams) answers.push(`Вес исправлен: ${r.name} — ${fmtN(r.grams)} г`);
   }
-  const prev = ph.stage;
+  const prev = ph.stage, cur = ph;
   ph.stage = 'loading'; ph.err = ''; renderPhoto();
   try {
     const r = await apiFetch('/api/food/photo', { method: 'POST', body: JSON.stringify({ image: ph.b64, mime: ph.mime, note: ph.note, scale: ph.scale, answers }) });
-    if (!ph) return;
+    if (!ph || ph !== cur) return; // окно закрыли или открыли новое — старый ответ не нужен
     if (!r.isFood) { ph.stage = 'setup'; ph.err = r.comment || (ph.text ? 'Не понял, что за еда. Опиши подробнее.' : 'На фото не видно еды.'); renderPhoto(); return; }
     ph.rows = r.items.map(it => ({ ...it, base: { grams: it.grams, kcal: it.kcal, p: it.p, f: it.f, c: it.c, fi: it.fi, su: it.su, sa: it.sa } }));
     ph.questions = answers.length ? [] : r.questions; ph.answers = {};
     ph.comment = r.comment; ph.stage = 'review';
   } catch (e) {
-    if (!ph) return;
+    if (!ph || ph !== cur) return;
     ph.stage = prev === 'review' ? 'review' : 'setup'; ph.err = e.status ? e.message : 'Сервер недоступен.';
   }
   renderPhoto();
@@ -1656,14 +1664,14 @@ function diaryCard() {
       <span class="diary-ic">${e.kind === 'new' ? I.plus : I.edit}</span>
       <div class="item-main"><div class="item-title">${esc(noteShort(e.title))}</div>
         <div class="item-sub">${e.kind === 'new' ? `новый конспект: ${e.added.length} ${plural(e.added.length, 'раздел', 'раздела', 'разделов')}` : [e.added.length ? `дописал: ${e.added.map(esc).join(', ')}` : '', e.changed.length ? `изменил: ${e.changed.map(esc).join(', ')}` : ''].filter(Boolean).join(' · ')}</div></div>
-      <label class="diary-min" title="Сколько минут занимался"><input type="number" min="0" step="5" inputmode="numeric" placeholder="—" data-dmin="${e.id}" value="${S.studyTime[e.id] || ''}"><span>мин</span></label>
+      <label class="diary-min" title="Сколько минут занимался"><input type="number" min="0" step="5" inputmode="numeric" placeholder="—" data-dmin="${e.id}" data-dd="${e.date}" value="${stMin(S.studyTime[e.id]) || ''}"><span>мин</span></label>
       <a class="icon-btn" href="${esc((OBS.notes.find(n => n.id === e.noteId) || {}).link || '#study')}" title="Открыть в Obsidian" aria-label="Открыть в Obsidian">${I.chevR}</a>
     </div>`).join('')}</div>`).join('');
 }
 
 function pageStudy() {
   if (OBS.enabled && !view.library) { view.library = []; loadLibrary(); }
-  const allMin = S.study.reduce((a, s) => a + num(s.minutes), 0) + Object.values(S.studyTime).reduce((a, v) => a + num(v), 0);
+  const allMin = S.study.reduce((a, s) => a + num(s.minutes), 0) + Object.values(S.studyTime).reduce((a, v) => a + stMin(v), 0);
   const week = rangeDays(7).reduce((a, d) => a + studyMin(d), 0);
   const secs = OBS.notes.flatMap(n => n.sections.filter(s => !s.skip));
   const qn = secs.reduce((a, s) => a + (s.questions?.length || 0), 0);
@@ -1728,13 +1736,23 @@ const STOP = new Set(['через', 'потому', 'чтобы', 'когда', 
 function allCards() {
   const cards = [];
   for (const s of S.study) {
-    s.notes.forEach((t, i) => cards.push({ id: `${s.id}:n${i}`, type: 'thesis', session: s, text: t }));
-    s.qa.forEach((p, i) => cards.push({ id: `${s.id}:q${i}`, type: 'qa', session: s, q: p.q, a: p.a }));
+    // id карточки — по тексту: правка или удаление одной строки не сдвигает историю повторения других
+    s.notes.forEach(t => cards.push({ id: `${s.id}:t${hash(t).toString(36)}`, type: 'thesis', session: s, text: t }));
+    s.qa.forEach(p => cards.push({ id: `${s.id}:a${hash(p.q).toString(36)}`, type: 'qa', session: s, q: p.q, a: p.a }));
     if (s.notes.length >= 2) cards.push({ id: `${s.id}:sum`, type: 'summary', session: s });
   }
   for (const n of OBS.notes || []) for (const sec of n.sections) for (const q of sec.questions || [])
     cards.push({ id: `${n.id}:${sec.key}:${q.id}`, type: 'obs', session: { id: n.id, topic: `${noteShort(n.title)} · ${sec.h}`, date: sec.updated || sec.first, category: n.tags[0] || '' }, q: q.q, a: q.a, qkind: q.kind, noteId: n.id, key: sec.key });
   return cards;
+}
+// перенос истории повторения со старых id (по номеру строки) на новые (по тексту) — один раз
+function migrateCardIds() {
+  let moved = 0;
+  for (const s of S.study) {
+    s.notes.forEach((t, i) => { const o = `${s.id}:n${i}`, n = `${s.id}:t${hash(t).toString(36)}`; if (S.srs[o] && !S.srs[n]) { S.srs[n] = S.srs[o]; delete S.srs[o]; moved++; } });
+    s.qa.forEach((p, i) => { const o = `${s.id}:q${i}`, n = `${s.id}:a${hash(p.q).toString(36)}`; if (S.srs[o] && !S.srs[n]) { S.srs[n] = S.srs[o]; delete S.srs[o]; moved++; } });
+  }
+  return moved;
 }
 function cardState(c) { return S.srs[c.id] || { interval: 0, ease: 2.5, reps: 0, due: addDays(c.session.date, 1) }; }
 function withState() { return allCards().map(c => ({ ...c, st: cardState(c) })); }
@@ -2118,7 +2136,8 @@ function pageGoal() {
     </div>`;
   } else {
     const total = Math.abs(target - start), passed = Math.max(0, Math.min(total, (now - start) * dir)), pct = total ? passed / total * 100 : 0;
-    const etaW = weeksBy(target), eta = whenText(etaW), planEta = whenText(Plan.weeksTo(p, now, c.kcal, lv, target, c.steps));
+    const reached = (target - now) * dir <= 0;
+    const etaW = reached ? null : weeksBy(target), eta = whenText(etaW), planEta = reached ? null : whenText(Plan.weeksTo(p, now, c.kcal, lv, target, c.steps));
     const step = total > 12 ? 5 : total > 5 ? 2 : 1, ms = [];
     for (let m = dir < 0 ? Math.floor((now - 0.01) / step) * step : Math.ceil((now + 0.01) / step) * step; dir < 0 ? m > target : m < target; m += dir * step) ms.push(m);
     ms.push(target);
@@ -2134,7 +2153,7 @@ function pageGoal() {
         ${ms.slice(0, -1).map(m => `<span class="path-tick" style="left:${Math.abs(m - start) / total * 100}%"><em>${fmt1(m)}</em></span>`).join('')}
       </div>
       <div class="path-ends"><span>старт ${fmt1(start)}</span><b>пройдено ${fmt1(passed)} из ${fmt1(total)} кг · ${Math.round(pct)}%</b><span>цель ${fmt1(target)}</span></div>
-      <p class="path-eta">${eta ? `Дойдёшь примерно в <b>${eta}</b>` : 'При текущем темпе цель не приближается'}${factOk && planEta && planEta !== eta ? ` <span class="muted">· по расчёту — в ${planEta}</span>` : ''}${!f.tr ? ' <span class="muted">· по расчёту, уточнится, когда накопятся замеры веса</span>' : ''}</p>
+      <p class="path-eta">${reached ? `<b>Цель достигнута 🎉</b> Поставь новую или переключись на «держать форму».` : eta ? `Дойдёшь примерно в <b>${eta}</b>` : 'При текущем темпе цель не приближается'}${factOk && planEta && planEta !== eta ? ` <span class="muted">· по расчёту — в ${planEta}</span>` : ''}${!f.tr ? ' <span class="muted">· по расчёту, уточнится, когда накопятся замеры веса</span>' : ''}</p>
       <div class="miles">${miles.map((x, k) => `<div class="mile ${k === miles.length - 1 && x.m === target ? 'goal' : ''}"><b>${fmt1(x.m)} кг</b><span>${x.when ? `≈ ${x.when}` : '—'}</span></div>`).join('')}</div>
     </div>`;
   }
@@ -2315,7 +2334,8 @@ function finishWizard() {
   const restart = !prev || prev.goal !== p.goal || prev.pace !== p.pace || prev.target !== p.target;
   S.profile = { ...p, ageDate: t, weight: wt, start: restart ? t : prev.start, startWeight: restart ? wt : prev.startWeight };
   S.activity[mondayOf(t)] = d.level;
-  S.days[t] = { ...dayRec(t), weight: wt };
+  // вес пишем в сегодняшний день, только если его ввели заново, — иначе это ложный замер, который портит тренд
+  if (!prev || Math.abs(wt - curWeight()) >= 0.05) S.days[t] = { ...dayRec(t), weight: wt };
   const c = applyGoals();
   view.wizard = null; save();
   if (location.hash !== '#goal') location.hash = '#goal'; else render();
@@ -2565,7 +2585,9 @@ const ACTIONS = {
   'edit-study': el => studyForm(S.study.find(s => s.id === el.dataset.id)),
   'edit-gym': el => gymForm(S.workouts.find(w => w.id === el.dataset.id)),
   'del-meal': el => { if (!confirm('Удалить запись?')) return; S.meals = S.meals.filter(m => m.id !== el.dataset.id); save(); render(); toast('Удалено'); },
-  'del-study': el => { if (!confirm('Удалить занятие вместе с его карточками?')) return; const id = el.dataset.id; S.study = S.study.filter(s => s.id !== id); Object.keys(S.srs).forEach(k => { if (k.startsWith(id + ':')) delete S.srs[k]; }); save(); render(); toast('Удалено'); },
+  'del-study': el => { if (!confirm('Удалить занятие вместе с его карточками?')) return; const id = el.dataset.id; S.study = S.study.filter(s => s.id !== id); Object.keys(S.srs).forEach(k => { if (k.startsWith(id + ':')) delete S.srs[k]; });
+    for (const q of Object.values(S.quizzes)) q.items = q.items.filter(i => i.result || !String(i.cardId).startsWith(id + ':'));
+    save(); render(); toast('Удалено'); },
   'del-gym': el => { if (!confirm('Удалить тренировку?')) return; S.workouts = S.workouts.filter(w => w.id !== el.dataset.id); save(); render(); toast('Удалено'); },
   'quick-meal': el => {
     const f = S.foods[el.dataset.name.toLowerCase()]; if (!f) return;
@@ -2626,8 +2648,9 @@ const ACTIONS = {
     } catch (e) { el.classList.remove('busy'); toast(e.message, true); }
   },
   'quiz-note': el => {
-    const d = ymd(), pool = withState().filter(c => c.noteId === el.dataset.id);
-    if (!pool.length) { toast('Вопросы по этому конспекту ещё готовятся', true); return; }
+    const d = ymd(), have = new Set((S.quizzes[d]?.items || []).map(i => i.cardId));
+    const pool = withState().filter(c => c.noteId === el.dataset.id && !have.has(c.id));
+    if (!pool.length) { toast(have.size ? 'Все вопросы этого конспекта уже в сегодняшних' : 'Вопросы по этому конспекту ещё готовятся', true); if (have.size) location.hash = '#quiz'; return; }
     const r = rng(hash(d + el.dataset.id + Date.now()));
     const items = shuffle(pool, r).slice(0, 6).map(c => quizItemFrom(c, r));
     const kept = (S.quizzes[d]?.items || []).filter(i => i.result);
@@ -2733,14 +2756,14 @@ const FORMS = {
   goal(fd) {
     const id = fd.get('id'), title = String(fd.get('title') || '').trim(); if (!title) return;
     const g = id ? S.goals.find(x => x.id === id) : { id: uid(), period: fd.get('kind'), key: fd.get('key'), done: false, created: ymd() };
-    Object.assign(g, { title, parentId: fd.get('parentId') || null, note: String(fd.get('note') || '').trim() });
+    Object.assign(g, { title, parentId: fd.has('parentId') ? fd.get('parentId') || null : (g.parentId || null), note: String(fd.get('note') || '').trim() });
     if (!id) S.goals.push(g);
     save(); closeModal(); render(); toast(id ? 'Сохранено' : 'Цель добавлена');
   },
   task(fd) {
     const id = fd.get('id'), title = String(fd.get('title') || '').trim(); if (!title) return;
     const t = id ? S.tasks.find(x => x.id === id) : { id: uid(), done: false, created: ymd() };
-    Object.assign(t, { title, date: fd.get('date') || null, time: fd.get('time') || '', goalId: fd.get('goalId') || null, prio: fd.get('prio') === 'on', note: String(fd.get('note') || '').trim() });
+    Object.assign(t, { title, date: fd.get('date') || null, time: fd.get('time') || '', goalId: fd.has('goalId') ? fd.get('goalId') || null : (t.goalId || null), prio: fd.get('prio') === 'on', note: String(fd.get('note') || '').trim() });
     if (!id) S.tasks.push(t);
     save(); closeModal(); render(); toast(id ? 'Сохранено' : `Задача на ${t.date ? relDay(t.date) : 'без даты'}`);
   },
@@ -2786,7 +2809,7 @@ document.addEventListener('input', e => {
   if (t.dataset.search !== undefined) { clearTimeout(searchTimer); const v = t.value; searchTimer = setTimeout(() => runSearch(v), 250); }
   if (t.dataset.rdFind !== undefined) { clearTimeout(searchTimer); const v = t.value; searchTimer = setTimeout(() => rdFind(v), 250); }
   if (t.dataset.qans !== undefined) { const it = S.quizzes[quizDay()]?.items[+t.dataset.qans]; if (it) it.answer = t.value; }
-  if (t.dataset.dmin !== undefined) { const v = Math.max(0, Math.round(num(t.value))); if (v) S.studyTime[t.dataset.dmin] = v; else delete S.studyTime[t.dataset.dmin]; save(); }
+  if (t.dataset.dmin !== undefined) { const v = Math.max(0, Math.round(num(t.value))); if (v) S.studyTime[t.dataset.dmin] = { m: v, d: t.dataset.dd }; else delete S.studyTime[t.dataset.dmin]; save(); }
   if (ph && t.dataset.ph) ph[t.dataset.ph] = t.value;
   if (ph && t.dataset.phRow !== undefined) {
     const r = ph.rows[+t.dataset.phRow], f = t.dataset.f;
@@ -2913,6 +2936,7 @@ async function loadState() {
   const r = await apiFetch('/api/state');
   rev = r.rev; S = normalize(r.state); base = JSON.stringify(S); checkDay();
   if (r.state && r.state.settings && 'apiKey' in r.state.settings) save(); // убрать старый ключ Claude с сервера
+  if (migrateCardIds()) save();
   if (stash && stash.user === me) { S = normalize(merge3(stash.base ? JSON.parse(stash.base) : S, JSON.parse(stash.state), S)); save(); toast('Несохранённые правки восстановлены'); }
   stash = null;
   document.body.classList.remove('auth-mode');

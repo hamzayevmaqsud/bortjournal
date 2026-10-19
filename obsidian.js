@@ -37,9 +37,11 @@ function parseNote(raw, rel, stat) {
   const m = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/.exec(raw);
   if (m) { fm = parseFrontmatter(m[1]); body = raw.slice(m[0].length); }
   const lines = body.split(/\r?\n/);
-  const h1 = lines.find(l => /^#\s+/.test(l));
+  let h1 = null, inFence = false;
+  for (const l of lines) { if (/^\s*(```|~~~)/.test(l)) inFence = !inFence; else if (!inFence && /^#\s+/.test(l)) { h1 = l; break; } }
   const base = path.basename(rel, '.md');
-  const title = String(fm.title || fm.topic || (h1 ? h1.replace(/^#\s+/, '') : base)).trim();
+  const str = v => (Array.isArray(v) ? v.join(' ') : String(v || '')).trim();
+  const title = str(fm.title) || str(fm.topic) || (h1 ? h1.replace(/^#\s+/, '').trim() : base);
   const tags = [...new Set((Array.isArray(fm.tags) ? fm.tags : fm.tags ? String(fm.tags).split(/[,\s]+/) : []).map(t => String(t).replace(/^#/, '').trim()).filter(Boolean))];
   const fmDate = String(fm.date || fm.created || '').slice(0, 10);
   const nameDate = /(\d{4}-\d{2}-\d{2})/.exec(base)?.[1];
@@ -58,9 +60,12 @@ function parseNote(raw, rel, stat) {
     }
     if (cur) cur.lines.push(line);
   }
+  const seenH = new Map();
   const out = sections.map(s => {
     const text = s.lines.join('\n').replace(/^\s*---\s*$/gm, '').trim();
-    return { key: sha(s.h), h: s.h, text, hash: sha(text, 12), skip: NO_QUESTIONS.test(s.h) || text.length < 60 };
+    const n = (seenH.get(s.h) || 0) + 1; seenH.set(s.h, n);
+    // повторяющийся заголовок получает свой ключ: «Пример», «Пример#2»…
+    return { key: sha(n > 1 ? `${s.h}#${n}` : s.h), h: s.h, text, hash: sha(text, 12), skip: NO_QUESTIONS.test(s.h) || text.length < 60 };
   });
   return { title, tags, date, minutes, sections: out, tasks };
 }
@@ -132,7 +137,8 @@ module.exports = function createObsidian({ vault, user, folder = 'Учёба', c
             const p = prev?.sections.find(x => x.key === s.key);
             if (!p) added.push(s.h); else if (p.hash !== s.hash) changed.push(s.h);
             const same = p && p.hash === s.hash;
-            note.sections.push({ ...s, first: p?.first || (prev ? today : n.date), updated: same ? p.updated : (prev ? today : n.date), questions: same ? p.questions : null, qError: same ? p.qError : null });
+            note.sections.push({ ...s, first: p?.first || (prev ? today : n.date), updated: same ? p.updated : (prev ? today : n.date),
+              questions: p?.questions || null, stale: !same && !!p?.questions, qError: same ? p.qError : null });
           }
           if (!prev) diaryAdd(note, n.date, 'new', n.sections.filter(s => !s.skip).map(s => s.h), []);
           else if (added.length || changed.length) diaryAdd(note, today, 'edit', added, changed);
@@ -162,7 +168,7 @@ module.exports = function createObsidian({ vault, user, folder = 'Учёба', c
     required: ['questions']
   };
   function nextTask() {
-    for (const note of Object.values(store.notes)) for (const s of note.sections) if (!s.skip && s.questions === null) return { note, s };
+    for (const note of Object.values(store.notes)) for (const s of note.sections) if (!s.skip && (s.questions === null || s.stale)) return { note, s };
     return null;
   }
   let pumping = false;
@@ -184,11 +190,13 @@ module.exports = function createObsidian({ vault, user, folder = 'Учёба', c
 ${s.text.slice(0, 12000)}`;
         try {
           const { out } = await gemini([{ text: prompt }], Q_SCHEMA, { timeout: 90e3 });
-          s.questions = (out.questions || []).slice(0, 6).map(x => ({ id: sha(x.q, 8), q: String(x.q).slice(0, 400), a: String(x.a).slice(0, 800), kind: x.kind }));
-          s.qError = null;
+          const old = s.questions || [];
+          // новые вопросы наследуют id старых по порядку — история повторения раздела не обнуляется
+          s.questions = (out.questions || []).slice(0, 6).map((x, k) => ({ id: old[k]?.id || sha(x.q, 8), q: String(x.q).slice(0, 400), a: String(x.a).slice(0, 800), kind: x.kind }));
+          s.qError = null; s.stale = false;
         } catch (e) {
           if (e.code === 429) { store.pausedUntil = Date.now() + 10 * 60e3; log('obsidian: лимит Gemini, пауза 10 минут'); await persist(); break; }
-          s.questions = []; s.qError = e.message;
+          if (!s.questions) s.questions = []; s.stale = false; s.qError = e.message;
         }
         await persist();
         await new Promise(r => setTimeout(r, 4000));
@@ -298,6 +306,8 @@ ${raw.slice(0, 60000)}`;
           while (i >= 0 && c < 20) { c++; i = hay.indexOf(w, i + w.length); }
           score += c + (norm(p.h).includes(w) ? 5 : 0);
         }
+        // заметка находится и по словам из названия: показываем её начало
+        if (!score && p.h === '' && words.every(w => tnorm.includes(w))) score = 1;
         if (!score) continue;
         if (words.every(w => tnorm.includes(w))) score += 3;
         const raw = p.h + '\n' + p.text, start = Math.max(0, first - 70);
@@ -331,7 +341,7 @@ ${raw.slice(0, 60000)}`;
 
   function regen(noteId, key) {
     const note = Object.values(store.notes).find(x => x.id === noteId);
-    for (const s of note?.sections || []) if (!key || s.key === key) { if (!s.skip) { s.questions = null; s.qError = null; } }
+    for (const s of note?.sections || []) if (!key || s.key === key) { if (!s.skip) { s.stale = true; s.qError = null; } }
     store.pausedUntil = 0;
     persist().then(pump);
   }
@@ -341,7 +351,7 @@ ${raw.slice(0, 60000)}`;
     const secs = notes.flatMap(n => n.sections.filter(s => !s.skip));
     return {
       enabled: true, vaultName, folder, cheatsFolder, lastSync: store.lastSync, error: store.error,
-      queue: { total: secs.length, done: secs.filter(s => s.questions !== null).length, pausedUntil: store.pausedUntil > Date.now() ? store.pausedUntil : 0 },
+      queue: { total: secs.length, done: secs.filter(s => s.questions !== null && !s.stale).length, pausedUntil: store.pausedUntil > Date.now() ? store.pausedUntil : 0 },
       notes: notes.map(n => ({ id: n.id, rel: n.rel, title: n.title, tags: n.tags, date: n.date, minutes: n.minutes, link: link(n.rel), tasks: n.tasks, cheat: n.cheat ? { ...n.cheat, link: link(n.cheat.rel) } : null,
         sections: n.sections.map(s => ({ key: s.key, h: s.h, first: s.first, updated: s.updated, skip: s.skip, size: s.text.length, questions: s.questions, qError: s.qError })) })),
       diary: store.diary.slice(-300)

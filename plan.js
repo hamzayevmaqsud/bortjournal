@@ -98,7 +98,12 @@
       delta = (PACE.gain[p.pace] || PACE.gain.mid).kcal;
     }
     let kcal = round(tdee + delta, 10);
-    if (kcal < minKcal(p)) { kcal = minKcal(p); notes.push(`Калории подняты до минимума ${minKcal(p)} ккал: ниже без врача опускаться не стоит.`); }
+    if (kcal < minKcal(p)) {
+      kcal = minKcal(p);
+      // если даже минимум выше расхода, худеть едой не получится — держим поддержку и честно говорим об этом
+      if (p.goal === 'lose' && kcal > tdee) { kcal = round(tdee, 10); notes.push(`Расход (${Math.round(tdee)} ккал) ниже безопасного минимума питания — дефицит едой не создать. Худеть за счёт шагов и тренировок; калории — на поддержке.`); }
+      else notes.push(`Калории подняты до минимума ${minKcal(p)} ккал: ниже без врача опускаться не стоит.`);
+    }
     delta = kcal - tdee;
     const protein = round(Math.min(lbm * (p.goal === 'maintain' ? 1.8 : 2.1), 2.2 * weight), 5);
     const fat = round(Math.max(kcal * 0.25 / 9, 0.6 * lbm), 5);
