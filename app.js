@@ -10,7 +10,7 @@ const DEF = {
   settings: { kcal: 2200, protein: 140, steps: 10000, study: 60, name: '' },
   meals: [], study: [], workouts: [], days: {}, srs: {}, quizzes: {}, foods: {},
   profile: null, activity: {}, drinks: [], sets: [], studyTime: {},
-  tasks: [], goals: []
+  tasks: [], goals: [], money: [], budget: {}
 };
 let S = structuredClone(DEF);
 let me = null, rev = 0, photoOn = false;
@@ -233,15 +233,16 @@ const I = {
   repeat: '<svg viewBox="0 0 24 24"><path d="M4 12a8 8 0 0 1 13.7-5.6M20 4v4h-4M20 12a8 8 0 0 1-13.7 5.6M4 20v-4h4"/></svg>',
   drop: '<svg viewBox="0 0 24 24"><path d="M12 3.5c3.2 4 6 7.3 6 10.5a6 6 0 0 1-12 0c0-3.2 2.8-6.5 6-10.5z"/><path d="M9 14.5a3 3 0 0 0 3 3"/></svg>',
   camera: '<svg viewBox="0 0 24 24"><path d="M4 8.5A1.5 1.5 0 0 1 5.5 7h2l1.5-2h6l1.5 2h2A1.5 1.5 0 0 1 20 8.5v9a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 17.5z"/><circle cx="12" cy="12.5" r="3.5"/></svg>',
+  budget: '<svg viewBox="0 0 24 24"><path d="M4 7.5A2.5 2.5 0 0 1 6.5 5H17v3"/><rect x="4" y="8" width="16" height="11" rx="2.5"/><path d="M15.5 13.5h1"/></svg>',
   logout: '<svg viewBox="0 0 24 24"><path d="M15 4h3a2 2 0 012 2v12a2 2 0 01-2 2h-3M10 16l-4-4 4-4M6 12h10"/></svg>'
 };
 document.querySelectorAll('[data-ico]').forEach(el => { el.innerHTML = I[el.dataset.ico] || ''; });
 
 /* ---------- состояние представления ---------- */
 const view = { page: 'today', date: ymd(), range: 30, lastPage: null };
-const PAGES = ['today', 'plans', 'food', 'study', 'quiz', 'gym', 'steps', 'goal', 'stats', 'settings', 'more'];
+const PAGES = ['today', 'plans', 'food', 'budget', 'study', 'quiz', 'gym', 'steps', 'goal', 'stats', 'settings', 'more'];
 // на телефоне внизу 5 вкладок; эти разделы — в «Ещё»
-const MORE_PAGES = ['quiz', 'goal', 'gym', 'steps', 'stats', 'settings'];
+const MORE_PAGES = ['budget', 'quiz', 'goal', 'gym', 'steps', 'stats', 'settings'];
 
 function route() {
   const [h, sub] = (decodeURIComponent(location.hash.replace('#', '')) || 'today').split('/');
@@ -263,7 +264,7 @@ function render() {
   document.body.classList.toggle('setup-mode', !!view.wizard);
   if (view.wizard) { $('#main').innerHTML = pageWizard(); window.scrollTo({ top: 0, behavior: 'instant' }); return; }
   document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.page === view.page || (t.dataset.page === 'more' && MORE_PAGES.includes(view.page))));
-  const pages = { more: pageMore, today: pageToday, plans: pagePlans, food: pageFood, study: pageStudy, quiz: pageQuiz, gym: pageGym, steps: pageSteps, goal: pageGoal, stats: pageStats, settings: pageSettings };
+  const pages = { more: pageMore, today: pageToday, plans: pagePlans, food: pageFood, budget: pageBudget, study: pageStudy, quiz: pageQuiz, gym: pageGym, steps: pageSteps, goal: pageGoal, stats: pageStats, settings: pageSettings };
   const y = window.scrollY;
   $('#main').innerHTML = pages[view.page]();
   afterRender();
@@ -436,8 +437,8 @@ function pageToday() {
       ${card({ domain: 'steps', title: 'Шаги', i: i++, body: stepsBody, cls: 'tile tile-mustard', action: addBtn('add-steps', 'Записать') })}
       ${card({ domain: 'quiz', title: 'Вопросы дня', span: 7, i: i++, body: quizBody, cls: 'tile tile-orange', action: `<a class="btn btn-accent btn-sm" href="#quiz">Открыть</a>` })}
       ${card({ domain: 'gym', title: 'Зал', span: 5, i: i++, body: gymBody, cls: 'tile tile-sage', action: addBtn('add-gym', 'Тренировка') })}
-      ${card({ domain: 'food', title: d === ymd() ? 'Задачи на сегодня' : `Задачи · ${human(d)}`, span: 12, i: i++, body: todayTasksCard(d), action: `<a class="btn btn-accent btn-sm" href="#plans">Планы</a>` })}
-      ${card({ domain: 'paper', title: 'Заметка дня', span: 12, i: i++, body: noteBody, cls: 'tile tile-peach' })}
+      ${card({ domain: 'food', title: d === ymd() ? 'Задачи на сегодня' : `Задачи · ${human(d)}`, span: 6, i: i++, body: todayTasksCard(d), action: `<a class="btn btn-accent btn-sm" href="#plans">Планы</a>` })}
+      ${card({ domain: 'paper', title: 'Заметка дня', span: 6, i: i++, body: noteBody, cls: 'tile tile-peach' })}
     </div>
   </section>`;
 }
@@ -450,6 +451,7 @@ function defTime(fallback) { const t = view.presetTime; view.presetTime = null; 
 function pageMore() {
   const q = S.quizzes[ymd()], qn = q ? q.items.filter(i => !i.result).length : Math.min(dueCards(ymd()).length, QUIZ_SIZE);
   const items = [
+    ['budget', 'Бюджет', num(S.budget.amount) ? (v => v >= 0 ? `сегодня можно ${fmtM(v)}` : `перерасход ${fmtM(-v)}`)(budgetDay(ymd()).leftToday) : 'лимит на день'],
     ['quiz', 'Вопросы', qn ? `${qn} на сегодня` : 'на сегодня всё'],
     ['goal', 'Цель', S.profile ? `${fmt1(curWeight())} кг → ${S.profile.target ? fmt1(S.profile.target) + ' кг' : 'держать'}` : 'составить план'],
     ['gym', 'Зал', (() => { const n = S.workouts.filter(w => w.date >= addDays(ymd(), -6)).length; return n ? `${n} за неделю` : 'тренировки'; })()],
@@ -2074,6 +2076,121 @@ function pageSteps() {
 
 
 /* ============================================================
+   БЮДЖЕТ: сколько можно потратить сегодня (по мотивам Budget OK)
+   Сумма на период делится на оставшиеся дни. Потратил меньше — завтра
+   на день больше, перерасход — меньше. Доходы в периоде добавляются к сумме.
+   ============================================================ */
+const MONEY_CATS = {
+  out: [['food', 'Продукты', '#D9622B'], ['cafe', 'Кафе', '#B5891E'], ['transport', 'Транспорт', '#4D7B78'], ['home', 'Дом и счета', '#2F3B4F'],
+    ['shop', 'Покупки', '#8E2F22'], ['health', 'Здоровье', '#3C5B38'], ['fun', 'Отдых', '#C0794F'], ['other', 'Другое', '#A19682']],
+  in: [['salary', 'Зарплата', '#3C5B38'], ['side', 'Подработка', '#4D7B78'], ['gift', 'Подарок', '#B5891E'], ['other', 'Другое', '#A19682']]
+};
+const mcat = (kind, k) => MONEY_CATS[kind === 'in' ? 'in' : 'out'].find(c => c[0] === k) || ['other', 'Другое', '#A19682'];
+const CUR = () => S.budget.cur || '₼';
+const fmtM = v => `${(Math.round(v * 100) / 100).toLocaleString('ru-RU', { maximumFractionDigits: 2 })} ${CUR()}`;
+const msum = xs => xs.reduce((a, x) => a + num(x.amount), 0);
+// «12,5+3» — как в калькуляторе
+const parseAmount = v => Math.round(String(v || '').split('+').reduce((a, x) => a + num(x), 0) * 100) / 100;
+
+function budgetPeriod(d) {
+  const st = Math.min(28, Math.max(1, Math.round(num(S.budget.start)) || 1)), dt = parseYmd(d);
+  const m = dt.getMonth() - (dt.getDate() < st ? 1 : 0);
+  const from = ymd(new Date(dt.getFullYear(), m, st)), to = addDays(ymd(new Date(dt.getFullYear(), m + 1, st)), -1);
+  return { from, to, days: diffDays(from, to) + 1 };
+}
+function budgetDay(d) {
+  const p = budgetPeriod(d), inP = S.money.filter(x => x.date >= p.from && x.date <= p.to);
+  const outs = inP.filter(x => x.kind !== 'in'), income = msum(inP.filter(x => x.kind === 'in'));
+  const total = num(S.budget.amount) + income - num(S.budget.save);
+  const before = msum(outs.filter(x => x.date < d)), today = msum(outs.filter(x => x.date === d)), spent = msum(outs);
+  const daysLeft = diffDays(d, p.to) + 1, allow = Math.max(0, (total - before) / daysLeft);
+  return { ...p, total, income, spent, before, today, daysLeft, allow, leftToday: allow - today, leftPeriod: total - spent,
+    tomorrow: daysLeft > 1 ? Math.max(0, (total - before - today) / (daysLeft - 1)) : null, base: total / p.days, outs };
+}
+
+function budgetSetupForm(compact = false) {
+  const b = S.budget;
+  return `<div class="row row-2">
+      ${field(`Сумма на месяц, ${esc(CUR())}`, `<input name="amount" type="text" inputmode="decimal" required placeholder="например 1500" value="${b.amount || ''}">`)}
+      ${field('Месяц начинается', `<select name="start">${Array.from({ length: 28 }, (_, k) => `<option value="${k + 1}" ${(b.start || 1) === k + 1 ? 'selected' : ''}>${k + 1}-го числа</option>`).join('')}</select>`)}
+    </div>
+    <div class="row row-2">
+      ${field('Отложить в копилку', `<input name="save" type="text" inputmode="decimal" placeholder="0" value="${b.save || ''}">`)}
+      ${field('Валюта', `<select name="cur">${['₼', '₽', '$', '€', '₸', '₺', '£'].map(c => `<option ${CUR() === c ? 'selected' : ''}>${c}</option>`).join('')}</select>`)}
+    </div>
+    ${compact ? '' : '<p class="hint">Например, день зарплаты. Копилка вычитается из суммы сразу, а доходы внутри месяца к ней прибавляются.</p>'}`;
+}
+
+function moneyFields(x = {}) {
+  const kind = x.kind || view.mKind || 'out', cats = MONEY_CATS[kind];
+  const cat = cats.some(c => c[0] === x.cat) ? x.cat : cats[0][0];
+  return `<input type="hidden" name="kind" value="${kind}">
+    ${x.id ? `<input type="hidden" name="id" value="${x.id}"><input type="hidden" name="date" value="${x.date}"><input type="hidden" name="time" value="${esc(x.time || '')}">` : ''}
+    <div class="m-amount"><span class="m-sign">${kind === 'in' ? '+' : '−'}</span><input name="amount" type="text" inputmode="decimal" autocomplete="off" required placeholder="0" value="${x.amount || ''}" aria-label="Сумма"><span class="m-cur">${esc(CUR())}</span></div>
+    <div class="m-cats" role="radiogroup" aria-label="Категория">${cats.map(([k, n, c]) => `<label class="m-cat" style="--dot:${c}"><input type="radio" name="cat" value="${k}" ${k === cat ? 'checked' : ''}><span>${n}</span></label>`).join('')}</div>
+    <input name="note" maxlength="80" placeholder="Заметка: что купил, где" value="${esc(x.note || '')}">`;
+}
+
+function pageBudget() {
+  const d = view.date;
+  if (!num(S.budget.amount)) return `<section class="page" style="--c:var(--money)">
+    ${topbar('Бюджет', 'сколько можно потратить сегодня', { date: false })}
+    <div class="grid">${card({ domain: 'money', title: 'Сколько у тебя на месяц?', span: 12, body: `<p class="hint" style="margin-top:0">Журнал разделит сумму на дни и каждый день будет показывать, сколько можно потратить. Потратил меньше — остаток перейдёт на следующие дни, перерасход — завтрашний лимит станет меньше.</p>
+      <form data-form="budget-set" class="form-stack">${budgetSetupForm()}<button class="btn btn-primary" style="--c:var(--money)" type="submit">${I.check}Начать</button></form>` })}</div>
+  </section>`;
+  const B = budgetDay(d), isToday = d === ymd(), kind = view.mKind || 'out';
+  const over = B.leftToday < 0, k = B.allow ? Math.min(1, B.today / B.allow) : (B.today ? 1 : 0);
+  const R = 62, C = 2 * Math.PI * R;
+  const ops = S.money.filter(x => x.date === d).sort((a, b) => String(b.time || '').localeCompare(String(a.time || '')));
+  const hero = `<div class="bud-hero ${over ? 'over' : ''}">
+      <div class="bud-ring"><svg viewBox="0 0 150 150" width="150" height="150" role="img" aria-label="Потрачено ${Math.round(k * 100)}% дневного лимита">
+        <circle cx="75" cy="75" r="${R}" class="ring-bg" stroke-width="14"/>
+        <circle cx="75" cy="75" r="${R}" fill="none" stroke="${over ? 'var(--bad)' : 'var(--money)'}" stroke-width="14" stroke-linecap="round" stroke-dasharray="${C}" stroke-dashoffset="${C * (1 - k)}" transform="rotate(-90 75 75)"/>
+      </svg><div class="bud-ring-c"><b>${Math.round(k * 100)}%</b><small>потрачено</small></div></div>
+      <div class="bud-main">
+        <div class="bud-k">${over ? 'Перерасход' : isToday ? 'Сегодня можно потратить' : d > ymd() ? 'В этот день можно будет' : 'В этот день оставалось'}</div>
+        <div class="bud-v">${over ? '−' : ''}${fmtM(Math.abs(B.leftToday))}</div>
+        <div class="bud-s">лимит дня ${fmtM(B.allow)} · потрачено ${fmtM(B.today)}</div>
+        ${B.tomorrow !== null ? `<div class="bud-tip">${over ? `Завтра на день будет ${fmtM(B.tomorrow)}` : B.tomorrow > B.allow + 0.005 ? `Если больше не тратить — завтра ${fmtM(B.tomorrow)}` : `Завтра — ${fmtM(B.tomorrow)}`}</div>` : '<div class="bud-tip">Последний день периода</div>'}
+      </div>
+      <div class="bud-side">
+        <div><span>Осталось в месяце</span><b class="${B.leftPeriod < 0 ? 'neg' : ''}">${fmtM(B.leftPeriod)}</b><small>из ${fmtM(B.total)}</small></div>
+        <div><span>До ${human(addDays(B.to, 1))}</span><b>${B.daysLeft} ${plural(B.daysLeft, 'день', 'дня', 'дней')}</b><small>${human(B.from)} — ${human(B.to)}</small></div>
+      </div>
+    </div>`;
+  const add = `<form data-form="money" class="m-form" data-kind="${kind}">
+      <div class="seg m-kind" role="tablist">${[['out', 'Расход'], ['in', 'Доход']].map(([v, n]) => `<button type="button" role="tab" class="${kind === v ? 'on' : ''}" data-action="m-kind" data-v="${v}">${n}</button>`).join('')}</div>
+      ${moneyFields()}
+      <button class="btn btn-primary btn-lg" style="--c:${kind === 'in' ? 'var(--gym)' : 'var(--money)'}" type="submit">${I.plus}${kind === 'in' ? 'Добавить доход' : 'Добавить расход'}</button>
+    </form>`;
+  const list = ops.length ? `<ul class="m-list">${ops.map(x => { const [, n, c] = mcat(x.kind, x.cat); return `<li class="m-row">
+      <i class="m-dot" style="--dot:${c}"></i>
+      <div class="m-txt"><b>${esc(x.note || n)}</b><span>${x.note ? n : ''}${x.note && x.time ? ' · ' : ''}${esc(x.time || '')}</span></div>
+      <b class="m-sum ${x.kind === 'in' ? 'in' : ''}">${x.kind === 'in' ? '+' : '−'}${fmtM(x.amount)}</b>
+      <button class="icon-btn" data-action="m-edit" data-id="${x.id}" aria-label="Изменить">${I.edit}</button>
+      <button class="icon-btn" data-action="m-del" data-id="${x.id}" aria-label="Удалить">${I.trash}</button>
+    </li>`; }).join('')}</ul>` : empty(isToday ? 'Сегодня трат ещё нет' : 'В этот день записей нет');
+  // разбор периода
+  const days = []; for (let x = B.from; x <= B.to; x = addDays(x, 1)) days.push(x);
+  const daily = days.map(x => ({ label: parseYmd(x).getDate(), v: msum(B.outs.filter(o => o.date === x)), hint: `${human(x)}: ${fmtM(msum(B.outs.filter(o => o.date === x)))}`, empty: x > ymd() }));
+  const byCat = MONEY_CATS.out.map(([k, n, c]) => ({ k, n, color: c, v: msum(B.outs.filter(o => (mcat('out', o.cat)[0]) === k)) })).filter(x => x.v > 0).sort((a, b) => b.v - a.v);
+  const cats = byCat.length ? `<div class="m-cat-wrap">${donut(byCat, 150, `<b>${fmtM(B.spent)}</b><small>за месяц</small>`, (s, p) => `${s.n}: ${fmtM(s.v)} (${Math.round(p * 100)}%)`)}
+      <ul class="m-cat-list">${byCat.map(x => `<li><i class="m-dot" style="--dot:${x.color}"></i><span>${x.n}</span><b>${fmtM(x.v)}</b><em>${Math.round(x.v / B.spent * 100)}%</em></li>`).join('')}</ul></div>` : empty('Траты за месяц появятся здесь');
+  const passed = Math.max(1, Math.min(B.days, diffDays(B.from, ymd()) + 1));
+  let i = 0;
+  return `<section class="page page-budget" style="--c:var(--money)">
+    ${topbar('Бюджет', `${human(B.from)} — ${human(B.to)}`, { actions: `<button class="btn btn-ghost btn-sm" data-action="budget-settings">${I.settings}Настроить</button>` })}
+    ${hero}
+    <div class="grid">
+      ${card({ domain: 'money', title: 'Записать', span: 5, i: i++, body: add })}
+      ${card({ domain: 'money', title: isToday ? 'Сегодня' : human(d), span: 7, i: i++, body: list, action: ops.length ? `<span class="chip">${ops.length} ${plural(ops.length, 'запись', 'записи', 'записей')}</span>` : '' })}
+      ${card({ domain: 'money', title: 'По дням', span: 7, i: i++, body: barChart(daily, { color: 'var(--money)', target: Math.round(B.base), unit: CUR(), labelEvery: 5 }) + `<p class="hint">Линия — ровный лимит ${fmtM(B.base)} в день. В среднем тратишь ${fmtM(msum(B.outs.filter(o => o.date <= ymd())) / passed)} в день.</p>` })}
+      ${card({ domain: 'money', title: 'Куда уходят деньги', span: 5, i: i++, body: cats })}
+    </div>
+  </section>`;
+}
+
+/* ============================================================
    ЦЕЛЬ: профиль, план и прогноз
    ============================================================ */
 function mondayOf(d) { return addDays(d, -((parseYmd(d).getDay() + 6) % 7)); }
@@ -2639,6 +2756,13 @@ function toast(msg, err = false) {
    ДЕЙСТВИЯ
    ============================================================ */
 const ACTIONS = {
+  'm-kind': el => { view.mKind = el.dataset.v; render(); $('.m-form [name=amount]')?.focus(); },
+  'm-edit': el => {
+    const x = S.money.find(m => m.id === el.dataset.id); if (!x) return;
+    openModal({ title: x.kind === 'in' ? 'Доход' : 'Расход', accent: 'var(--money)', form: 'money', body: `<div class="m-form">${moneyFields(x)}</div>` });
+  },
+  'm-del': el => { const x = S.money.find(m => m.id === el.dataset.id); if (x) removeItems('money', m => m.id === x.id, `${x.kind === 'in' ? 'Доход' : 'Расход'} ${fmtM(x.amount)} удалён`); },
+  'budget-settings': () => openModal({ title: 'Бюджет', accent: 'var(--money)', form: 'budget-set', body: budgetSetupForm() }),
   'date': el => { view.date = addDays(view.date, +el.dataset.n); view.calMonth = null; render(); },
   'date-today': () => { view.date = ymd(); view.calMonth = null; render(); },
   'cal-month': el => { const [y, m] = (view.calMonth || view.date.slice(0, 7)).split('-').map(Number); const dt = new Date(y, m - 1 + +el.dataset.n, 1); view.calMonth = `${dt.getFullYear()}-${z(dt.getMonth() + 1)}`; render(); },
@@ -2824,6 +2948,23 @@ const ACTIONS = {
 };
 
 const FORMS = {
+  'budget-set'(fd) {
+    const amount = parseAmount(fd.get('amount'));
+    if (amount <= 0) { toast('Введи сумму на месяц', true); return; }
+    S.budget = { amount, start: Math.min(28, Math.max(1, +fd.get('start') || 1)), save: Math.max(0, parseAmount(fd.get('save'))), cur: String(fd.get('cur') || '₼').slice(0, 3) };
+    save(); closeModal(); render(); toast(`Сегодня можно ${fmtM(budgetDay(ymd()).leftToday)}`);
+  },
+  money(fd) {
+    const amount = parseAmount(fd.get('amount'));
+    if (amount <= 0) { toast('Введи сумму', true); return; }
+    const old = fd.get('id'), id = old || uid(), kind = fd.get('kind') === 'in' ? 'in' : 'out';
+    const x = { id, date: fd.get('date') || view.date, time: old ? String(fd.get('time') || '') : (view.date === ymd() ? nowHM() : ''), kind, cat: mcat(kind, fd.get('cat'))[0], amount, note: String(fd.get('note') || '').trim().slice(0, 80) };
+    const idx = S.money.findIndex(m => m.id === id);
+    if (idx >= 0) S.money[idx] = x; else S.money.push(x);
+    save(); if (old) closeModal(); render();
+    if (old) toast('Сохранено');
+    else { const B = budgetDay(x.date); toast(kind === 'in' ? `+${fmtM(amount)} к бюджету месяца` : B.leftToday >= 0 ? `Осталось на сегодня ${fmtM(B.leftToday)}` : `Перерасход ${fmtM(-B.leftToday)} — завтра ${fmtM(B.tomorrow ?? 0)}`); $('.m-form [name=amount]')?.focus(); }
+  },
   meal(fd) {
     const id = fd.get('id') || uid();
     const m = { id, date: fd.get('date') || view.date, time: fd.get('time') || '', name: String(fd.get('name')).trim(), kcal: num(fd.get('kcal')), p: num(fd.get('p')), f: num(fd.get('f')), c: num(fd.get('c')) };
