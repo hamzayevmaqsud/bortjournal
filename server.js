@@ -20,7 +20,7 @@ const USERS_FILE = path.join(DATA, 'users.json');
 const SESSIONS_FILE = path.join(DATA, 'sessions.json');
 const SESSION_DAYS = 90;
 const MAX_BODY = 10 * 1024 * 1024;
-const STATIC = { '/': 'index.html', '/index.html': 'index.html', '/app.js': 'app.js', '/styles.css': 'styles.css' };
+const STATIC = { '/': 'index.html', '/index.html': 'index.html', '/app.js': 'app.js', '/styles.css': 'styles.css', '/plan.js': 'plan.js' };
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8' };
 
 fs.mkdirSync(STATE_DIR, { recursive: true });

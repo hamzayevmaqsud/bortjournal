@@ -514,6 +514,58 @@ details.theses li{margin:3px 0}
 .account-pw input::placeholder{color:rgba(251,244,230,.5)}
 .account-pw input:focus{border-color:var(--orange)}
 
+/* ---------- анкета ---------- */
+.setup-mode .tabs,.setup-mode #quiz-badge{display:none}
+.setup-mode .main{padding-bottom:48px}
+.wiz{max-width:760px;margin:0 auto;padding-top:56px}
+.wiz-steps{display:flex;gap:6px;margin:0 0 16px}
+.wiz-steps i{flex:1;height:6px;border-radius:3px;background:var(--ink-3)}
+.wiz-steps i.done{background:var(--navy)}
+.wiz-steps i.cur{background:var(--orange)}
+.wiz-card{--c:var(--orange);background:var(--ink-1);border-radius:28px;padding:28px 30px 24px;display:flex;flex-direction:column;gap:16px}
+.wiz-kicker{font:700 11px var(--sans);letter-spacing:.16em;text-transform:uppercase;color:var(--paper-2)}
+.wiz-title{margin:-8px 0 0;font:800 clamp(28px,4vw,36px)/1.05 var(--display);letter-spacing:-.02em}
+.wiz-lead{margin:-6px 0 4px;color:var(--paper-2);max-width:60ch}
+.wiz-sub{margin:8px 0 -4px;font:700 11px var(--sans);letter-spacing:.16em;text-transform:uppercase;color:var(--paper-2)}
+.wiz-live{margin:0;padding:14px 16px;border-radius:16px;background:var(--peach);color:var(--brick);font-size:14px;line-height:1.5}
+.wiz-live:empty{display:none}
+.wiz-live b{color:var(--brick)}
+.wiz-foot{display:flex;align-items:center;gap:10px;margin-top:4px}
+.wiz-foot .spacer{flex:1}
+.wiz-foot .btn-primary{padding:12px 20px}
+.wiz .kpis{margin:0}
+
+.opts{display:grid;gap:8px}
+.opts-2{grid-template-columns:1fr 1fr}
+.opts-3{grid-template-columns:repeat(3,1fr)}
+.opt{
+  position:relative;appearance:none;cursor:pointer;text-align:left;
+  display:flex;flex-direction:column;gap:4px;padding:14px 16px;border-radius:18px;
+  background:var(--ink-2);border:2px solid var(--line);color:var(--paper);
+  font:inherit;transition:border-color .2s,background .2s,transform .15s var(--ease);
+}
+.opt:hover{border-color:var(--line-2)}
+.opt:active{transform:scale(.99)}
+.opt b{font-size:15px;font-weight:700}
+.opt span{font-size:12px;color:var(--paper-2);line-height:1.4}
+.opt.on,.opt:has(input:checked){border-color:var(--orange);background:var(--peach)}
+.opt.on span,.opt:has(input:checked) span{color:var(--brick)}
+.opt input{position:absolute;opacity:0;pointer-events:none}
+.opt:has(input:focus-visible){outline:2px solid var(--orange);outline-offset:2px}
+
+/* ---------- цель ---------- */
+.chip-goal{background:var(--navy);border-color:var(--navy);color:var(--cream);font-weight:700;padding:8px 14px;text-decoration:none}
+.chip-goal svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:2}
+.goal-cmp{margin:12px 0 0;font-weight:700;font-size:14px}
+.goal-lines{margin:12px 0 0;padding-left:18px;display:flex;flex-direction:column;gap:7px;font-size:13.5px;line-height:1.5;color:var(--paper-2)}
+.goal-lines b{color:var(--paper)}
+.tile .goal-lines{color:var(--tile-fg-2)}
+.tile .goal-lines b,.tile .goal-cmp{color:var(--tile-fg)}
+.goal-how{font-size:14px}
+.hint a{color:var(--orange)}
+.seg-wrap{flex-wrap:wrap;border-radius:18px}
+.kpi-val{overflow-wrap:anywhere}
+
 /* ---------- модалка ---------- */
 #modal-root:empty{display:none}
 .overlay{
@@ -591,6 +643,9 @@ details.theses li{margin:3px 0}
   .datenav-cur{min-width:0}
   .hbar{grid-template-columns:90px 1fr auto}
   .auth{grid-template-columns:1fr;padding-top:36px;min-height:0}
+  .wiz{padding-top:44px}
+  .wiz-card{padding:22px 18px 20px;border-radius:24px}
+  .opts-3{grid-template-columns:1fr}
   .auth-hero{min-height:240px;padding:28px 24px}
   .account-pw input{flex:1 1 140px;width:auto}
 }

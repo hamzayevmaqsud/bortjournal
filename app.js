@@ -8,7 +8,8 @@
 const KEY = 'bortjournal.v1'; // старое хранилище браузера, нужно только для переноса
 const DEF = {
   settings: { kcal: 2200, protein: 140, steps: 10000, study: 60, apiKey: '', aiAuto: false, name: '' },
-  meals: [], study: [], workouts: [], days: {}, srs: {}, quizzes: {}, foods: {}
+  meals: [], study: [], workouts: [], days: {}, srs: {}, quizzes: {}, foods: {},
+  profile: null, activity: {}
 };
 let S = structuredClone(DEF);
 let me = null, rev = 0;
@@ -66,7 +67,8 @@ document.addEventListener('visibilitychange', async () => {
   if (dirty || saving || $('#modal-root .overlay') || (a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName))) return;
   try {
     const r = await apiFetch('/api/state');
-    if (r.rev !== rev) { rev = r.rev; S = normalize(r.state); render(); }
+    if (r.rev !== rev && !view.wizard) { rev = r.rev; S = normalize(r.state); render(); }
+    maybeWeekly();
   } catch (e) { if (e.status === 401) showAuth('Сессия закончилась, войди снова.'); }
 });
 
@@ -150,13 +152,14 @@ const I = {
   eye: '<svg viewBox="0 0 24 24"><path d="M3 12s3.5-6 9-6 9 6 9 6-3.5 6-9 6-9-6-9-6z"/><circle cx="12" cy="12" r="2.5"/></svg>',
   download: '<svg viewBox="0 0 24 24"><path d="M12 4v11m-4-4l4 4 4-4M5 20h14"/></svg>',
   upload: '<svg viewBox="0 0 24 24"><path d="M12 15V4m-4 4l4-4 4 4M5 20h14"/></svg>',
+  goal: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r=".9"/></svg>',
   logout: '<svg viewBox="0 0 24 24"><path d="M15 4h3a2 2 0 012 2v12a2 2 0 01-2 2h-3M10 16l-4-4 4-4M6 12h10"/></svg>'
 };
 document.querySelectorAll('[data-ico]').forEach(el => { el.innerHTML = I[el.dataset.ico] || ''; });
 
 /* ---------- состояние представления ---------- */
 const view = { page: 'today', date: ymd(), range: 30, lastPage: null };
-const PAGES = ['today', 'food', 'study', 'quiz', 'gym', 'steps', 'stats', 'settings'];
+const PAGES = ['today', 'food', 'study', 'quiz', 'gym', 'steps', 'goal', 'stats', 'settings'];
 
 function route() {
   const h = location.hash.replace('#', '') || 'today';
@@ -170,8 +173,10 @@ window.addEventListener('hashchange', route);
    ============================================================ */
 function render() {
   if (!me) return;
+  document.body.classList.toggle('setup-mode', !!view.wizard);
+  if (view.wizard) { $('#main').innerHTML = pageWizard(); window.scrollTo({ top: 0, behavior: 'instant' }); return; }
   document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.page === view.page));
-  const pages = { today: pageToday, food: pageFood, study: pageStudy, quiz: pageQuiz, gym: pageGym, steps: pageSteps, stats: pageStats, settings: pageSettings };
+  const pages = { today: pageToday, food: pageFood, study: pageStudy, quiz: pageQuiz, gym: pageGym, steps: pageSteps, goal: pageGoal, stats: pageStats, settings: pageSettings };
   const y = window.scrollY;
   $('#main').innerHTML = pages[view.page]();
   afterRender();
@@ -312,6 +317,7 @@ function pageToday() {
       </div>
       <div class="hero-side">
         ${greet || d === ymd() ? `<div class="hero-greet">${greet || tod + '.'}</div>` : ''}
+        ${S.profile ? `<a class="chip chip-goal" href="#goal">${I.goal}${fmtN(set.kcal)} ккал · ${kgWeek(planNow().weeklyKg)}</a>` : ''}
         <span class="chip chip-flame">${I.flame}${sk ? `${sk} ${plural(sk, 'день', 'дня', 'дней')} подряд` : 'серия начнётся с первой записи'}</span>
       </div>
     </header>
@@ -775,6 +781,293 @@ function pageSteps() {
   </section>`;
 }
 
+
+/* ============================================================
+   ЦЕЛЬ: профиль, план и прогноз
+   ============================================================ */
+function mondayOf(d) { return addDays(d, -((parseYmd(d).getDay() + 6) % 7)); }
+function profileNow() {
+  const p = S.profile;
+  return { ...p, age: p.age + Math.max(0, Math.floor(diffDays(p.ageDate || ymd(), ymd()) / 365.25)) };
+}
+function weightSeries() {
+  return Object.keys(S.days).filter(d => num(S.days[d].weight)).sort().map(d => ({ d, v: num(S.days[d].weight) }));
+}
+function curWeight() { const w = weightSeries(); return w.length ? w[w.length - 1].v : num(S.profile?.weight); }
+function curLevel(d = ymd()) {
+  const m = mondayOf(d);
+  if (S.activity[m]) return S.activity[m];
+  const prev = Object.keys(S.activity).filter(k => k <= m).sort().pop();
+  return prev ? S.activity[prev] : 'sed';
+}
+function planNow() { return Plan.compute(profileNow(), curWeight(), curLevel()); }
+function applyGoals() { const c = planNow(); S.settings.kcal = c.kcal; S.settings.protein = c.protein; return c; }
+const fmt2 = n => n.toLocaleString('ru-RU', { maximumFractionDigits: 2 });
+const kgWeek = v => Math.abs(v) < 0.005 ? '±0 кг/нед' : `${v > 0 ? '+' : '−'}${fmt2(Math.abs(v))} кг/нед`;
+const kgDiff = v => Math.abs(v) < 0.05 ? '±0' : `${v > 0 ? '+' : '−'}${fmt1(Math.abs(v))}`;
+function etaText(weeks) {
+  if (weeks === null) return null;
+  const d = addDays(ymd(), Math.round(weeks * 7));
+  const w = Math.round(weeks);
+  return `${w < 1 ? 'меньше недели' : `${w} ${plural(w, 'неделя', 'недели', 'недель')}`}, примерно к ${humanLong(d)}`;
+}
+
+/* Факт за последние 4 недели: тренд веса и среднее съеденное */
+function factStats() {
+  const t = ymd(), start = addDays(t, -27);
+  const pts = weightSeries().filter(x => x.d >= start).map(x => ({ t: diffDays(start, x.d), v: x.v }));
+  const tr = Plan.trend(pts);
+  const days = rangeDays(27, addDays(t, -1)).filter(d => mealsOn(d).length);
+  const intake = days.length ? days.reduce((a, d) => a + sumMeals(mealsOn(d)).kcal, 0) / days.length : 0;
+  const nowT = diffDays(start, t);
+  return {
+    tr, start, nowT, intake, intakeDays: days.length,
+    weekly: tr ? tr.slope * 7 : 0,
+    now: tr ? tr.at(nowT) : null,
+    tdee: tr && days.length >= 10 ? Plan.factTdee(intake, tr.slope) : null
+  };
+}
+
+function planLines(p, w, lv, c) {
+  const sim = Plan.simulate(p, w, c.kcal, lv, 26), eta = Plan.weeksTo(p, w, c.kcal, lv, p.target);
+  const act = Plan.ACTIVITY[lv], lines = [];
+  lines.push(`Основной обмен <b>${fmtN(c.bmr)} ккал</b> — столько тело тратит в полном покое (${c.bfMeasured ? 'Katch–McArdle по твоему проценту жира' : 'формула Миффлина — Сан Жеора'}).`);
+  lines.push(`С активностью «${act.name}» (×${String(act.f).replace('.', ',')}) расход <b>${fmtN(c.tdee)} ккал</b> в день — при таких калориях вес стоит на месте.`);
+  if (p.goal === 'maintain') lines.push(`Цель <b>${fmtN(c.kcal)} ккал</b> — поддержка. Вес держится, а с силовыми и белком тело постепенно становится плотнее.`);
+  else {
+    const dd = Math.round(Math.abs(c.delta));
+    lines.push(`Цель <b>${fmtN(c.kcal)} ккал</b> = расход ${c.delta < 0 ? '−' : '+'} ${fmtN(dd)}. Без дополнительной активности это <b>${kgWeek(c.weeklyKg)}</b>, около ${kgDiff(c.weeklyKg * 30 / 7)} кг в месяц.`);
+    lines.push(`Прогноз: через 4 недели ≈ <b>${fmt1(sim[4])} кг</b>, через 12 — ≈ <b>${fmt1(sim[12])} кг</b>, через полгода — ≈ <b>${fmt1(sim[26])} кг</b>. Темп постепенно снижается: чем меньше вес, тем меньше расход.`);
+  }
+  if (p.target) {
+    const e = etaText(eta);
+    lines.push(e ? `До цели <b>${fmt1(p.target)} кг</b>: ${e}.` : `До <b>${fmt1(p.target)} кг</b> при этих калориях не дойти — вес выйдет на плато раньше. Цель пересчитается, когда вес изменится.`);
+  }
+  lines.push(`Белок <b>${c.protein} г</b> (≈2 г на кг безжировой массы — ${fmt1(c.lbm)} кг при жире ≈${Math.round(c.bf)}%${c.bfMeasured ? '' : ', оценка по ИМТ'}), жиры ${c.fat} г, углеводы ${c.carbs} г.`);
+  if (p.goal === 'gain') lines.push(`Реально нарастить ≈ <b>${fmt1(c.muscleMonth)} кг мышц в месяц</b> при твоём стаже. Если вес растёт заметно быстрее, лишнее уходит в жир — тогда профицит стоит уменьшить.`);
+  if (p.goal === 'lose' && p.experience === 'new') lines.push('Новичку на силовых с таким белком реально не только сохранить, но и немного нарастить мышцы на дефиците.');
+  c.notes.forEach(n => lines.push(n));
+  return { sim, eta, lines };
+}
+
+function forecastChart(series) {
+  const all = series.flatMap(s => s.pts);
+  if (all.length < 2) return empty('Запиши вес хотя бы пару раз, и здесь появится график.');
+  const W = 1000, H = 300, pt = 22, pb = 28, pl = 40, pr = 12;
+  const d0 = all.reduce((a, x) => x.d < a ? x.d : a, all[0].d), d1 = all.reduce((a, x) => x.d > a ? x.d : a, all[0].d);
+  const span = Math.max(1, diffDays(d0, d1));
+  const vals = all.map(x => x.v), lo = Math.min(...vals) - 0.5, hi = Math.max(...vals) + 0.5;
+  const x = d => pl + (W - pl - pr) * diffDays(d0, d) / span, y = v => pt + (H - pt - pb) * (1 - (v - lo) / (hi - lo));
+  const path = pts => pts.map((p, i) => `${i ? 'L' : 'M'}${x(p.d).toFixed(1)},${y(p.v).toFixed(1)}`).join(' ');
+  const t = ymd(), tx = x(t);
+  const grid = [hi - 0.5, (hi + lo) / 2, lo + 0.5].map(v => `<line x1="${pl}" x2="${W - pr}" y1="${y(v).toFixed(1)}" y2="${y(v).toFixed(1)}" stroke="var(--line)"/><text x="${pl - 6}" y="${(y(v) + 3).toFixed(1)}" text-anchor="end">${fmt1(v)}</text>`).join('');
+  const lines = series.map(s => s.pts.length < 2 && !s.dots ? '' :
+    `<path d="${path(s.pts)}" fill="none" stroke="${s.color}" stroke-width="${s.w || 2.5}" ${s.dash ? `stroke-dasharray="${s.dash}"` : ''} stroke-linecap="round" stroke-linejoin="round"/>` +
+    (s.dots ? s.pts.map(p => `<circle cx="${x(p.d).toFixed(1)}" cy="${y(p.v).toFixed(1)}" r="3.2" fill="${s.color}"><title>${human(p.d)}: ${fmt1(p.v)} кг</title></circle>`).join('') : '')).join('');
+  const now = t >= d0 && t <= d1 ? `<line x1="${tx.toFixed(1)}" x2="${tx.toFixed(1)}" y1="${pt}" y2="${H - pb}" stroke="var(--paper-3)" stroke-dasharray="2 4"/><text x="${tx.toFixed(1)}" y="${pt - 4}" text-anchor="middle">сегодня</text>` : '';
+  return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Вес и прогноз">${grid}${now}${lines}
+    <text x="${pl}" y="${H - 6}">${human(d0)}</text><text x="${W - pr}" y="${H - 6}" text-anchor="end">${human(d1)}</text></svg>
+    <div class="heat-legend">${series.filter(s => s.pts.length).map(s => `<span><i style="background:${s.color}"></i>${s.name}</span>`).join('')}</div>`;
+}
+
+function pageGoal() {
+  if (!S.profile) return `<section class="page">${topbar('Цель', 'план и прогноз', { date: false })}
+    <div class="quiz-empty"><b>План ещё не составлен.</b> Ответь на пару вопросов о себе, и журнал посчитает калории, белок и прогноз веса.
+    <div class="btns"><button class="btn btn-accent" data-action="edit-profile">${I.goal}Составить план</button></div></div></section>`;
+  const p = profileNow(), w = curWeight(), lv = curLevel(), c = Plan.compute(p, w, lv), g = Plan.GOALS[p.goal];
+  const { sim, lines } = planLines(p, w, lv, c);
+  const f = factStats(), t = ymd();
+  let i = 0;
+
+  // факт
+  let factBody;
+  if (f.tr) {
+    const proj4 = f.now + f.weekly * 4, proj12 = f.now + f.weekly * 12;
+    const etaF = p.target && f.weekly && Math.sign(p.target - f.now) === Math.sign(f.weekly) ? etaText((p.target - f.now) / f.weekly) : null;
+    const cmp = p.goal === 'maintain' ? (Math.abs(f.weekly) < 0.15 ? 'Вес держится — как и задумано.' : `Вес ${f.weekly > 0 ? 'растёт' : 'снижается'}, хотя цель — держать. Поправь калории.`)
+      : Math.abs(c.weeklyKg) < 0.01 ? '' : (() => {
+        const r = f.weekly / c.weeklyKg;
+        if (r < 0) return p.goal === 'lose' ? 'Вес пока растёт, а не снижается. Проверь, всё ли съеденное записано.' : 'Вес пока снижается, а не растёт. Нужно есть больше.';
+        if (r < 0.7) return `Идёшь медленнее плана (${Math.round(r * 100)}% от расчёта).`;
+        if (r > 1.4) return p.goal === 'lose' ? `Худеешь быстрее плана (${Math.round(r * 100)}%). Следи, чтобы не уходили мышцы.` : `Набираешь быстрее плана (${Math.round(r * 100)}%) — часть уходит в жир.`;
+        return 'Идёшь по плану.';
+      })();
+    const muscle = p.goal === 'gain' && f.weekly > 0 ? `<p class="hint">За месяц ≈ +${fmt1(f.weekly * 30 / 7)} кг, из них мышц реально до ${fmt1(Math.min(c.muscleMonth, f.weekly * 30 / 7))} кг.</p>` : '';
+    factBody = `<div class="big"><b>${kgWeek(f.weekly).replace(' кг/нед', '')}</b><small>кг в неделю по тренду</small></div>
+      <p class="goal-cmp">${cmp}</p>
+      <ul class="goal-lines">
+        <li>Сейчас по тренду ≈ <b>${fmt1(f.now)} кг</b> (${f.tr.n} ${plural(f.tr.n, 'замер', 'замера', 'замеров')} за ${f.tr.span} дн.).</li>
+        <li>Если так пойдёт дальше: через 4 недели ≈ <b>${fmt1(proj4)} кг</b>, через 12 — ≈ <b>${fmt1(proj12)} кг</b>.</li>
+        ${etaF ? `<li>До ${fmt1(p.target)} кг: ${etaF}.</li>` : ''}
+        ${f.intakeDays ? `<li>В среднем съедено <b>${fmtN(f.intake)} ккал</b> (еда записана ${f.intakeDays} из 27 дней).</li>` : '<li>Еда за последние недели не записана — без неё не понять, сколько ты реально тратишь.</li>'}
+        ${f.tdee ? `<li>Твой реальный расход ≈ <b>${fmtN(f.tdee)} ккал</b> (по расчёту ${fmtN(c.tdee)}).${Math.abs(f.tdee - c.tdee) > 200 ? ` Чтобы идти по плану, ешь ≈ ${fmtN(Math.round((f.tdee + c.delta) / 10) * 10)} ккал.` : ''}</li>` : ''}
+      </ul>${muscle}`;
+  } else {
+    const n = weightSeries().filter(x => x.d >= f.start).length;
+    factBody = `<p class="goal-cmp">Пока мало данных.</p><ul class="goal-lines">
+      <li>Нужно минимум 3 замера веса за 7+ дней — сейчас ${n}. Взвешивайся утром натощак, 2–3 раза в неделю.</li>
+      <li>Записывай еду: по съеденному и динамике веса журнал посчитает твой настоящий расход и поправит прогноз.</li></ul>`;
+  }
+
+  // график: история, план от старта, факт вперёд
+  const start = S.profile.start || t;
+  const hist = weightSeries().filter(x => x.d >= addDays(t, -120));
+  const planSim = Plan.simulate(p, S.profile.startWeight || w, c.kcal, lv, Math.max(12, Math.ceil(diffDays(start, t) / 7) + 8));
+  const planPts = planSim.map((v, k) => ({ d: addDays(start, k * 7), v })).filter(x => x.d <= addDays(t, 56));
+  const factPts = f.tr ? [{ d: t, v: f.now }, { d: addDays(t, 56), v: f.now + f.weekly * 8 }] : [];
+  const chart = forecastChart([
+    { name: 'план', pts: p.goal === 'maintain' ? [] : planPts, color: 'var(--orange)', dash: '6 6', w: 2 },
+    { name: 'тренд дальше', pts: factPts, color: 'var(--gym)', dash: '2 5', w: 3 },
+    { name: 'вес', pts: hist, color: 'var(--navy)', dots: true }
+  ]);
+
+  return `<section class="page" style="--c:var(--orange)">
+    ${topbar('Цель', `${g.name.toLowerCase()}${p.target ? ` · ${fmt1(p.target)} кг` : ''}`, { date: false, actions: `<button class="btn" data-action="edit-profile">${I.edit}Изменить данные</button>` })}
+    <div class="kpis">
+      ${kpi('Калории в день', fmtN(c.kcal), 'paper', i++, `поддержка ${fmtN(c.tdee)}`)}
+      ${kpi('Белок', `${c.protein}<small>г</small>`, 'food', i++, `жиры ${c.fat} · углеводы ${c.carbs}`)}
+      ${kpi('Темп по плану', kgWeek(c.weeklyKg).replace(' кг/нед', '') + '<small>кг/нед</small>', 'gym', i++, p.goal === 'maintain' ? 'держим вес' : `${Plan.PACE[p.goal][p.pace].name.toLowerCase()} темп`)}
+      ${kpi('Вес сейчас', `${fmt1(w)}<small>кг</small>`, 'quiz', i++, S.profile.startWeight ? `старт ${fmt1(S.profile.startWeight)} · ${kgDiff(w - S.profile.startWeight)} кг` : '')}
+    </div>
+    <div class="grid">
+      ${card({ domain: 'food', title: 'План', span: 6, i: i++, cls: 'tile tile-orange', body: `${p.goal === 'maintain' ? `<div class="big"><b>${fmt1(w)}</b><small>кг держим</small></div>` : `<div class="big"><b>${fmt1(sim[12])}</b><small>кг через 12 недель</small></div>`}<ul class="goal-lines">${lines.slice(2, p.target ? 5 : 4).map(l => `<li>${l}</li>`).join('')}</ul>` })}
+      ${card({ domain: 'study', title: 'По факту', span: 6, i: i++, cls: 'tile tile-navy', body: factBody })}
+      ${card({ domain: 'paper', title: 'Вес и прогноз', span: 12, i: i++, body: chart })}
+      ${card({ domain: 'gym', title: 'Активность на этой неделе', span: 6, i: i++, body: `<div class="seg seg-wrap">${Object.entries(Plan.ACTIVITY).map(([k, a]) => `<button class="${k === lv ? 'on' : ''}" data-action="set-level" data-v="${k}">${a.name}</button>`).join('')}</div>
+        <p class="hint">${Plan.ACTIVITY[lv].hint}. Неделя с ${human(mondayOf(t))}; в понедельник спрошу снова.</p>` })}
+      ${card({ domain: 'paper', title: 'Профиль', span: 6, i: i++, body: `<div class="chips">
+        <span class="chip"><b>${p.sex === 'm' ? 'Мужчина' : 'Женщина'}</b></span><span class="chip"><b>${p.age}</b> лет</span><span class="chip"><b>${p.height}</b> см</span>
+        <span class="chip">ИМТ <b>${fmt1(c.bmi)}</b></span><span class="chip">жир <b>${Math.round(c.bf)}%</b>${c.bfMeasured ? '' : ' (оценка)'}</span>
+        <span class="chip">${Plan.BUILD[p.build].name}</span><span class="chip">стаж: ${Plan.EXPERIENCE[p.experience].name.toLowerCase()}</span></div>` })}
+      ${card({ domain: 'paper', title: 'Как считается', span: 12, i: i++, body: `<ul class="goal-lines goal-how">${lines.map(l => `<li>${l}</li>`).join('')}</ul>
+        <p class="hint">Это оценка: формулы ошибаются на ±10% для конкретного человека. Поэтому через 2–4 недели записей журнал сверяет план с фактом и показывает твой реальный расход.
+        Источники: <a href="https://pubmed.ncbi.nlm.nih.gov/15883556/" target="_blank" rel="noopener">Frankenfield 2005 (точность формул обмена)</a>,
+        <a href="https://pmc.ncbi.nlm.nih.gov/articles/PMC3859816/" target="_blank" rel="noopener">Hall и Chow 2013 (почему 7700 ккал/кг работает только в начале)</a>,
+        <a href="https://pmc.ncbi.nlm.nih.gov/articles/PMC5477153/" target="_blank" rel="noopener">ISSN 2017 (белок)</a>.</p>` })}
+    </div>
+  </section>`;
+}
+
+/* ---------- анкета ---------- */
+const WIZ = ['about', 'body', 'activity', 'goal', 'result'];
+function startWizard(edit = false) {
+  const p = S.profile ? profileNow() : null;
+  view.wizard = {
+    step: 0, edit, err: '',
+    d: p ? { sex: p.sex, age: p.age, height: p.height, weight: curWeight(), build: p.build, bodyFat: p.bodyFat || '', experience: p.experience, level: curLevel(), goal: p.goal, pace: p.pace, target: p.target || '' }
+         : { sex: 'm', age: '', height: '', weight: '', build: 'mid', bodyFat: '', experience: 'new', level: 'sed', goal: 'lose', pace: 'mid', target: '' }
+  };
+  closeModal(); render();
+}
+function wizProfile(d) {
+  return { sex: d.sex, age: num(d.age), height: num(d.height), build: d.build, bodyFat: num(d.bodyFat) || null, experience: d.experience, goal: d.goal, pace: d.pace, target: d.goal === 'maintain' ? null : num(d.target) || null };
+}
+function wizCheck(step, d) {
+  if (step === 'about') {
+    if (!(num(d.age) >= 14 && num(d.age) <= 90)) return 'Возраст — от 14 до 90 лет.';
+    if (!(num(d.height) >= 120 && num(d.height) <= 230)) return 'Рост — в сантиметрах, от 120 до 230.';
+    if (!(num(d.weight) >= 35 && num(d.weight) <= 300)) return 'Вес — в килограммах, от 35 до 300.';
+  }
+  if (step === 'body' && d.bodyFat !== '' && !(num(d.bodyFat) >= 4 && num(d.bodyFat) <= 60)) return 'Процент жира — от 4 до 60, или оставь пустым.';
+  if (step === 'goal' && num(d.target)) {
+    const t = num(d.target), w = num(d.weight);
+    if (d.goal === 'lose' && t >= w) return 'Для похудения желаемый вес должен быть меньше текущего.';
+    if (d.goal === 'gain' && t <= w) return 'Для набора желаемый вес должен быть больше текущего.';
+    if (Plan.bmi(t, num(d.height)) < 17) return 'Такой вес ниже здоровой нормы для твоего роста. Выбери цель повыше.';
+  }
+  return '';
+}
+function opt(key, val, cur, title, hint = '') {
+  return `<button type="button" class="opt ${String(cur) === String(val) ? 'on' : ''}" data-action="wiz-set" data-k="${key}" data-v="${val}"><b>${title}</b>${hint ? `<span>${hint}</span>` : ''}</button>`;
+}
+function wizLive() {
+  const w = view.wizard, d = w.d, p = wizProfile(d), wt = num(d.weight);
+  if (!p.age || !p.height || !wt) return '';
+  const c = Plan.compute(p, wt, d.level);
+  const eta = p.target ? etaText(Plan.weeksTo(p, wt, c.kcal, d.level, p.target)) : null;
+  return `≈ <b>${fmtN(c.kcal)} ккал</b> в день · <b>${kgWeek(c.weeklyKg)}</b>${p.target ? (eta ? ` · до ${fmt1(p.target)} кг: ${eta}` : ` · до ${fmt1(p.target)} кг при этом темпе не дойти`) : ''}`;
+}
+function pageWizard() {
+  const w = view.wizard, d = w.d, step = WIZ[w.step];
+  const inp = (k, ph, extra = '') => `<input data-wiz="${k}" type="number" inputmode="decimal" step="any" value="${esc(d[k])}" placeholder="${ph}" ${extra}>`;
+  let head = '', body = '';
+  if (step === 'about') {
+    head = ['Расскажи о себе', 'По полу, возрасту, росту и весу считается обмен веществ.'];
+    body = `<div class="opts opts-2">${opt('sex', 'm', d.sex, 'Мужчина')}${opt('sex', 'f', d.sex, 'Женщина')}</div>
+      <div class="row">${field('Возраст', inp('age', 'лет'))}${field('Рост, см', inp('height', 'см'))}${field('Вес, кг', inp('weight', 'кг'))}</div>`;
+  } else if (step === 'body') {
+    head = ['Какое у тебя тело', 'От этого зависят белок и то, сколько мышц реально нарастить.'];
+    body = `<div class="opts opts-3">${Object.entries(Plan.BUILD).map(([k, b]) => opt('build', k, d.build, b.name, b.hint)).join('')}</div>
+      ${field('Процент жира, если знаешь', inp('bodyFat', 'например 28 — с весов-анализатора или замера'))}
+      <h3 class="wiz-sub">Опыт силовых тренировок</h3>
+      <div class="opts opts-3">${Object.entries(Plan.EXPERIENCE).map(([k, e]) => opt('experience', k, d.experience, e.name, e.hint)).join('')}</div>`;
+  } else if (step === 'activity') {
+    head = ['Активность на этой неделе', 'Буду спрашивать каждый понедельник: от неё зависят калории на неделю.'];
+    body = `<div class="opts">${Object.entries(Plan.ACTIVITY).map(([k, a]) => opt('level', k, d.level, a.name, a.hint)).join('')}</div>`;
+  } else if (step === 'goal') {
+    head = ['Чего хочешь добиться', 'Темп можно поменять в любой момент.'];
+    const p = wizProfile(d), wt = num(d.weight);
+    const pace = d.goal === 'maintain' ? '' : `<h3 class="wiz-sub">Темп</h3><div class="opts opts-3">${Object.entries(Plan.PACE[d.goal]).map(([k, x]) => {
+      const c = Plan.compute({ ...p, pace: k }, wt, d.level);
+      return opt('pace', k, d.pace, x.name, `${d.goal === 'lose' ? '−' : '+'}${x.kcal} ккал в день · ${kgWeek(c.weeklyKg)}`);
+    }).join('')}</div>
+      ${field('Желаемый вес, кг (необязательно)', inp('target', d.goal === 'lose' ? 'например ' + Math.round(wt * 0.85) : 'например ' + Math.round(wt * 1.05)))}`;
+    body = `<div class="opts opts-3">${Object.entries(Plan.GOALS).map(([k, g]) => opt('goal', k, d.goal, g.name, g.hint)).join('')}</div>${pace}
+      <p class="wiz-live" id="wiz-live">${wizLive()}</p>`;
+  } else {
+    const p = { ...wizProfile(d) }, wt = num(d.weight), c = Plan.compute(p, wt, d.level);
+    const { lines } = planLines(p, wt, d.level, c);
+    head = ['Твой план', 'Посчитано по формулам, которые точнее всего на больших выборках. Через пару недель записей журнал сверит план с фактом.'];
+    body = `<div class="kpis">
+        ${kpi('Калории в день', fmtN(c.kcal), 'paper', 0, `поддержка ${fmtN(c.tdee)}`)}
+        ${kpi('Белок', `${c.protein}<small>г</small>`, 'food', 1, `жиры ${c.fat} · углеводы ${c.carbs}`)}
+        ${kpi('Темп', kgWeek(c.weeklyKg).replace(' кг/нед', '') + '<small>кг/нед</small>', 'gym', 2, d.goal === 'maintain' ? 'держим вес' : 'без доп. активности')}
+      </div><ul class="goal-lines goal-how">${lines.map(l => `<li>${l}</li>`).join('')}</ul>`;
+  }
+  const last = w.step === WIZ.length - 1;
+  return `<section class="page wiz">
+    <div class="wiz-steps">${WIZ.map((_, k) => `<i class="${k < w.step ? 'done' : k === w.step ? 'cur' : ''}"></i>`).join('')}</div>
+    <div class="wiz-card">
+      <div class="wiz-kicker">Шаг ${w.step + 1} из ${WIZ.length}</div>
+      <h1 class="wiz-title">${head[0]}</h1><p class="wiz-lead">${head[1]}</p>
+      ${body}
+      <p class="auth-err" role="alert">${esc(w.err)}</p>
+      <div class="wiz-foot">
+        ${w.step ? `<button class="btn btn-ghost" data-action="wiz-back">${I.chevL}Назад</button>` : w.edit ? '<button class="btn btn-ghost" data-action="wiz-cancel">Отмена</button>' : ''}
+        <span class="spacer"></span>
+        <button class="btn btn-primary" data-action="${last ? 'wiz-finish' : 'wiz-next'}">${last ? (w.edit ? 'Сохранить план' : 'Начать журнал') : w.step === WIZ.length - 2 ? 'Посчитать план' : 'Дальше'}${last ? '' : I.chevR}</button>
+      </div>
+    </div>
+  </section>`;
+}
+function finishWizard() {
+  const d = view.wizard.d, t = ymd(), wt = num(d.weight);
+  const prev = S.profile;
+  const p = wizProfile(d);
+  const restart = !prev || prev.goal !== p.goal || prev.pace !== p.pace || prev.target !== p.target;
+  S.profile = { ...p, ageDate: t, weight: wt, start: restart ? t : prev.start, startWeight: restart ? wt : prev.startWeight };
+  S.activity[mondayOf(t)] = d.level;
+  S.days[t] = { ...dayRec(t), weight: wt };
+  const c = applyGoals();
+  view.wizard = null; save();
+  if (location.hash !== '#goal') location.hash = '#goal'; else render();
+  toast(`План готов: ${fmtN(c.kcal)} ккал и ${c.protein} г белка в день`);
+}
+
+/* ---------- еженедельный вопрос ---------- */
+function maybeWeekly() {
+  if (!S.profile || view.wizard || $('#modal-root .overlay')) return;
+  const m = mondayOf(ymd());
+  if (S.activity[m]) return;
+  const lv = curLevel();
+  openModal({
+    title: 'Новая неделя', accent: 'var(--orange)', form: 'week', submit: 'Обновить цели',
+    body: `<p class="hint" style="margin:0">Неделя с ${human(m)}. Какая активность будет? От неё зависят калории на неделю.</p>
+      <div class="opts">${Object.entries(Plan.ACTIVITY).map(([k, a]) => `<label class="opt"><input type="radio" name="level" value="${k}" ${k === lv ? 'checked' : ''}><b>${a.name}</b><span>${a.hint}</span></label>`).join('')}</div>
+      ${field('Вес сегодня, кг', `<input name="weight" type="number" step="0.1" min="35" max="300" inputmode="decimal" value="${num(dayRec(ymd()).weight) || ''}" placeholder="последний: ${fmt1(curWeight())}">`)}`
+  });
+}
+
 /* ============================================================
    СТАТИСТИКА
    ============================================================ */
@@ -907,6 +1200,7 @@ function pageSettings() {
         <button class="btn btn-accent" data-action="logout">${I.logout}Выйти</button>
       </div>` })}
       ${card({ domain: 'paper', title: 'Цели на день', span: 6, body: `<form data-form="settings" class="form-stack">
+        ${S.profile ? '<p class="hint" style="margin:0">Ккал и белок считаются по твоему плану и обновляются каждую неделю. Можно поправить вручную — до следующего пересчёта.</p>' : ''}
         ${field('Как к тебе обращаться', `<input name="name" placeholder="Имя (необязательно)" value="${esc(s.name)}">`)}
         <div class="row">
           ${field('Ккал', `<input name="kcal" type="number" min="500" step="50" value="${s.kcal}" style="--c:var(--food)">`)}
@@ -1007,7 +1301,14 @@ const ACTIONS = {
     try { await apiFetch('/api/logout', { method: 'POST', body: '{}' }); } catch { /* всё равно выходим */ }
     showAuth();
   },
-  'auth-mode': el => { authMode = el.dataset.mode; showAuth(); }
+  'auth-mode': el => { authMode = el.dataset.mode; showAuth(); },
+  'edit-profile': () => startWizard(!!S.profile),
+  'wiz-set': el => { const w = view.wizard; w.d[el.dataset.k] = el.dataset.v; w.err = ''; render(); },
+  'wiz-next': () => { const w = view.wizard; w.err = wizCheck(WIZ[w.step], w.d); if (!w.err) w.step++; render(); },
+  'wiz-back': () => { const w = view.wizard; w.err = ''; w.step--; render(); },
+  'wiz-cancel': () => { view.wizard = null; render(); },
+  'wiz-finish': () => finishWizard(),
+  'set-level': el => { S.activity[mondayOf(ymd())] = el.dataset.v; const c = applyGoals(); save(); render(); toast(`Цели на неделю: ${fmtN(c.kcal)} ккал, белок ${c.protein} г`); }
 };
 
 const FORMS = {
@@ -1051,6 +1352,13 @@ const FORMS = {
     S.settings.aiAuto = fd.get('aiAuto') === 'on';
     save(); toast(S.settings.apiKey ? 'Ключ сохранён' : 'Ключ удалён');
   },
+  week(fd) {
+    const t = ymd(), w = num(fd.get('weight'));
+    S.activity[mondayOf(t)] = String(fd.get('level') || curLevel());
+    if (w >= 35 && w <= 300) S.days[t] = { ...dayRec(t), weight: w };
+    const c = applyGoals(); save(); closeModal(); render();
+    toast(`Цели на неделю: ${fmtN(c.kcal)} ккал, белок ${c.protein} г`);
+  },
   async password(fd, f) {
     try {
       await apiFetch('/api/password', { method: 'POST', body: JSON.stringify({ current: fd.get('current'), next: fd.get('next') }) });
@@ -1081,6 +1389,10 @@ document.addEventListener('submit', e => {
 let noteTimer;
 document.addEventListener('input', e => {
   const t = e.target;
+  if (t.dataset.wiz && view.wizard) {
+    view.wizard.d[t.dataset.wiz] = t.value;
+    const live = $('#wiz-live'); if (live) live.innerHTML = wizLive();
+  }
   if (t.dataset.live === 'exercises') { const p = $('#ex-preview'); if (p) p.textContent = exPreview(t.value); }
   if (t.dataset.note !== undefined) {
     clearTimeout(noteTimer);
@@ -1120,7 +1432,8 @@ window.addEventListener('hashchange', () => {
    ============================================================ */
 let authMode = 'login';
 function showAuth(msg = '') {
-  me = null; rev = 0; dirty = false; clearTimeout(saveTimer); S = structuredClone(DEF);
+  me = null; rev = 0; dirty = false; clearTimeout(saveTimer); S = structuredClone(DEF); view.wizard = null;
+  document.body.classList.remove('setup-mode');
   document.body.classList.add('auth-mode');
   const reg = authMode === 'register';
   $('#main').innerHTML = `<section class="page auth">
@@ -1148,8 +1461,10 @@ async function loadState() {
   const r = await apiFetch('/api/state');
   rev = r.rev; S = normalize(r.state);
   document.body.classList.remove('auth-mode');
+  view.wizard = null;
   route();
   await migrateLocal();
+  if (!S.profile) startWizard(); else maybeWeekly();
 }
 // записи из старой версии (localStorage) один раз переносим в аккаунт
 async function migrateLocal() {
