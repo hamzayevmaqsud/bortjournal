@@ -31,3 +31,14 @@ export function budgetDay(day: string, settings: { amount: number; startDay: num
     tomorrow: daysLeft > 1 ? round(Math.max(0, (total - before - today) / (daysLeft - 1))) : null
   };
 }
+
+/** категории операций: ключ, название, цвет */
+export const MONEY_CATS: Record<'out' | 'in', Array<[key: string, name: string, color: string]>> = {
+  out: [['food', 'Продукты', '#D9622B'], ['cafe', 'Кафе', '#B5891E'], ['transport', 'Транспорт', '#4D7B78'], ['home', 'Дом и счета', '#2F3B4F'],
+    ['shop', 'Покупки', '#8E2F22'], ['health', 'Здоровье', '#3C5B38'], ['fun', 'Отдых', '#C0794F'], ['other', 'Другое', '#A19682']],
+  in: [['salary', 'Зарплата', '#3C5B38'], ['side', 'Подработка', '#4D7B78'], ['gift', 'Подарок', '#B5891E'], ['other', 'Другое', '#A19682']]
+};
+export const CURRENCIES = ['₼', '₽', '$', '€', '₸', '₺', '£'];
+export const moneyCat = (kind: string, key: string) => MONEY_CATS[kind === 'in' ? 'in' : 'out'].find(c => c[0] === key) ?? ['other', 'Другое', '#A19682'] as [string, string, string];
+/** «12,5+3» — как в калькуляторе */
+export const parseAmount = (v: unknown) => Math.round(String(v ?? '').split('+').reduce((a, x) => a + (Number(x.replace(',', '.').trim()) || 0), 0) * 100) / 100;

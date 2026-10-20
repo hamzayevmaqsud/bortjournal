@@ -1230,3 +1230,83 @@ button.meal:active{transform:scale(.98)}
 .gym-live .gl-top{margin:0}
 .gl-actions .primary,.gl-actions .ghost{display:inline-flex;align-items:center;justify-content:center;gap:6px;width:auto;padding:12px 18px}
 .gl-actions .primary .ic{width:18px;height:18px}
+
+/* ============ бюджет (из старого журнала, на новых токенах) ============ */
+.bud-hero{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:28px;padding:22px 26px;border-radius:var(--r3);background:var(--card)}
+.bud-ring{position:relative;width:150px;height:150px}
+.bud-ring svg circle{transition:stroke-dashoffset .8s var(--ease)}
+.bud-ring-c{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.bud-ring-c b{font:800 26px var(--display)}
+.bud-ring-c small{font-size:11px;color:var(--text-2);font-weight:600}
+.bud-k{font:700 11px var(--sans);letter-spacing:.16em;text-transform:uppercase;color:var(--text-2)}
+.bud-v{font:800 52px/1.05 var(--display);letter-spacing:-.03em;color:var(--money);margin:6px 0 4px;font-variant-numeric:tabular-nums}
+.bud-hero.over .bud-v,.bud-hero.over .bud-k{color:var(--bad)}
+.bud-s{color:var(--text-2);font-weight:600;font-size:14px}
+.bud-tip{display:inline-block;margin-top:10px;padding:5px 12px;border-radius:999px;background:color-mix(in srgb,var(--money) 14%,var(--card));color:var(--money);font-weight:700;font-size:13px}
+.bud-hero.over .bud-tip{background:var(--bad-soft);color:var(--bad)}
+.bud-side{display:flex;flex-direction:column;gap:14px;padding-left:24px;border-left:1.5px solid var(--line-2)}
+.bud-side div{display:flex;flex-direction:column}
+.bud-side span{font:700 10px var(--sans);letter-spacing:.14em;text-transform:uppercase;color:var(--text-2)}
+.bud-side b{font:800 22px var(--display);font-variant-numeric:tabular-nums}
+.bud-side b.neg{color:var(--bad)}
+.bud-side small{font-size:12px;color:var(--text-2)}
+.m-form{display:flex;flex-direction:column;gap:12px}
+.m-kind{align-self:flex-start}
+.m-amount{display:flex;align-items:center;gap:8px;padding:6px 16px;background:var(--field);border:1.5px solid var(--line-2);border-radius:18px}
+.m-amount:focus-within{border-color:var(--money)}
+.m-amount input{flex:1;min-width:0;border:0!important;background:transparent!important;padding:6px 0!important;font:800 34px var(--display)!important;color:var(--text);outline:none;box-shadow:none!important}
+.m-sign,.m-cur{font:800 26px var(--display);color:var(--text-3)}
+.m-form[data-kind=in] .m-sign{color:var(--gym)}
+.m-cats{display:flex;flex-wrap:wrap;gap:6px}
+.m-cat{position:relative;cursor:pointer}
+.m-cat input{position:absolute;opacity:0;pointer-events:none}
+.m-cat span{display:inline-flex;align-items:center;gap:7px;padding:7px 12px;border-radius:999px;border:1.5px solid var(--line-2);background:var(--field);font-size:13px;font-weight:600;transition:background .15s,border-color .15s,color .15s}
+.m-cat span::before{content:"";width:9px;height:9px;border-radius:50%;background:var(--dot)}
+.m-cat:hover span{border-color:var(--dot)}
+.m-cat input:checked+span{background:var(--dot);border-color:var(--dot);color:#FBF4E6}
+.m-cat input:checked+span::before{background:#FBF4E6}
+.m-cat input:focus-visible+span{outline:2px solid var(--text);outline-offset:2px}
+.m-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.m-row{display:flex;align-items:center;gap:10px;padding:8px 8px 8px 12px;background:var(--field);border-radius:14px}
+.m-row .icon-btn{width:30px;height:30px;opacity:.55}
+.m-row:hover .icon-btn{opacity:1}
+.m-dot{flex:none;width:10px;height:10px;border-radius:50%;background:var(--dot)}
+.m-txt{flex:1;min-width:0;display:flex;flex-direction:column}
+.m-txt b{font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.m-txt span{font-size:12px;color:var(--text-2)}
+.m-sum{font:800 16px var(--display);white-space:nowrap;font-variant-numeric:tabular-nums}
+.m-sum.in{color:var(--gym)}
+.m-cat-wrap{display:flex;align-items:center;gap:20px;flex-wrap:wrap}
+.m-cat-wrap .meter-c b{font:800 17px var(--display)}
+.m-cat-list{list-style:none;margin:0;padding:0;flex:1;min-width:180px;display:flex;flex-direction:column;gap:7px}
+.m-cat-list li{display:flex;align-items:center;gap:8px;font-size:14px}
+.m-cat-list span{flex:1}
+.m-cat-list b{font-variant-numeric:tabular-nums}
+.m-cat-list em{font-style:normal;color:var(--text-2);font-size:12px;width:36px;text-align:right}
+.m-form .btn-lg{padding:14px 18px;font-size:15px;justify-content:center}
+.m-today{display:flex;flex-direction:column;gap:12px}
+.m-today>*{margin:0!important}
+/* бюджет: доработки под новую версию и телефон */
+.budget-page .bud-nav{display:flex;justify-content:flex-end;margin-top:-4px}
+.bud-hero.wc{flex-direction:row;align-items:center;gap:24px;flex-wrap:wrap}
+.bud-ring.meter em{font-size:26px}
+.bud-main{display:flex;flex-direction:column;gap:4px;flex:1;min-width:220px}
+.bud-v{font:800 clamp(36px,5vw,52px)/1 var(--display);letter-spacing:-.03em;color:var(--money)}
+.bud-hero.over .bud-v{color:var(--bad)}
+.m-cat{display:inline-flex;align-items:center;gap:7px;padding:8px 12px;border-radius:999px;border:1.5px solid var(--line-2);background:var(--field);font-size:13px;font-weight:600;transition:background .2s,border-color .2s}
+.m-cat i{width:9px;height:9px;border-radius:50%;background:var(--dot)}
+.m-cat.on{border-color:var(--dot);background:color-mix(in srgb,var(--dot) 14%,var(--field))}
+.m-cats{display:flex;flex-wrap:wrap;gap:6px}
+.m-dot{flex:none;width:10px;height:10px;border-radius:50%}
+.m-txt{flex:1;min-width:0;display:flex;flex-direction:column;text-align:left;color:inherit}
+.m-txt b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.m-form .primary{display:inline-flex;align-items:center;justify-content:center;gap:6px;background:var(--money)}
+.m-form .primary.in{background:var(--gym)}
+.m-amount.in .m-sign,.m-amount.in input{color:var(--gym)}
+@media (max-width:899px){.bud-hero.wc{flex-direction:column;align-items:flex-start}.bud-side{width:100%;display:grid!important;grid-template-columns:1fr 1fr}}
+.bud-hero.wc{display:grid;grid-template-columns:auto 1fr auto}
+@media (max-width:899px){.bud-hero.wc{grid-template-columns:auto 1fr;gap:16px}.bud-hero.wc .bud-side{grid-column:1/-1;padding-left:0;border-left:0;border-top:1.5px solid var(--line-2);padding-top:12px}.bud-ring.meter{width:110px!important;height:110px!important}}
+.m-cat{cursor:pointer}
+.m-cat.on{background:var(--dot);border-color:var(--dot);color:#FBF4E6}
+.m-cat.on i{background:#FBF4E6}
+@media (max-width:899px){.bud-main{min-width:0}.bud-v{font-size:34px}.bud-tip{font-size:12px}}
