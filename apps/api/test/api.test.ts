@@ -143,3 +143,15 @@ describe('регистрация, пробная неделя и подписк�
     expect((await r2('DELETE', `/api/plans/tasks/${task.id}`)).statusCode).toBe(200);
   });
 });
+
+describe('повтор записи из очереди телефона', () => {
+  it('тот же Idempotency-Key — тот же ответ и без дубля', async () => {
+    const day = '2026-03-03', send = (key: string) => app.inject({ method: 'POST', url: '/api/food/drinks', payload: { day, time: '10:00', type: 'water', ml: 250 }, headers: { ...H, cookie, 'idempotency-key': key } });
+    const a = await send('k-1'), b = await send('k-1'), c = await send('k-2');
+    expect(a.statusCode).toBe(201);
+    expect(b.statusCode).toBe(201);
+    expect(b.json().id).toBe(a.json().id);
+    expect(c.json().id).not.toBe(a.json().id);
+    expect((await req('GET', `/api/today?day=${day}`)).json().parts.food.waterMl).toBe(500);
+  });
+});

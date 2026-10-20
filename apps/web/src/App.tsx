@@ -7,7 +7,7 @@
 import { can } from './lib/features';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { addDays } from '@bortjournal/core';
-import { api, ApiError, type Drink, type FoodDay, type Meal, type Me, type Subscription, type TaskFull, type Today as TodayData } from './lib/api';
+import { api, ApiError, flushOutbox, forgetLocal, pendingCount, type Drink, type FoodDay, type Meal, type Me, type Subscription, type TaskFull, type Today as TodayData } from './lib/api';
 import { fmt1 } from './lib/format';
 import { buzz } from './lib/motion';
 import { DrinkForm, MealForm, NumberForm, TaskForm } from './components/Forms';
@@ -97,10 +97,14 @@ export function App() {
   const close = useCallback(() => setSheetOpen(false), []);
   const fail = useCallback((e: unknown) => {
     if (e instanceof ApiError && e.status === 401) { setMe(null); return; }
+    // без сети экран просто остаётся с последними данными — об этом говорит плашка и тост очереди
+    if (e instanceof ApiError && e.status === 0) return;
     toast(e instanceof Error ? e.message : 'Что-то пошло не так', { err: true });
   }, [toast]);
 
-  const loadMe = useCallback(async () => { try { setMe(await api<Me>(ME())); } catch { setMe(null); } }, []);
+  // без сети и без сохранённой копии — не выкидываем на вход, а пробуем ещё раз
+  const loadMe = useCallback(async () => { try { setMe(await api<Me>(ME())); } catch (e) { if (e instanceof ApiError && e.status === 0) setTimeout(() => loadMeRef.current(), 5000); else setMe(null); } }, []);
+  const loadMeRef = useRef(loadMe); loadMeRef.current = loadMe;
   const loadDay = useCallback(async (d?: string) => {
     try {
       const t = await api<TodayData>(`/api/today${d ? `?day=${d}` : ''}`);
@@ -137,9 +141,18 @@ export function App() {
   // записал на телефоне — видно на компьютере: перечитываем, когда окно снова на виду, и раз в 15 секунд.
   // Пока висит отложенное удаление, не трогаем — иначе удалённое вернётся на экран до отправки.
   const sync = useRef(refresh); sync.current = refresh;
+  // записи без сети: сколько ждут отправки; отправились — перечитываем экран
+  const [queued, setQueued] = useState(pendingCount);
+  useEffect(() => {
+    let last = pendingCount();
+    const onBox = () => { const n = pendingCount(); if (n > last) toast('Нет связи — запись сохранена на телефоне и уйдёт, когда появится сеть'); last = n; setQueued(n); };
+    const onSync = (e: Event) => { const { sent, dropped } = (e as CustomEvent<{ sent: number; dropped: number }>).detail; if (sent) toast(`Отправлено записей: ${sent}`); if (dropped) toast(`Сервер не принял записей: ${dropped}`, { err: true }); setDays({}); sync.current(); };
+    addEventListener('bj-outbox', onBox); addEventListener('bj-synced', onSync); void flushOutbox();
+    return () => { removeEventListener('bj-outbox', onBox); removeEventListener('bj-synced', onSync); };
+  }, [toast]);
   useEffect(() => {
     if (!me) return;
-    const tick = () => { if (document.visibilityState === 'visible' && !pending.current.size) { sync.current(); loadMe(); } };
+    const tick = () => { if (document.visibilityState === 'visible' && !pending.current.size) { void flushOutbox(); sync.current(); loadMe(); } };
     const id = setInterval(tick, 15000);
     document.addEventListener('visibilitychange', tick); addEventListener('focus', tick);
     return () => { clearInterval(id); document.removeEventListener('visibilitychange', tick); removeEventListener('focus', tick); };
@@ -212,6 +225,7 @@ export function App() {
 
   return <div className={`app ${wide ? 'wide' : ''}`}>
     {wide && <div className="brand"><i>✦</i>Бортжурнал</div>}
+    {queued > 0 && <button className="outbox-bar" onClick={() => void flushOutbox()}><Icon name="repeat" />Без сети: {queued} {queued % 10 === 1 && queued % 100 !== 11 ? 'запись ждёт' : 'записей ждут'} отправки — нажми, чтобы отправить сейчас</button>}
     <div className="screens">
       <section className="screen" data-pos={pos('today')} aria-hidden={tab !== 'today'}>
         {day && today && <TodayWide wide={wide} data={data} day={day} today={today} still={still} sub={sub} onDay={goDay} onAdd={at => open({ kind: 'add', at })} onDelete={deleteMark} onEdit={editMark} onToggleTask={toggleTask} onGo={go}
@@ -245,7 +259,7 @@ export function App() {
       </section>
       <section className="screen" data-pos={pos('more')} aria-hidden={tab !== 'more'}>
         <More me={me} onPro={pro} onSaved={st => setMe(m => m && m.profile ? { ...m, profile: { ...m.profile, settings: st } } : m)} onPaywall={focus => open({ kind: 'paywall', focus })} onSettings={() => open({ kind: 'settings' })} onInstall={() => open({ kind: 'install' })}
-          onLogout={async () => { await api('/api/auth/logout', { method: 'POST' }).catch(() => {}); setMe(null); setDays({}); setDay(null); setToday(null); setTab('today'); }} />
+          onLogout={async () => { await api('/api/auth/logout', { method: 'POST' }).catch(() => {}); forgetLocal(); setMe(null); setDays({}); setDay(null); setToday(null); setTab('today'); }} />
       </section>
     </div>
     <nav ref={tabsRef} className="tabs" aria-label="Разделы">

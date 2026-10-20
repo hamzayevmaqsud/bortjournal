@@ -1674,3 +1674,6 @@ mark.hit{background:#F6D96B;color:inherit;border-radius:3px;padding:0 1px}
 .app.wide .plans-page>.plan-bar,.app.wide .plans-page>.plan-subs{grid-column:1/-1}
 @media (max-width:420px){.goal-pr{width:96px}.goal-pr .wbar{display:block}}
 .app.wide .plans-page>.span-all{grid-column:1/-1}
+/* без сети: записи ждут отправки */
+.outbox-bar{position:absolute;z-index:25;left:50%;transform:translateX(-50%);top:calc(8px + env(safe-area-inset-top,0px));display:inline-flex;align-items:center;gap:8px;max-width:calc(100% - 24px);padding:8px 14px;border-radius:999px;background:var(--navy);color:var(--on-navy);font-size:12.5px;font-weight:700;box-shadow:var(--sh2)}
+.outbox-bar .ic{width:15px;height:15px;flex:none}

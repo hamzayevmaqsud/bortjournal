@@ -46,6 +46,24 @@ export async function buildApp({ db, serveWeb = fs.existsSync(WEB_DIST) }: { db:
   });
 
   app.addHook('preHandler', sessionHook(db));
+  // повтор записи с тем же Idempotency-Key (телефон отправил из очереди, а первый ответ потерялся) — отдаём прежний ответ
+  const seen = new Map<string, { status: number; body: string; at: number }>(), DAY = 864e5;
+  const idemKey = (req: { method: string; headers: Record<string, unknown>; userId?: string }) => {
+    const k = req.headers['idempotency-key'];
+    return req.method !== 'GET' && req.userId && typeof k === 'string' && k.length <= 100 ? `${req.userId}:${k}` : null;
+  };
+  app.addHook('preHandler', async (req, reply) => {
+    const k = idemKey(req as any), hit = k ? seen.get(k) : undefined;
+    if (hit && Date.now() - hit.at < DAY) return reply.code(hit.status).header('Content-Type', 'application/json; charset=utf-8').header('Idempotent-Replay', '1').send(hit.body);
+  });
+  app.addHook('onSend', async (req, reply, payload) => {
+    const k = idemKey(req as any);
+    if (k && !reply.getHeader('Idempotent-Replay') && reply.statusCode < 500 && typeof payload === 'string') {
+      seen.set(k, { status: reply.statusCode, body: payload, at: Date.now() });
+      if (seen.size > 5000) for (const [key, v] of seen) { if (Date.now() - v.at > DAY || seen.size > 4000) seen.delete(key); else break; }
+    }
+    return payload;
+  });
   await app.register(async scope => { await authRoutes(scope, { db }); await todayRoutes(scope, { db }); await billingRoutes(scope, { db }); await profileRoutes(scope, { db }); await goalRoutes(scope, { db }); await statsRoutes(scope, { db }); await reminderRoutes(scope, { db }); });
   for (const m of MODULES_LIST) if (m.routes) await app.register(async scope => { await m.routes!(scope, { db }); }, { prefix: `/api/${m.name}` });
 
