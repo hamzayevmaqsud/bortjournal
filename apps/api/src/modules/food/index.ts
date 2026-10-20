@@ -1,9 +1,12 @@
 import type { AppModule } from '../../core/module.js';
 import { importFood, verifyFood } from './legacy.js';
 import { foodRoutes } from './routes.js';
-import { foodSeries, foodToday } from './service.js';
+import { foodSeries, foodToday, topMeals } from './service.js';
 
-export const foodModule: AppModule = { name: 'food', importLegacy: importFood, verifyLegacy: verifyFood, routes: foodRoutes, today: foodToday };
+export const foodModule: AppModule = {
+  name: 'food', importLegacy: importFood, verifyLegacy: verifyFood, routes: foodRoutes, today: foodToday,
+  daily: async (db, userId, from, to) => (await foodSeries(db, userId, from, to)).map(({ day, meals, kcal, protein, fat, carbs, waterMl }) => ({ day, meals, kcal, protein, fat, carbs, waterMl }))
+};
 
 /** для ядра: итоги еды по дням (цель, статистика) */
-export { foodSeries };
+export { foodSeries, topMeals };

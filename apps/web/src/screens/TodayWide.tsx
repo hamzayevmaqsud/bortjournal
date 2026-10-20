@@ -1,12 +1,13 @@
 /**
- * «Сегодня» на широком экране — раскладка веб-версии журнала: крупная дата, сводка справа,
- * лента дня с подписями и итогами дорожек, сетка сплошных плиток (крем, синий, горчица, оранжевый, шалфей, персик).
+ * «Сегодня» — раскладка веб-версии журнала и на компьютере, и на телефоне: крупная дата, сводка «план · вес · серия»,
+ * лента дня, сетка сплошных плиток (крем, синий, горчица, оранжевый, шалфей, персик).
+ * На телефоне плитки идут столбиком, у ленты нет подписей и итогов, а шапку дня можно смахнуть влево-вправо.
  */
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { parseDay } from '@bortjournal/core';
 import { api, type Subscription, type Today as TodayData } from '../lib/api';
 import { fmt, fmt1, fmt2, MONG, plural, WDF } from '../lib/format';
-import { useCountUp } from '../lib/motion';
+import { buzz, spring, useCountUp } from '../lib/motion';
 import { Icon } from '../components/Icon';
 import { Arc } from '../components/Ring';
 import { Tasks } from '../components/Tasks';
@@ -25,8 +26,8 @@ function RingBox({ v, max, color }: { v: number; max: number; color: string }) {
   return <span className="ringbox"><Arc size={132} sw={12} color={color} p={max ? v / max : 0} /><em>{max ? Math.round(v / max * 100) : 0}%</em></span>;
 }
 
-export function TodayWide({ data, day, today, sub, still, onDay, onAdd, onDelete, onEdit, onToggleTask, onGo, onPro, onPaywall, onSteps, onWeight, onWater, onMeal, onAddWater, onTaskAdded, onTaskOpen }: {
-  data: TodayData | null; day: string; today: string; sub: Subscription; still: boolean;
+export function TodayWide({ wide = true, data, day, today, sub, still, onDay, onAdd, onDelete, onEdit, onToggleTask, onGo, onPro, onPaywall, onSteps, onWeight, onWater, onMeal, onAddWater, onTaskAdded, onTaskOpen }: {
+  wide?: boolean; data: TodayData | null; day: string; today: string; sub: Subscription; still: boolean;
   onDay: (dir: number) => void; onAdd: (time?: string) => void; onDelete: (m: Mark) => void; onEdit: (m: Mark) => void; onToggleTask: (id: string) => void;
   onGo: (tab: string) => void; onPro: (what: string) => void; onPaywall: () => void;
   onSteps: () => void; onWeight: () => void; onWater: () => void; onMeal: () => void; onAddWater: (ml: number) => void; onTaskAdded: () => void; onTaskOpen: () => void;
@@ -37,6 +38,27 @@ export function TodayWide({ data, day, today, sub, still, onDay, onAdd, onDelete
   const P = data?.parts ?? {}, food = P.food, body = P.body, study = P.study, gym = P.gym, tasks = P.plans?.tasks ?? [];
   const marks = data ? marksOf(data.events, tasks) : [];
   const done = tasks.filter(t => t.done).length;
+
+  // смахивание шапки на телефоне: тянется за пальцем, отпущенная — листает день или возвращается
+  const head = useRef<HTMLElement>(null), page = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = head.current; if (!el || wide) return;
+    const slide = (x: number) => { if (page.current) page.current.style.transform = x ? `translateX(${x}px)` : ''; };
+    let x0: number | null = null, y0 = 0, t0 = 0, lock: boolean | null = null;
+    const down = (e: PointerEvent) => { if ((e.target as HTMLElement).closest('button')) return; x0 = e.clientX; y0 = e.clientY; t0 = performance.now(); lock = null; };
+    const move = (e: PointerEvent) => { if (x0 === null) return; const dx = e.clientX - x0, dy = e.clientY - y0; if (lock === null && Math.hypot(dx, dy) > 8) lock = Math.abs(dx) > Math.abs(dy); if (lock) slide(dx * 0.5); };
+    const up = (e: PointerEvent) => { if (x0 === null) return; const dx = e.clientX - x0, v = dx / Math.max(1, performance.now() - t0); x0 = null;
+      if (lock && (Math.abs(dx) > 70 || Math.abs(v) > 0.5)) { slide(0); onDay(dx < 0 ? 1 : -1); } else spring(dx * 0.5, 0, slide); };
+    el.addEventListener('pointerdown', down); el.addEventListener('pointermove', move); el.addEventListener('pointerup', up); el.addEventListener('pointercancel', up);
+    return () => { el.removeEventListener('pointerdown', down); el.removeEventListener('pointermove', move); el.removeEventListener('pointerup', up); el.removeEventListener('pointercancel', up); };
+  }, [onDay, wide]);
+  // новый день приезжает с той стороны, куда листали
+  const lastDay = useRef(day);
+  useEffect(() => {
+    if (lastDay.current === day || !page.current) { lastDay.current = day; return; }
+    const dir = day > lastDay.current ? 1 : -1, el = page.current; lastDay.current = day; buzz(8);
+    spring(dir * 50, 0, x => { el.style.transform = x ? `translateX(${x}px)` : ''; el.style.opacity = String(1 - Math.abs(x) / 70); }, { stiffness: 300, damping: 26 });
+  }, [day]);
 
   const sums: Record<string, string> = {
     food: food?.kcal ? `${fmt(food.kcal)} ккал` : 'нет записей',
@@ -54,8 +76,8 @@ export function TodayWide({ data, day, today, sub, still, onDay, onAdd, onDelete
   };
   const proBtn = (what: string, label: string, ic: string) => <button className="btn-accent" onClick={() => onPro(what)}><Icon name={ic} />{label}{!sub.pro && <span className="lock">PRO</span>}</button>;
 
-  return <div className="wide-page">
-    <header className="hero">
+  return <div className={`wide-page ${wide ? '' : 'narrow'}`} ref={page}>
+    <header className="hero" ref={head}>
       <div className="hero-left">
         <span className="hero-wd">{rel ? `${rel} · ` : ''}{WDF[dt.getUTCDay()]}</span>
         <h1 className="hero-day">{dt.getUTCDate()}<span>{MONG[dt.getUTCMonth()]}</span></h1>
@@ -80,8 +102,8 @@ export function TodayWide({ data, day, today, sub, still, onDay, onAdd, onDelete
 
     {!data ? <div className="wgrid"><div className="skel" style={{ gridColumn: 'span 12', height: 260 }} /><div className="skel" style={{ gridColumn: 'span 4', height: 230 }} /><div className="skel" style={{ gridColumn: 'span 4', height: 230 }} /><div className="skel" style={{ gridColumn: 'span 4', height: 230 }} /></div> : <>
       <section className="panel tl-panel">
-        <Timeline marks={marks} now={data.isToday ? data.now.hm : null} still={still} pro={sub.pro} sums={sums} onAdd={t => onAdd(t)} onDelete={onDelete} onEdit={onEdit} onToggleTask={onToggleTask} />
-        <p className="tl-hint">Нажми на пустое место дорожки — добавишь запись на это время. Нажми на отметку — изменишь её.</p>
+        <Timeline marks={marks} now={data.isToday ? data.now.hm : null} still={still} pro={sub.pro} sums={wide ? sums : undefined} onAdd={t => onAdd(t)} onDelete={onDelete} onEdit={onEdit} onToggleTask={onToggleTask} />
+        <p className="tl-hint">{wide ? 'Нажми на пустое место дорожки — добавишь запись на это время. Нажми на отметку — изменишь её.' : 'Нажми пустое место — запись на это время, отметку — изменить.'}</p>
       </section>
 
       <div className="wgrid">

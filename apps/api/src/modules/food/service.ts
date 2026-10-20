@@ -79,3 +79,10 @@ export async function foodSeries(db: Tx, userId: string, from: string, to: strin
   for (const d of ds) { const t = drinkTotals(d), r = at(d.day); r.kcal += t.kcal; r.protein += t.p; r.fat += t.f; r.carbs += t.c; r.waterMl += t.hyd; }
   return [...by.values()].map(r => ({ ...r, kcal: Math.round(r.kcal), waterMl: Math.round(r.waterMl) })).sort((a, b) => a.day.localeCompare(b.day));
 }
+
+/** чаще всего съедаемое за период: сколько раз и средние калории */
+export async function topMeals(db: Tx, userId: string, from: string, to: string, limit = 8) {
+  const rows = await db.select({ name: sql<string>`min(${meals.name})`, n: sql<number>`count(*)::int`, kcal: sql<number>`avg(${meals.kcal})` }).from(meals)
+    .where(and(eq(meals.userId, userId), gte(meals.day, from), lte(meals.day, to))).groupBy(sql`lower(trim(${meals.name}))`).orderBy(sql`count(*) desc`).limit(limit);
+  return rows.map(r => ({ name: r.name, n: r.n, kcal: Math.round(Number(r.kcal)) }));
+}

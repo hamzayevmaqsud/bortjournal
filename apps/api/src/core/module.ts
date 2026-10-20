@@ -31,6 +31,19 @@ export interface DayContext {
   profile: Record<string, any> | null;
 }
 
+/** Факты одного дня — из них ядро считает оценку дня, статистику и достижения. Каждый модуль заполняет свои поля */
+export interface DayFacts {
+  meals?: number; kcal?: number; protein?: number; fat?: number; carbs?: number; waterMl?: number;
+  steps?: number; weightKg?: number;
+  studyMin?: number; quizTotal?: number; quizAnswered?: number; quizGood?: number;
+  workouts?: number; gymMin?: number;
+  pages?: number;
+  tasks?: number; tasksDone?: number;
+  budgetOk?: boolean; spent?: number;
+}
+/** Итоги за всё время, которые не сложить из дней */
+export interface Totals { tasksDone?: number; booksDone?: number; booksOwned?: number; quotes?: number; pagesTotal?: number; booksDoneInRange?: Array<{ title: string; day: string }> }
+
 export interface AppModule {
   name: ModuleName;
   importLegacy?(ctx: ImportContext, state: LegacyState): Promise<void>;
@@ -39,4 +52,8 @@ export interface AppModule {
   routes?(app: FastifyInstance, deps: { db: DB }): Promise<void> | void;
   /** часть экрана «Сегодня»: короткая сводка модуля за день */
   today?(ctx: DayContext): Promise<Record<string, unknown>>;
+  /** факты по дням за период (включительно); дни без данных можно не возвращать */
+  daily?(db: Tx, userId: string, from: string, to: string): Promise<Array<{ day: string } & DayFacts>>;
+  /** итоги за всё время — для достижений */
+  totals?(db: Tx, userId: string): Promise<Totals>;
 }

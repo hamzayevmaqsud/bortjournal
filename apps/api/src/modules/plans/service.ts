@@ -3,7 +3,7 @@ import type { FastifyInstance } from 'fastify';
 import { recordEvent, removeEvents } from '../../core/events.js';
 import { bad, dayParam, guard, hmParam, idParam, notFound, uid } from '../../core/http.js';
 import type { DayContext } from '../../core/module.js';
-import type { DB } from '../../db/index.js';
+import type { DB, Tx } from '../../db/index.js';
 import { tasks } from './schema.js';
 
 export async function plansToday({ db, userId, day }: DayContext) {
@@ -57,4 +57,15 @@ export async function plansRoutes(app: FastifyInstance, { db }: { db: DB }) {
     if (t.day) await recordEvent(db, { userId, module: 'plans', kind: 'task', refId: t.id, day: t.day, time: t.time, title: t.title, value: t.done ? 1 : 0, unit: 'done' });
     return { id: t.id, done: t.done };
   });
+}
+
+/** задачи с датой по дням: сколько и сколько сделано */
+export async function plansDaily(db: Tx, userId: string, from: string, to: string) {
+  const rows = await db.select({ day: tasks.day, n: sql<number>`count(*)::int`, d: sql<number>`count(*) filter (where ${tasks.done})::int` }).from(tasks)
+    .where(and(eq(tasks.userId, userId), gte(tasks.day, from), lte(tasks.day, to))).groupBy(tasks.day);
+  return rows.filter(r => r.day).map(r => ({ day: r.day!, tasks: r.n, tasksDone: r.d }));
+}
+export async function plansTotals(db: Tx, userId: string) {
+  const [r] = await db.select({ n: sql<number>`count(*) filter (where ${tasks.done})::int` }).from(tasks).where(eq(tasks.userId, userId));
+  return { tasksDone: r?.n ?? 0 };
 }

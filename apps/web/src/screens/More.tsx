@@ -9,11 +9,11 @@ import { applyTheme, savedTheme, type Theme } from '../lib/theme';
 import { buzz } from '../lib/motion';
 
 // уже переехали в новую версию — открываются по-настоящему
-const MOVED = new Set(['goal']);
+const MOVED = new Set(['goal', 'stats', 'awards']);
 const PRO_SECTIONS: Array<[string, string, string, string]> = [
   ['goal', 'Цель и прогноз', 'target', 'var(--steps)'], ['gym', 'Зал', 'gym', 'var(--gym)'], ['study', 'Учёба и вопросы', 'study', 'var(--study)'],
-  ['budget', 'Бюджет', 'money', 'var(--money)'], ['books', 'Книги', 'books', 'var(--books)'], ['stats', 'Статистика и итог недели', 'flame', 'var(--orange)'],
-  ['awards', 'Достижения', 'check', 'var(--quiz)'], ['reminders', 'Напоминания', 'drop', 'var(--water)']
+  ['budget', 'Бюджет', 'money', 'var(--money)'], ['books', 'Книги', 'books', 'var(--books)'], ['stats', 'Статистика и итог недели', 'stats', 'var(--orange)'],
+  ['awards', 'Достижения', 'star', 'var(--quiz)'], ['reminders', 'Напоминания', 'drop', 'var(--water)']
 ];
 
 const THEMES: Array<[Theme, string, string]> = [['system', 'Как в системе', 'auto'], ['light', 'Светлая', 'sun'], ['dark', 'Тёмная', 'moon']];
