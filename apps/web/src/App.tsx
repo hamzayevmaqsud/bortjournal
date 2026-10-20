@@ -10,6 +10,7 @@ import { api, ApiError, type Drink, type FoodDay, type Meal, type Me, type Subsc
 import { fmt1 } from './lib/format';
 import { buzz } from './lib/motion';
 import { DrinkForm, MealForm, NumberForm, TaskForm } from './components/Forms';
+import { FoodAi, FoodSearch } from './components/FoodPro';
 import { Icon } from './components/Icon';
 import { Paywall } from './components/Paywall';
 import { Sheet } from './components/Sheet';
@@ -33,8 +34,9 @@ const ME = () => `/api/me?tz=${-new Date().getTimezoneOffset()}`;
 type SheetState =
   | { kind: 'none' } | { kind: 'add'; at?: string } | { kind: 'meal'; at?: string; meal?: Meal } | { kind: 'drink'; at?: string; drink?: Drink }
   | { kind: 'steps' } | { kind: 'weight' } | { kind: 'task'; day: string | null; task?: TaskFull }
-  | { kind: 'paywall'; focus?: string } | { kind: 'settings' } | { kind: 'install' };
-const TITLES: Record<string, string> = { add: 'Записать', meal: 'Приём пищи', drink: 'Напиток', steps: 'Шаги за день', weight: 'Вес', task: 'Задача', paywall: '', settings: 'Профиль и нормы', install: 'На экран «Домой»' };
+  | { kind: 'paywall'; focus?: string } | { kind: 'settings' } | { kind: 'install' }
+  | { kind: 'search'; at?: string } | { kind: 'ai'; at?: string; mode: 'photo' | 'text' };
+const TITLES: Record<string, string> = { add: 'Записать', meal: 'Приём пищи', drink: 'Напиток', steps: 'Шаги за день', weight: 'Вес', task: 'Задача', paywall: '', settings: 'Профиль и нормы', install: 'На экран «Домой»', search: 'Поиск еды', ai: 'Еда по фото или описанию' };
 
 export function App() {
   const toast = useToast(), wide = useWide();
@@ -129,7 +131,12 @@ export function App() {
     try { await api(`/api/plans/tasks/${id}/toggle`, { method: 'POST' }); setVersion(v => v + 1); } catch (e) { fail(e); loadDay(day); }
   };
   // платное: без Pro — экран тарифов; с Pro — раздел ещё переезжает
-  const pro = (what: string) => { if (!sub.pro) { open({ kind: 'paywall', focus: what }); return; } close(); toast(sub.source === 'free' ? `«${what}» переезжает в новую версию — пока он в старой` : `«${what}» появится в ближайшем обновлении — Pro уже включает его`); };
+  // разделы, которые уже переехали: с Pro открываются по-настоящему
+  const PRO_OPEN: Record<string, (at?: string) => SheetState> = {
+    'Фото и описание еды': at => ({ kind: 'ai', at, mode: 'photo' }), 'Описание еды': at => ({ kind: 'ai', at, mode: 'text' }),
+    'Поиск еды': at => ({ kind: 'search', at }), 'Поиск по базе продуктов': at => ({ kind: 'search', at }),
+  };
+  const pro = (what: string, at?: string) => { if (!sub.pro) { open({ kind: 'paywall', focus: what }); return; } if (PRO_OPEN[what]) { open(PRO_OPEN[what]!(at)); return; } close(); toast(sub.source === 'free' ? `«${what}» переезжает в новую версию — пока он в старой` : `«${what}» появится в ближайшем обновлении — Pro уже включает его`); };
   const setSub = (s: Subscription) => { setMe(m => m ? { ...m, subscription: s } : m); setDays({}); if (day) loadDay(day); };
   const go = (name: string) => { if (name === 'add') { open({ kind: 'add' }); return; } setTab(name); buzz(6); };
 
@@ -139,7 +146,7 @@ export function App() {
 
   const pos = (name: string) => name === tab ? 'center' : ORDER.indexOf(name) < ORDER.indexOf(tab) ? 'left' : 'right';
   const foodPart = data?.parts.food, body = data?.parts.body;
-  const lockTile = (name: string, ic: string, c: string) => <button key={name} className="tile" onClick={() => pro(name)}><span className="chip-ic" style={{ ['--c' as string]: c }}><Icon name={ic} /></span>{name}{!sub.pro && <span className="lock">PRO</span>}</button>;
+  const lockTile = (name: string, ic: string, c: string) => <button key={name} className="tile" onClick={() => pro(name, sheet.kind === 'add' ? sheet.at : undefined)}><span className="chip-ic" style={{ ['--c' as string]: c }}><Icon name={ic} /></span>{name}{!sub.pro && <span className="lock">PRO</span>}</button>;
 
   return <div className={`app ${wide ? 'wide' : ''}`}>
     {wide && <div className="brand"><i>✦</i>Бортжурнал</div>}
@@ -168,11 +175,11 @@ export function App() {
         <span className="pill"><Icon name={icon} /></span>{label}</button>)}
     </nav>
 
-    <Sheet open={sheetOpen} onClose={close} tall={sheet.kind === 'paywall'} title={sheet.kind === 'add' && sheet.at ? `Записать на ${sheet.at}` : TITLES[sheet.kind] ?? ''}>
+    <Sheet open={sheetOpen} onClose={close} tall={sheet.kind === 'paywall' || sheet.kind === 'search' || sheet.kind === 'ai'} title={sheet.kind === 'add' && sheet.at ? `Записать на ${sheet.at}` : TITLES[sheet.kind] ?? ''}>
       {sheet.kind === 'add' && <>
         <div className="big2">
           <button className="bigt" style={{ background: 'var(--food)' }} onClick={() => open({ kind: 'meal', at: sheet.at })}><span className="chip-ic"><Icon name="food" /></span><b>Приём пищи</b><small>калории и БЖУ вручную</small></button>
-          <button className="bigt" style={{ background: 'var(--navy)' }} onClick={() => pro('Фото и описание еды')}><span className="chip-ic"><Icon name="camera" /></span><b>Фото еды</b><small>калории посчитает ИИ</small>{!sub.pro && <span className="lock">PRO</span>}</button>
+          <button className="bigt" style={{ background: 'var(--navy)' }} onClick={() => pro('Фото и описание еды', sheet.at)}><span className="chip-ic"><Icon name="camera" /></span><b>Фото еды</b><small>калории посчитает ИИ</small>{!sub.pro && <span className="lock">PRO</span>}</button>
         </div>
         <div className="water">
           <span className="chip-ic" style={{ ['--c' as string]: 'var(--water)' }}><Icon name="drop" /></span>
@@ -196,6 +203,8 @@ export function App() {
       {sheet.kind === 'paywall' && <Paywall sub={sub} focus={sheet.focus} onChange={setSub} onClose={close} />}
       {sheet.kind === 'settings' && <SettingsForm me={me} onDone={s => { setMe(m => m && m.profile ? { ...m, profile: { ...m.profile, settings: s } } : m); done(); setDays({}); }} onRedo={() => { close(); setRedo(true); }} />}
       {sheet.kind === 'install' && <InstallHelp />}
+      {sheet.kind === 'search' && day && <FoodSearch day={day} time={sheet.at} onDone={done} />}
+      {sheet.kind === 'ai' && day && <FoodAi key={sheet.mode} day={day} time={sheet.at} mode={sheet.mode} onDone={done} />}
     </Sheet>
   </div>;
 }

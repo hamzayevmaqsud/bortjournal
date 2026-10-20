@@ -59,6 +59,7 @@ export async function buildApp({ db, serveWeb = fs.existsSync(WEB_DIST) }: { db:
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+  (await import('./core/env.js')).loadEnv();
   const { db } = connect();
   const app = await buildApp({ db });
   await app.listen({ port: Number(process.env.API_PORT ?? 4000), host: process.env.API_HOST ?? '127.0.0.1' });

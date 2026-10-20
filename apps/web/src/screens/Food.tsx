@@ -49,7 +49,7 @@ export function Food({ data, norm, sub, onAddMeal, onMeal, onDrink, onPro }: {
           <span className="mid"><b>{d.title}</b><small>{d.time ?? ''}</small></span><span className="v">{fmt(d.ml)} мл</span></button>)}</div>}
     </section>
     <div className="rows">
-      {([['Фото и описание еды', 'camera', 'калории посчитает ИИ'], ['Поиск по базе продуктов', 'search', 'тысячи блюд с КБЖУ']] as const).map(([n, ic, h]) => <button key={n} className="row" onClick={() => onPro(n)}>
+      {([['Фото и описание еды', 'camera', 'сфотографируй тарелку — калории посчитает ИИ'], ['Описание еды', 'edit', 'напиши словами: «гречка 200 г, котлета»'], ['Поиск по базе продуктов', 'search', 'справочник с КБЖУ и твои блюда']] as const).map(([n, ic, h]) => <button key={n} className="row" onClick={() => onPro(n)}>
         <span className="chip-ic" style={{ ['--c' as string]: 'var(--food)' }}><Icon name={ic} /></span><span className="mid"><b>{n}</b><small>{h}</small></span>{!sub.pro ? <span className="lock">PRO</span> : <Icon name="chev" className="ic chev" />}</button>)}
     </div>
   </div>;

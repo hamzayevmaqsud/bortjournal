@@ -509,3 +509,55 @@ button.meal:active{transform:scale(.98)}
 .links div{display:flex;flex-direction:column;gap:2px;padding:10px 12px;border-radius:var(--r2);background:var(--card);border:1px solid var(--line)}
 .links b{font-size:12px;color:var(--text-2)}
 .links code{font:600 13px var(--sans);color:var(--text);word-break:break-all;user-select:all}
+
+/* еда Pro: поиск и распознавание */
+.primary .spin{margin:0 auto;display:block}
+.fp-search{display:flex;align-items:center;gap:8px;padding:0 6px 0 14px;border-radius:var(--r2);border:1.5px solid var(--line-2);background:var(--field)}
+.fp-search:focus-within{border-color:var(--orange)}
+.fp-search .ic{width:18px;height:18px;color:var(--text-3);flex:none}
+.fp-search .in{border:0;background:none;padding-left:4px}
+.fp-search .in:focus-visible{outline:none}
+.fp-group{display:flex;flex-direction:column;gap:6px}
+.fp-group h3{margin:6px 2px 0;font:700 11px var(--sans);letter-spacing:.14em;text-transform:uppercase;color:var(--text-2)}
+.fp-group h3 small{letter-spacing:0;text-transform:none;font-weight:500;color:var(--text-3);margin-left:6px}
+.fp-back{display:inline-flex;align-items:center;gap:4px;align-self:flex-start;font-size:13px;font-weight:700;color:var(--orange)}
+.fp-back .ic{width:16px;height:16px}
+.fp-head{display:flex;flex-direction:column;gap:2px}
+.fp-head b{font:800 22px var(--display)}
+.fp-head small{font-size:13px;color:var(--text-2)}
+.fp-total{display:flex;flex-direction:column;gap:2px;padding:12px 14px;border-radius:var(--r2);background:var(--card);border:1px solid var(--line)}
+.fp-total b{font:800 24px var(--display);font-variant-numeric:tabular-nums}
+.fp-total span{font-size:13px;color:var(--text-2)}
+.ai-mode{margin-bottom:2px}
+.ai-pick{display:flex;flex-direction:column;align-items:center;gap:6px;padding:26px 14px;border-radius:var(--r3);border:2px dashed var(--line-2);background:var(--card);color:var(--text-2);transition:border-color .2s,background .2s}
+.ai-pick:hover{border-color:var(--orange)}
+.ai-pick .ic{width:30px;height:30px;color:var(--orange)}
+.ai-pick b{color:var(--text);font-size:15px}
+.ai-pick small{font-size:12px}
+.ai-pick.has{padding:0;border:0;overflow:hidden;position:relative}
+.ai-pick.has span{position:absolute;right:10px;bottom:10px;padding:6px 12px;border-radius:999px;background:rgba(20,18,15,.6);color:#fff;font-size:12px;font-weight:700}
+.ai-img{display:block;width:100%;max-height:300px;object-fit:cover;border-radius:var(--r3)}
+.ai-img.sm{width:96px;height:96px;flex:none;border-radius:var(--r2)}
+.ai-top{display:flex;gap:12px;align-items:flex-start}
+.ai-top .mid{flex:1;min-width:0;display:flex;flex-direction:column;gap:8px}
+.ai-comment{margin:0;font-size:13px;color:var(--text-2)}
+.ai-qs{display:flex;flex-direction:column;gap:10px;padding:12px;border-radius:var(--r2);background:color-mix(in srgb,var(--mustard) 16%,var(--card))}
+.ai-q{display:flex;flex-direction:column;gap:6px}
+.ai-q b{font-size:14px}
+.ai-rows{display:flex;flex-direction:column;gap:6px}
+.ai-row{display:grid;grid-template-columns:1fr 84px 52px 28px;align-items:center;gap:8px;padding:8px 8px 8px 10px;border-radius:var(--r2);background:var(--card);border:1px solid var(--line)}
+.ai-row .mid{min-width:0;display:flex;flex-direction:column;gap:3px}
+.ai-row .mid .in{padding:6px 8px;font-weight:600;font-size:15px;border-color:transparent;background:none}
+.ai-row .mid .in:focus{border-color:var(--line-2);background:var(--field)}
+.ai-row small{display:flex;flex-wrap:wrap;align-items:center;gap:2px 6px;padding-left:8px;font-size:11.5px;color:var(--text-3)}
+.conf{font-style:normal;font-weight:700;padding:1px 6px;border-radius:6px;font-size:10.5px}
+.conf.high{background:color-mix(in srgb,var(--good) 18%,transparent);color:var(--good)}
+.conf.medium{background:color-mix(in srgb,var(--quiz) 20%,transparent);color:var(--quiz)}
+.conf.low{background:color-mix(in srgb,var(--bad) 16%,transparent);color:var(--bad)}
+.ai-g{display:flex;align-items:center;gap:4px}
+.ai-g .in{padding:8px;text-align:center;font-weight:700}
+.ai-g span{font-size:12px;color:var(--text-3)}
+.ai-k{font:800 15px var(--display);text-align:right;font-variant-numeric:tabular-nums}
+.ai-x{width:28px;height:28px;border-radius:50%;font-size:20px;line-height:1;color:var(--text-3)}
+.ai-x:hover{background:var(--track);color:var(--bad)}
+.form-err{margin:0;padding:10px 12px;border-radius:var(--r2);background:var(--bad-soft);color:var(--bad);font-size:13px;font-weight:600}
