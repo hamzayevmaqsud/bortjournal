@@ -23,17 +23,18 @@ import { InstallHelp, More, SettingsForm } from './screens/More';
 import { Onboarding } from './screens/Onboarding';
 import { Plans } from './screens/Plans';
 import { Goal } from './screens/Goal';
+import { Gym } from './screens/Gym';
 import { Stats, type StatsTab } from './screens/Stats';
 import { TodayWide } from './screens/TodayWide';
 import { useWide } from './lib/wide';
 import { applyTheme, type Theme } from './lib/theme';
 
 const TABS: Array<[string, string, string]> = [['today', 'today', 'Сегодня'], ['plans', 'plans', 'Планы'], ['add', 'plus', 'Записать'], ['food', 'food', 'Еда'], ['more', 'more', 'Ещё']];
-const ORDER = ['today', 'plans', 'food', 'goal', 'stats', 'more'];
+const ORDER = ['today', 'plans', 'food', 'gym', 'goal', 'stats', 'more'];
 // на компьютере в панели — и переехавшие разделы Pro
-const WIDE_TABS: Array<[string, string, string]> = [['today', 'today', 'Сегодня'], ['plans', 'plans', 'Планы'], ['food', 'food', 'Еда'], ['goal', 'target', 'Цель'], ['stats', 'stats', 'Статистика'], ['more', 'more', 'Ещё']];
+const WIDE_TABS: Array<[string, string, string]> = [['today', 'today', 'Сегодня'], ['plans', 'plans', 'Планы'], ['food', 'food', 'Еда'], ['gym', 'gym', 'Зал'], ['goal', 'target', 'Цель'], ['stats', 'stats', 'Статистика'], ['more', 'more', 'Ещё']];
 // разделы Pro, у которых уже есть свой экран
-const PRO_TABS: Record<string, string> = { 'Цель и прогноз': 'goal', 'Цель и план': 'goal', 'Статистика': 'stats', 'Статистика и итог недели': 'stats', 'Достижения': 'stats:awards', 'Итог недели': 'stats:week' };
+const PRO_TABS: Record<string, string> = { 'Зал': 'gym', 'Тренировка': 'gym', 'Цель и прогноз': 'goal', 'Цель и план': 'goal', 'Статистика': 'stats', 'Статистика и итог недели': 'stats', 'Достижения': 'stats:awards', 'Итог недели': 'stats:week' };
 // пояс телефона — серверу, чтобы «сегодня» и «сейчас» совпадали с часами человека
 const ME = () => `/api/me?tz=${-new Date().getTimezoneOffset()}`;
 
@@ -156,8 +157,9 @@ export function App() {
   const [back, setBack] = useState('today'), [statsTab, setStatsTab] = useState<StatsTab | undefined>();
   const go = (name: string) => {
     if (name === 'add') { open({ kind: 'add' }); return; }
+    if (name === 'gym' && !can(sub, 'gym')) { open({ kind: 'paywall', focus: 'Зал' }); return; }
     if ((name === 'goal' || name === 'stats') && !can(sub, name)) { open({ kind: 'paywall', focus: name === 'goal' ? 'Цель и прогноз' : 'Статистика' }); return; }
-    if (name === 'goal' || name === 'stats') setBack(tab === 'goal' || tab === 'stats' ? back : tab);
+    if (name === 'goal' || name === 'stats' || name === 'gym') setBack(['goal', 'stats', 'gym'].includes(tab) ? back : tab);
     setTab(name); buzz(6);
   };
 
@@ -184,6 +186,9 @@ export function App() {
         {today && tab === 'food' && <Food today={today} sub={sub} version={version} wide={wide} onChanged={() => { setStill(true); if (day) loadDay(day); }}
           onAddMeal={d => open({ kind: 'meal', day: d })} onAddDrink={d => open({ kind: 'drink', day: d })} onMeal={meal => open({ kind: 'meal', meal })} onDrink={drink => open({ kind: 'drink', drink })} onPro={(w, d) => pro(w, undefined, d)} />}
       </section>
+      <section className="screen" data-pos={pos('gym')} aria-hidden={tab !== 'gym'}>
+        {tab === 'gym' && <Gym wide={wide} version={version} onBack={() => setTab(back)} onChanged={() => { setStill(true); if (day) loadDay(day); setTimeout(checkAwards, 600); }} />}
+      </section>
       <section className="screen" data-pos={pos('goal')} aria-hidden={tab !== 'goal'}>
         {tab === 'goal' && <Goal wide={wide} onBack={() => setTab(back)} onWeigh={() => open({ kind: 'weight' })} onRedo={() => setRedo(true)} onChanged={() => { setDays({}); if (day) loadDay(day); }} />}
       </section>
@@ -197,7 +202,7 @@ export function App() {
     </div>
     <nav className="tabs" aria-label="Разделы">
       {(wide ? WIDE_TABS : TABS).map(([name, icon, label]) => <button key={name} className={`tab ${name === 'add' ? 'add' : ''}`} aria-current={tab === name ? 'page' : undefined} onClick={() => go(name)} aria-label={label}>
-        <span className="pill"><Icon name={icon} /></span>{label}{(name === 'goal' || name === 'stats') && !can(sub, name) && <span className="lock dock-lock">PRO</span>}</button>)}
+        <span className="pill"><Icon name={icon} /></span>{label}{(name === 'gym') && !can(sub, name) && <span className="lock dock-lock">PRO</span>}</button>)}
     </nav>
 
     <Sheet open={sheetOpen} onClose={close} tall={sheet.kind === 'paywall' || sheet.kind === 'search' || sheet.kind === 'ai'} title={sheet.kind === 'add' && sheet.at ? `Записать на ${sheet.at}` : TITLES[sheet.kind] ?? ''}>

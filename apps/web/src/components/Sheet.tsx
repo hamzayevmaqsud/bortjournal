@@ -5,6 +5,7 @@
  * На широком экране — окно по центру: проявляется с лёгким подъёмом, без перетаскивания.
  */
 import { useEffect, useRef, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { buzz, spring } from '../lib/motion';
 import { useWide } from '../lib/wide';
 
@@ -54,7 +55,9 @@ export function Sheet({ open, onClose, title, children, tall = false }: { open: 
 
   useEffect(() => { if (!open) return; const k = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); }; addEventListener('keydown', k); return () => removeEventListener('keydown', k); }, [open, onClose]);
 
-  return <>
+  // поверх всего приложения: лист из прокручиваемого экрана иначе оказался бы внизу прокрутки
+  const host = typeof document !== 'undefined' ? document.querySelector('.app') ?? document.body : null;
+  const ui = <>
     <div ref={scrim} className={`scrim ${open ? 'on' : ''}`} onClick={onClose} />
     <div ref={sheet} className={`sheet ${tall ? 'tall' : ''} ${wide ? 'modal' : ''}`} role="dialog" aria-modal="true" aria-label={title} aria-hidden={!open} inert={!open || undefined}>
       {wide ? <button className="x" onClick={onClose} aria-label="Закрыть">×</button> : <div className="grab" />}
@@ -62,4 +65,5 @@ export function Sheet({ open, onClose, title, children, tall = false }: { open: 
       <div className="sheet-body" ref={body}>{open ? children : null}</div>
     </div>
   </>;
+  return host ? createPortal(ui, host) : ui;
 }

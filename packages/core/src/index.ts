@@ -25,3 +25,4 @@ export * from './drinks.js';
 export * from './budget.js';
 export * from './plan.js';
 export * from './plans.js';
+export * from './gym.js';
