@@ -5,6 +5,7 @@ const P: Record<string, string> = {
   plus: '<path d="M12 5v14M5 12h14"/>',
   food: '<path d="M4 12h16a8 8 0 0 1-16 0z"/><path d="M8 11.5V8m4 3.5V6m4 5.5V9"/>',
   more: '<circle cx="5.5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="18.5" cy="12" r="1.6"/>',
+  image: '<rect x="3.5" y="5" width="17" height="14" rx="2.5"/><circle cx="9" cy="10" r="1.6"/><path d="m4 17 4.5-4.5 3.5 3.5 2.5-2.5 5.5 5"/>',
   drop: '<path d="M12 3.5c3.2 4 6 7.3 6 10.5a6 6 0 0 1-12 0c0-3.2 2.8-6.5 6-10.5z"/>',
   study: '<path d="M4 5h6.5a2 2 0 0 1 2 2v12a2 2 0 0 0-2-2H4zM20 5h-6.5a2 2 0 0 0-2 2v12a2 2 0 0 1 2-2H20z"/>',
   gym: '<path d="M3 10v4M6 8v8M18 8v8M21 10v4M6 12h12"/>',

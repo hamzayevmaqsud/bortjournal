@@ -80,7 +80,7 @@ async function shrink(file: File): Promise<{ b64: string; mime: string; url: str
 }
 
 export function FoodAi({ day, time, mode: start, onDone }: { day: string; time?: string; mode: 'photo' | 'text'; onDone: () => void }) {
-  const toast = useToast(), file = useRef<HTMLInputElement>(null);
+  const toast = useToast(), file = useRef<HTMLInputElement>(null), cam = useRef<HTMLInputElement>(null);
   const [mode, setMode] = useState(start), [photo, setPhoto] = useState<{ b64: string; mime: string; url: string } | null>(null);
   const [note, setNote] = useState(''), [scale, setScale] = useState(''), [t, setT] = useState(time ?? nowHm());
   const [stage, setStage] = useState<'setup' | 'loading' | 'review'>('setup'), [err, setErr] = useState('');
@@ -136,9 +136,13 @@ export function FoodAi({ day, time, mode: start, onDone }: { day: string; time?:
   return <div className="form">
     <div className="seg2 ai-mode" role="tablist"><button role="tab" aria-selected={mode === 'photo'} className={mode === 'photo' ? 'on' : ''} onClick={() => { setMode('photo'); setErr(''); }}>По фото</button><button role="tab" aria-selected={mode === 'text'} className={mode === 'text' ? 'on' : ''} onClick={() => { setMode('text'); setErr(''); }}>По описанию</button></div>
     {mode === 'photo' ? <>
-      <input ref={file} type="file" accept="image/jpeg,image/png,image/webp" capture="environment" hidden onChange={e => pickFile(e.target.files?.[0])} />
-      {photo ? <button type="button" className="ai-pick has" onClick={() => file.current?.click()} disabled={loading}><img className="ai-img" src={photo.url} alt="Фото еды" /><span>Заменить фото</span></button>
-        : <button type="button" className="ai-pick" onClick={() => file.current?.click()}><Icon name="camera" /><b>Сфотографировать или выбрать</b><small>тарелка целиком, сверху или под углом</small></button>}
+      {/* capture открывает сразу камеру и прячет галерею, поэтому два поля: камера и галерея */}
+      <input ref={cam} type="file" accept="image/*" capture="environment" hidden onChange={e => { pickFile(e.target.files?.[0]); e.target.value = ''; }} />
+      <input ref={file} type="file" accept="image/*" hidden onChange={e => { pickFile(e.target.files?.[0]); e.target.value = ''; }} />
+      {photo ? <div className="ai-pick has"><img className="ai-img" src={photo.url} alt="Фото еды" /></div>
+        : <div className="ai-pick"><Icon name="camera" /><b>Фото тарелки</b><small>целиком, сверху или под углом</small></div>}
+      <div className="ai-src"><button type="button" className="ghost" onClick={() => cam.current?.click()} disabled={loading}><Icon name="camera" />{photo ? 'Переснять' : 'Камера'}</button>
+        <button type="button" className="ghost" onClick={() => file.current?.click()} disabled={loading}><Icon name="image" />{photo ? 'Другое из галереи' : 'Из галереи'}</button></div>
       <label className="fld"><span>Подпись (по желанию)</span><textarea className="in" rows={2} value={note} onChange={e => setNote(e.target.value)} placeholder="Например: гречка 200 г, куриная грудка, соус сметанный" disabled={loading} /></label>
       <div className="fld"><span>Что лежит рядом для масштаба</span><div className="chips">{SCALES.map(([k, n]) => <button type="button" key={k} className={`chip ${scale === k ? 'on' : ''}`} onClick={() => setScale(k)} disabled={loading}>{n}</button>)}</div></div>
     </> : <>

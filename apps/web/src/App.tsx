@@ -53,6 +53,20 @@ const TITLES: Record<string, string> = { add: 'Записать', meal: 'При�
 
 export function App() {
   const toast = useToast(), wide = useWide();
+  // телефон: панель разделов уезжает, когда листаешь вниз, и возвращается, когда листаешь вверх или дошёл до конца
+  const [away, setAway] = useState(false);
+  useEffect(() => {
+    if (wide) { setAway(false); return; }
+    const last = new WeakMap<EventTarget, number>();
+    const on = (e: Event) => {
+      const el = e.target as HTMLElement; if (!el.classList?.contains('screen')) return;
+      const y = el.scrollTop, d = y - (last.get(el) ?? y); last.set(el, y);
+      if (y < 40 || y + el.clientHeight > el.scrollHeight - 24) setAway(false);
+      else if (d > 8) setAway(true); else if (d < -8) setAway(false);
+    };
+    document.addEventListener('scroll', on, { capture: true, passive: true });
+    return () => document.removeEventListener('scroll', on, { capture: true });
+  }, [wide]);
   const [me, setMe] = useState<Me | null | undefined>(undefined), [redo, setRedo] = useState(false);
   const [tab, setTab] = useState('today');
   const [day, setDay] = useState<string | null>(null), [today, setToday] = useState<string | null>(null);
@@ -166,7 +180,7 @@ export function App() {
     if (SECTIONS[name] && !can(sub, SECTIONS[name]!)) { open({ kind: 'paywall', focus: SECTION_NAME[name] }); return; }
     if ((name === 'goal' || name === 'stats') && !can(sub, name)) { open({ kind: 'paywall', focus: name === 'goal' ? 'Цель и прогноз' : 'Статистика' }); return; }
     if (name in SECTIONS) setBack(tab in SECTIONS ? back : tab);
-    setTab(name); buzz(6);
+    setTab(name); setAway(false); buzz(6);
   };
 
   if (me === undefined) return <div className="app" />;
@@ -215,7 +229,7 @@ export function App() {
           onLogout={async () => { await api('/api/auth/logout', { method: 'POST' }).catch(() => {}); setMe(null); setDays({}); setDay(null); setToday(null); setTab('today'); }} />
       </section>
     </div>
-    <nav className="tabs" aria-label="Разделы">
+    <nav className={`tabs ${away && !wide ? 'away' : ''}`} aria-label="Разделы">
       {(wide ? WIDE_TABS : TABS).map(([name, icon, label]) => <button key={name} className={`tab ${name === 'add' ? 'add' : ''}`} aria-current={tab === name ? 'page' : undefined} onClick={() => go(name)} aria-label={label}>
         <span className="pill"><Icon name={icon} /></span>{label}{SECTIONS[name] && !can(sub, SECTIONS[name]!) && <span className="lock dock-lock">PRO</span>}</button>)}
     </nav>
