@@ -271,7 +271,7 @@ async function review(db: Tx, userId: string, monArg?: string) {
 }
 
 export async function statsRoutes(app: FastifyInstance, { db }: { db: DB }) {
-  const pre = [requireUser, requirePro(db)];
+  const pre = [requireUser, requirePro(db, 'stats')];
   const n = (v: unknown) => { const x = Number(v ?? 30); if (![7, 30, 90, 365].includes(x)) throw bad('Период: 7, 30, 90 или 365 дней.'); return x; };
   app.get('/api/stats/overview', { preHandler: pre }, async req => overview(db, req.userId!, (req.query as any).month));
   app.get('/api/stats/food', { preHandler: pre }, async req => foodStats(db, req.userId!, n((req.query as any).days)));

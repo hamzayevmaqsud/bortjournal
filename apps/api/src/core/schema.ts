@@ -78,6 +78,8 @@ export const entitlements = pgTable('entitlements', {
   /** month | year — для покупок */
   plan: text('plan'),
   autoRenew: boolean('auto_renew').notNull().default(false),
+  /** «свой набор»: открытые разделы (PackKey); null — весь Pro */
+  features: text('features').array(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow()
 }, t => [
   uniqueIndex('entitlements_user_module_source_uq').on(t.userId, t.module, t.source),

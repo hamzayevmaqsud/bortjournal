@@ -4,7 +4,7 @@
  */
 import { eq, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
-import { addDays, isDay, localNow } from '@bortjournal/core';
+import { hasFeature, addDays, isDay, localNow } from '@bortjournal/core';
 import type { DB } from '../db/index.js';
 import { MODULES_LIST } from '../modules/index.js';
 import { requireUser } from './auth.js';
@@ -37,7 +37,7 @@ export async function todayRoutes(app: FastifyInstance, { db }: { db: DB }) {
     const settings = (p?.settings ?? {}) as Record<string, any>;
     // бесплатное — всем, платные разделы — только с Pro (пробным или купленным)
     const sub = await subscription(db, userId);
-    const allowed = new Set<string>(['food', 'body', 'plans', ...(sub.pro ? ['gym', 'study', 'budget', 'books'] : [])]);
+    const allowed = new Set<string>(['food', 'body', 'plans', ...(['gym', 'study', 'budget', 'books'] as const).filter(k => hasFeature(sub, k))]);
     const ctx = { db, userId, day, now, settings, profile: p ?? null };
     const parts: Record<string, unknown> = {};
     await Promise.all(MODULES_LIST.filter(m => m.today && allowed.has(m.name)).map(async m => { parts[m.name] = await m.today!(ctx); }));

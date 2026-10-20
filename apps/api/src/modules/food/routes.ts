@@ -4,6 +4,8 @@ import { bad, dayParam, guard, hmParam, idParam, notFound, uid } from '../../cor
 import type { DB } from '../../db/index.js';
 import { addDrink, addMeal, dayFood, deleteEntry, myFoods, updateDrink, updateMeal, type MealInput } from './service.js';
 import { aiEnabled, recognizeFood, takeQuota } from './ai.js';
+import { requireUser } from '../../core/auth.js';
+import { requireFeature } from '../../core/billing.js';
 import { searchCatalog } from './catalog.js';
 import { foodAnalysis } from './analysis.js';
 import { userContext } from '../../core/context.js';
@@ -47,7 +49,7 @@ export async function foodRoutes(app: FastifyInstance, { db }: { db: DB }) {
   });
 
   // Pro: справочник продуктов + свои блюда
-  const pro = guard(db, 'pro');
+  const pro = [requireUser, requireFeature(db, 'food')];
   app.get('/search', { preHandler: pro }, async req => {
     const q = String((req.query as any).q ?? '').trim().slice(0, 60);
     if (q.length < 2) return { mine: [], catalog: [] };

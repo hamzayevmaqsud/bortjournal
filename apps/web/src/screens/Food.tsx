@@ -3,6 +3,7 @@
  * пищи (правка, удаление с «Вернуть»), напитки, «чем закрыть норму». Анализ (Pro): календарь питания, клетчатка/сахар/соль,
  * вода и кофеин, баланс БЖУ против AMDR, когда ешь за 7 дней, отчёт за неделю. День листается стрелками.
  */
+import { can } from '../lib/features';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { addDays, parseDay } from '@bortjournal/core';
 import { api, ApiError, type Drink, type FoodDay, type Meal, type Subscription } from '../lib/api';
@@ -46,9 +47,9 @@ function DayView({ day, today, sub, version, onAddMeal, onAddDrink, onMeal, onDr
     try {
       const [f, t] = await Promise.all([api<FoodDay>(`/api/food/day?day=${day}`), api<any>(`/api/today?day=${day}`)]);
       setD(f); setNorm(t.parts.food?.norm ?? null);
-      if (sub.pro && day === today) api<any>(`/api/food/analysis?day=${day}`).then(a => setGap(a.gap), () => setGap(null)); else setGap(null);
+      if (can(sub, 'food') && day === today) api<any>(`/api/food/analysis?day=${day}`).then(a => setGap(a.gap), () => setGap(null)); else setGap(null);
     } catch { /* сеть — оставим прошлое */ }
-  }, [day, today, sub.pro]);
+  }, [day, today, sub]);
   useEffect(() => { load(); }, [load, version]);
   const live = day === today;
   if (!d || !norm) return <div className="wgrid"><div className="skel span12" style={{ height: 90 }} /><div className="skel span12" style={{ height: 260 }} /><div className="skel span12" style={{ height: 240 }} /></div>;
@@ -72,9 +73,9 @@ function DayView({ day, today, sub, version, onAddMeal, onAddDrink, onMeal, onDr
   const tile = (cls: string, ic: string, title: string, sub2: string, on: () => void, lock = false) => <button className={`add-tile ${cls}`} onClick={on}><span className="at-ic"><Icon name={ic} /></span><span className="mid"><b>{title}</b><small>{sub2}</small></span>{lock && <span className="lock">PRO</span>}</button>;
   return <div className="wgrid">
     <div className="add-tiles span12">
-      {tile('t-photo', 'camera', 'Фото еды', 'ИИ разберёт тарелку и посчитает', () => onPro('Фото и описание еды'), !sub.pro)}
-      {tile('t-text', 'edit', 'Описать текстом', '«гречка 200 г, грудка» — ИИ посчитает', () => onPro('Описание еды'), !sub.pro)}
-      {tile('t-search', 'search', 'Найти в справочнике', 'КБЖУ на 100 г и твои блюда', () => onPro('Поиск по базе продуктов'), !sub.pro)}
+      {tile('t-photo', 'camera', 'Фото еды', 'ИИ разберёт тарелку и посчитает', () => onPro('Фото и описание еды'), !can(sub, 'food'))}
+      {tile('t-text', 'edit', 'Описать текстом', '«гречка 200 г, грудка» — ИИ посчитает', () => onPro('Описание еды'), !can(sub, 'food'))}
+      {tile('t-search', 'search', 'Найти в справочнике', 'КБЖУ на 100 г и твои блюда', () => onPro('Поиск по базе продуктов'), !can(sub, 'food'))}
       {tile('t-manual', 'plus', 'Вручную', 'название и калории, БЖУ по желанию', onAddMeal)}
       {tile('t-drink', 'drop', 'Вода и напитки', 'вода, чай, кофе, сок — по мл', onAddDrink)}
     </div>
@@ -88,7 +89,7 @@ function DayView({ day, today, sub, version, onAddMeal, onAddDrink, onMeal, onDr
           <SBar name="Жиры" v={t.fat} norm={norm.fat} unit="г" color="var(--c-fat)" />
           <SBar name="Углеводы" v={t.carbs} norm={norm.carbs} unit="г" color="var(--c-carb)" />
           <SBar name="Вода" v={t.waterMl / 1000} norm={norm.water / 1000} unit="л" color="var(--c-water)" f={fmt1} />
-          <button className="link-btn" onClick={onAnalysis}>Подробнее: клетчатка, сахар, соль, кофеин, баланс БЖУ ›{!sub.pro && <span className="lock">PRO</span>}</button>
+          <button className="link-btn" onClick={onAnalysis}>Подробнее: клетчатка, сахар, соль, кофеин, баланс БЖУ ›{!can(sub, 'food') && <span className="lock">PRO</span>}</button>
         </div>
       </div>
     </section>
@@ -207,12 +208,12 @@ export function Food({ today, sub, version, wide, onAddMeal, onAddDrink, onMeal,
   useEffect(() => { setDay(today); }, [today]);
   const dt = parseDay(day), off = Math.round((dt.getTime() - parseDay(today).getTime()) / 864e5);
   const rel = off === 0 ? 'сегодня' : off === -1 ? 'вчера' : off === 1 ? 'завтра' : '';
-  const toAnalysis = () => { if (!sub.pro) { onPro('Анализ еды'); return; } setTab('analysis'); buzz(6); };
+  const toAnalysis = () => { if (!can(sub, 'food')) { onPro('Анализ еды'); return; } setTab('analysis'); buzz(6); };
   return <div className={`day food-page2 ${wide ? '' : 'narrow'}`}>
     <header className="fp-top">
       <div className="daytitle"><span className={off ? 'past' : ''}>{rel ? `${rel}, ` : ''}{dt.getUTCDate()} {MON[dt.getUTCMonth()]} · {WDF[dt.getUTCDay()]}</span><b>Еда</b></div>
       <div className="fp-ctrl">
-        <div className="seg-tabs" role="tablist"><button role="tab" aria-selected={tab === 'day'} className={tab === 'day' ? 'on' : ''} onClick={() => setTab('day')}>День</button><button role="tab" aria-selected={tab === 'analysis'} className={tab === 'analysis' ? 'on' : ''} onClick={toAnalysis}>Анализ{!sub.pro && <span className="lock">PRO</span>}</button></div>
+        <div className="seg-tabs" role="tablist"><button role="tab" aria-selected={tab === 'day'} className={tab === 'day' ? 'on' : ''} onClick={() => setTab('day')}>День</button><button role="tab" aria-selected={tab === 'analysis'} className={tab === 'analysis' ? 'on' : ''} onClick={toAnalysis}>Анализ{!can(sub, 'food') && <span className="lock">PRO</span>}</button></div>
         <div className="datenav">
           <button onClick={() => setDay(addDays(day, -1))} aria-label="Предыдущий день"><Icon name="chevL" /></button>
           <button className={`cur ${off ? 'not-today' : ''}`} onClick={() => setDay(today)}>{rel || human(day)}{rel && wide ? ` · ${human(day)}` : ''}</button>

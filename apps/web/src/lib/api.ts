@@ -11,7 +11,7 @@ export async function api<T>(path: string, opts: { method?: string; body?: unkno
   return data as T;
 }
 
-export interface Subscription { pro: boolean; source: 'trial' | 'web' | 'apple' | 'google' | 'free' | null; expiresAt: string | null; daysLeft: number | null; plan: 'month' | 'year' | null; autoRenew: boolean; ended?: boolean }
+export interface Subscription { pro: boolean; source: 'trial' | 'web' | 'apple' | 'google' | 'free' | null; expiresAt: string | null; daysLeft: number | null; plan: 'month' | 'year' | null; autoRenew: boolean; ended?: boolean; features?: import('@bortjournal/core').PackKey[] | null }
 export interface Profile { sex: string | null; age: number | null; heightCm: number | null; goal: string | null; targetKg: number | null; startWeightKg: number | null; settings: Record<string, any> }
 export interface Me { username: string; tzOffset: number; modules: string[]; subscription: Subscription; profile: Profile | null }
 export interface PlanResult { kcal: number; protein: number; fat: number; carbs: number; weeklyKg: number; tdee: number; bmi: number; notes: string[]; weeks: number | null; water: number; steps: number }

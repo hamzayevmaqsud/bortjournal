@@ -1,0 +1,1 @@
+ALTER TABLE "entitlements" ADD COLUMN "features" text[];

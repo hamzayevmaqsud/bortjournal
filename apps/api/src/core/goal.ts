@@ -100,12 +100,12 @@ export async function goalState(db: Tx, userId: string) {
 }
 
 export async function goalRoutes(app: FastifyInstance, { db }: { db: DB }) {
-  app.get('/api/goal', { preHandler: [requireUser, requirePro(db)] }, async (req, reply) => {
+  app.get('/api/goal', { preHandler: [requireUser, requirePro(db, 'goal')] }, async (req, reply) => {
     const g = await goalState(db, req.userId!);
     return g.ready ? g : reply.code(409).send({ error: 'Сначала пройди анкету — по ней считается план.' });
   });
   // активность этой недели: калории пересчитываются сразу
-  app.put('/api/goal/activity', { preHandler: [requireUser, requirePro(db)] }, async req => {
+  app.put('/api/goal/activity', { preHandler: [requireUser, requirePro(db, 'goal')] }, async req => {
     const level = String((req.body as { level?: string } | undefined)?.level ?? '');
     if (!(level in ACTIVITY)) throw bad('Неизвестный уровень активности.');
     const [u] = await db.select({ tz: users.tzOffset }).from(users).where(eq(users.id, req.userId!));

@@ -4,6 +4,7 @@
  * Данные дня кэшируются по дате; действия срабатывают на экране сразу,
  * удаление отправляется через 5 секунд, если не нажали «Вернуть».
  */
+import { can } from './lib/features';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { addDays } from '@bortjournal/core';
 import { api, ApiError, type Drink, type FoodDay, type Meal, type Me, type Subscription, type TaskFull, type Today as TodayData } from './lib/api';
@@ -84,7 +85,7 @@ export function App() {
   const refresh = useCallback(() => { setStill(true); if (day) loadDay(day); if (today && day !== today) loadDay(today); setVersion(v => v + 1); }, [day, today, loadDay]);
   // после записи: открылось ли новое достижение (Pro) — поздравляем
   const checkAwards = async () => {
-    if (!sub.pro) return;
+    if (!can(sub, 'stats')) return;
     try {
       const { fresh } = await api<{ fresh: Array<{ name: string; tier: number; tierName: string }> }>('/api/awards/check', { method: 'POST' });
       if (!fresh.length) return;
@@ -150,12 +151,12 @@ export function App() {
     'Фото и описание еды': (at, d) => ({ kind: 'ai', at, mode: 'photo', day: d }), 'Описание еды': (at, d) => ({ kind: 'ai', at, mode: 'text', day: d }),
     'Поиск еды': (at, d) => ({ kind: 'search', at, day: d }), 'Поиск по базе продуктов': (at, d) => ({ kind: 'search', at, day: d }),
   };
-  const pro = (what: string, at?: string, inDay?: string) => { if (!sub.pro) { open({ kind: 'paywall', focus: what }); return; } if (PRO_OPEN[what]) { open(PRO_OPEN[what]!(at, inDay)); return; } if (PRO_TABS[what]) { close(); const [t, st] = PRO_TABS[what]!.split(':'); setStatsTab(st as StatsTab | undefined); go(t!); return; } close(); toast(sub.source === 'free' ? `«${what}» переезжает в новую версию — пока он в старой` : `«${what}» появится в ближайшем обновлении — Pro уже включает его`); };
+  const pro = (what: string, at?: string, inDay?: string) => { if (!can(sub, what)) { open({ kind: 'paywall', focus: what }); return; } if (PRO_OPEN[what]) { open(PRO_OPEN[what]!(at, inDay)); return; } if (PRO_TABS[what]) { close(); const [t, st] = PRO_TABS[what]!.split(':'); setStatsTab(st as StatsTab | undefined); go(t!); return; } close(); toast(sub.source === 'free' ? `«${what}» переезжает в новую версию — пока он в старой` : `«${what}» появится в ближайшем обновлении — Pro уже включает его`); };
   const setSub = (s: Subscription) => { setMe(m => m ? { ...m, subscription: s } : m); setDays({}); if (day) loadDay(day); };
   const [back, setBack] = useState('today'), [statsTab, setStatsTab] = useState<StatsTab | undefined>();
   const go = (name: string) => {
     if (name === 'add') { open({ kind: 'add' }); return; }
-    if ((name === 'goal' || name === 'stats') && !sub.pro) { open({ kind: 'paywall', focus: name === 'goal' ? 'Цель и прогноз' : 'Статистика' }); return; }
+    if ((name === 'goal' || name === 'stats') && !can(sub, name)) { open({ kind: 'paywall', focus: name === 'goal' ? 'Цель и прогноз' : 'Статистика' }); return; }
     if (name === 'goal' || name === 'stats') setBack(tab === 'goal' || tab === 'stats' ? back : tab);
     setTab(name); buzz(6);
   };
@@ -166,7 +167,7 @@ export function App() {
 
   const pos = (name: string) => name === tab ? 'center' : ORDER.indexOf(name) < ORDER.indexOf(tab) ? 'left' : 'right';
   const foodPart = data?.parts.food, body = data?.parts.body;
-  const lockTile = (name: string, ic: string, c: string) => <button key={name} className="tile" onClick={() => pro(name, sheet.kind === 'add' ? sheet.at : undefined)}><span className="chip-ic" style={{ ['--c' as string]: c }}><Icon name={ic} /></span>{name}{!sub.pro && <span className="lock">PRO</span>}</button>;
+  const lockTile = (name: string, ic: string, c: string) => <button key={name} className="tile" onClick={() => pro(name, sheet.kind === 'add' ? sheet.at : undefined)}><span className="chip-ic" style={{ ['--c' as string]: c }}><Icon name={ic} /></span>{name}{!can(sub, name) && <span className="lock">PRO</span>}</button>;
 
   return <div className={`app ${wide ? 'wide' : ''}`}>
     {wide && <div className="brand"><i>✦</i>Бортжурнал</div>}
@@ -196,14 +197,14 @@ export function App() {
     </div>
     <nav className="tabs" aria-label="Разделы">
       {(wide ? WIDE_TABS : TABS).map(([name, icon, label]) => <button key={name} className={`tab ${name === 'add' ? 'add' : ''}`} aria-current={tab === name ? 'page' : undefined} onClick={() => go(name)} aria-label={label}>
-        <span className="pill"><Icon name={icon} /></span>{label}{(name === 'goal' || name === 'stats') && !sub.pro && <span className="lock dock-lock">PRO</span>}</button>)}
+        <span className="pill"><Icon name={icon} /></span>{label}{(name === 'goal' || name === 'stats') && !can(sub, name) && <span className="lock dock-lock">PRO</span>}</button>)}
     </nav>
 
     <Sheet open={sheetOpen} onClose={close} tall={sheet.kind === 'paywall' || sheet.kind === 'search' || sheet.kind === 'ai'} title={sheet.kind === 'add' && sheet.at ? `Записать на ${sheet.at}` : TITLES[sheet.kind] ?? ''}>
       {sheet.kind === 'add' && <>
         <div className="big2">
           <button className="bigt" style={{ background: 'var(--food)' }} onClick={() => open({ kind: 'meal', at: sheet.at })}><span className="chip-ic"><Icon name="food" /></span><b>Приём пищи</b><small>калории и БЖУ вручную</small></button>
-          <button className="bigt" style={{ background: 'var(--navy)' }} onClick={() => pro('Фото и описание еды', sheet.at)}><span className="chip-ic"><Icon name="camera" /></span><b>Фото еды</b><small>калории посчитает ИИ</small>{!sub.pro && <span className="lock">PRO</span>}</button>
+          <button className="bigt" style={{ background: 'var(--navy)' }} onClick={() => pro('Фото и описание еды', sheet.at)}><span className="chip-ic"><Icon name="camera" /></span><b>Фото еды</b><small>калории посчитает ИИ</small>{!can(sub, 'food') && <span className="lock">PRO</span>}</button>
         </div>
         <div className="water">
           <span className="chip-ic" style={{ ['--c' as string]: 'var(--water)' }}><Icon name="drop" /></span>

@@ -1,20 +1,24 @@
 /**
- * Экран Pro: что даёт подписка, выбор тарифа, «покупка» (сейчас имитация — деньги не списываются),
- * управление подпиской. Оплату потом заменит настоящая платёжка, экран останется тем же.
+ * Экран тарифов: «Pro — всё» или «Свой набор» (только нужные разделы; цена складывается из разделов,
+ * но всегда ниже Pro). «Покупка» пока имитация — деньги не списываются; управление подпиской.
+ * Оплату потом заменит настоящая платёжка, экран останется тем же. Цену своего набора пересчитывает сервер.
  */
-import { useState } from 'react';
-import { FEATURES, PRICES, type PriceId } from '@bortjournal/core';
+import { useMemo, useState } from 'react';
+import { customPrice, FEATURES, PACKS, PRICES, type PackKey, type PriceId } from '@bortjournal/core';
 import { api, ApiError, type Subscription } from '../lib/api';
+import { featureOf } from '../lib/features';
 import { buzz } from '../lib/motion';
 import { Icon } from './Icon';
 import { useToast } from './Toasts';
 
-const IC: Record<string, string> = { 'food.ai': 'camera', 'food.search': 'search', goal: 'today', gym: 'gym', study: 'study', budget: 'money', books: 'books', plans: 'plans', stats: 'flame', awards: 'check', reminders: 'drop' };
 // «20 октября 2027» — без «г.», чтобы точка в конце фразы не удваивалась
 const dateRu = (iso: string) => new Date(iso).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' }).replace(/\s*г\.$/, '');
-const usd = (n: number) => `${n.toLocaleString('ru-RU', { minimumFractionDigits: 2 })} $`;
+const usd = (n: number) => `${n.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} $`;
+const packName = (k: string) => PACKS.find(p => p.key === k)?.name ?? k;
+const word = (n: number) => n === 1 ? 'раздел' : n < 5 ? 'раздела' : 'разделов';
 
 export function SubStatus({ sub }: { sub: Subscription }) {
+  if (sub.features?.length && !sub.pro) return <span className="sub-pill pro">Свой набор · {sub.features.length}</span>;
   if (!sub.pro) return <span className="sub-pill off">Бесплатный тариф</span>;
   if (sub.source === 'trial') return <span className="sub-pill trial">Пробный Pro · ещё {sub.daysLeft} дн.</span>;
   if (sub.source === 'free') return <span className="sub-pill pro">Pro навсегда</span>;
@@ -22,61 +26,90 @@ export function SubStatus({ sub }: { sub: Subscription }) {
 }
 
 export function Paywall({ sub, focus, onChange, onClose }: { sub: Subscription; focus?: string; onChange: (s: Subscription) => void; onClose: () => void }) {
-  const toast = useToast();
-  const [plan, setPlan] = useState<PriceId>('year'), [step, setStep] = useState<'choose' | 'paying' | 'done'>('choose');
-  const paid = sub.pro && sub.source === 'web', lifetime = sub.source === 'free';
+  const toast = useToast(), focusKey = focus ? featureOf(focus) : null;
+  const custom = !sub.pro && !!sub.features?.length;
+  const [mode, setMode] = useState<'pro' | 'custom'>(custom ? 'custom' : 'pro');
+  const [plan, setPlan] = useState<PriceId>(sub.plan ?? 'year'), [step, setStep] = useState<'choose' | 'paying' | 'done'>('choose');
+  const [pick, setPick] = useState<PackKey[]>(() => custom ? [...sub.features!] : focusKey ? [focusKey] : []);
+  const [result, setResult] = useState<{ sub: Subscription; price: number } | null>(null);
+  const paid = sub.source === 'web' && (sub.pro || custom), lifetime = sub.source === 'free';
+  const q = useMemo(() => customPrice(pick, plan), [pick, plan]);
   const call = async (path: string, body?: unknown) => {
-    try { const r = await api<{ subscription: Subscription }>(path, { method: 'POST', body }); onChange(r.subscription); return r.subscription; }
+    try { const r = await api<{ subscription: Subscription; price?: number }>(path, { method: 'POST', body }); onChange(r.subscription); return r; }
     catch (e) { toast(e instanceof ApiError ? e.message : 'Не получилось', { err: true }); return null; }
   };
   const buy = async () => {
+    if (mode === 'custom' && !pick.length) { toast('Выбери хотя бы один раздел', { err: true }); return; }
     setStep('paying'); buzz(10);
     // имитация окна оплаты: короткая пауза, как у настоящей платёжки
     await new Promise(r => setTimeout(r, 1300));
-    const s = await call('/api/billing/purchase', { plan });
-    if (s) { setStep('done'); buzz([10, 40, 10, 40, 20]); } else setStep('choose');
+    const r = await call('/api/billing/purchase', { plan, features: mode === 'custom' ? pick : undefined });
+    if (r) { setResult({ sub: r.subscription, price: r.price ?? 0 }); setStep('done'); buzz([10, 40, 10, 40, 20]); } else setStep('choose');
   };
+  const toggle = (k: PackKey) => { setPick(p => p.includes(k) ? p.filter(x => x !== k) : [...p, k]); buzz(6); };
 
-  if (step === 'done') return <div className="pw-done">
+  if (step === 'done' && result) { const s = result.sub; return <div className="pw-done">
     <div className="pw-check"><Icon name="check" /></div>
-    <h3>Pro активен</h3>
-    <p>{sub.expiresAt ? `До ${dateRu(sub.expiresAt)}, продлится автоматически.` : 'Все функции открыты.'}</p>
+    <h3>{s.pro ? 'Pro активен' : 'Свой набор активен'}</h3>
+    {!s.pro && s.features && <div className="pw-picked">{s.features.map(k => <span key={k}>{packName(k)}</span>)}</div>}
+    <p>{usd(result.price)} {plan === 'year' ? 'в год' : 'в месяц'}{s.expiresAt ? ` · до ${dateRu(s.expiresAt)}, продлится автоматически.` : '.'}</p>
     <button className="primary" onClick={onClose}>Готово</button>
     <p className="pw-small">Это демонстрация: деньги не списывались.</p>
-  </div>;
+  </div>; }
 
+  const priceOf = (id: PriceId) => mode === 'pro' ? PRICES[id].price : customPrice(pick, id).price;
+  const cta = mode === 'pro' ? `Оформить Pro за ${usd(PRICES[plan].price)} ${PRICES[plan].per}` : pick.length ? `Оформить ${pick.length} ${word(pick.length)} за ${usd(q.price)} ${PRICES[plan].per}` : 'Выбери разделы';
+  const changed = (mode === 'custom') !== custom || (custom && [...pick].sort().join() !== [...sub.features!].sort().join());
   return <div className="pw">
     <div className="pw-hero">
-      <span className="pw-badge">PRO</span>
-      <h3>Весь Бортжурнал</h3>
-      <p>{focus ? `«${focus}» — часть Pro.` : 'Фото еды, зал, учёба, бюджет, книги, статистика и напоминания.'} {sub.source === 'trial' ? `Пробный период: ещё ${sub.daysLeft} дн.` : ''}</p>
+      <span className="pw-badge">{mode === 'pro' ? 'PRO' : 'СВОЙ НАБОР'}</span>
+      <h3>{mode === 'pro' ? 'Весь Бортжурнал' : 'Только то, что нужно'}</h3>
+      <p>{mode === 'pro' ? (focus ? `«${focus}» — часть Pro. Или возьми только его в своём наборе.` : 'Фото еды, зал, учёба, бюджет, книги, статистика и напоминания.') : 'Отметь разделы — цена сложится из них и всегда будет ниже Pro.'} {sub.source === 'trial' ? `Пробный период: ещё ${sub.daysLeft} дн.` : ''}</p>
     </div>
 
-    {lifetime ? <div className="pw-manage"><SubStatus sub={sub} /><p>Pro открыт навсегда — как у владельца журнала. Экран тарифов ниже — чтобы посмотреть, как его увидят пользователи.</p></div> : null}
-    {paid && !lifetime ? <div className="pw-manage">
+    <div className="seg2 pw-mode" role="tablist">
+      <button role="tab" aria-selected={mode === 'pro'} className={mode === 'pro' ? 'on' : ''} onClick={() => { setMode('pro'); buzz(6); }}>Pro — всё</button>
+      <button role="tab" aria-selected={mode === 'custom'} className={mode === 'custom' ? 'on' : ''} onClick={() => { setMode('custom'); buzz(6); }}>Свой набор</button>
+    </div>
+
+    {lifetime ? <div className="pw-manage"><SubStatus sub={sub} /><p>Pro открыт навсегда — как у владельца журнала. Тарифы ниже — чтобы посмотреть, как их увидят пользователи.</p></div> : null}
+    {paid ? <div className="pw-manage">
       <SubStatus sub={sub} />
-      <p>{sub.autoRenew ? `Продлится ${dateRu(sub.expiresAt!)}.` : `Автопродление выключено — Pro работает до ${dateRu(sub.expiresAt!)}.`}</p>
+      {custom && <div className="pw-picked">{sub.features!.map(k => <span key={k}>{packName(k)}</span>)}</div>}
+      <p>{sub.autoRenew ? `Продлится ${dateRu(sub.expiresAt!)}.` : `Автопродление выключено — доступ до ${dateRu(sub.expiresAt!)}.`}</p>
       {sub.autoRenew ? <button className="ghost" onClick={async () => { if (await call('/api/billing/cancel')) toast('Автопродление выключено'); }}>Отменить автопродление</button>
         : <button className="ghost" onClick={async () => { if (await call('/api/billing/resume')) toast('Автопродление снова включено'); }}>Возобновить</button>}
     </div> : null}
 
-    <ul className="pw-feats">{FEATURES.pro.map(([k, n, d]) => <li key={k} className={focus && n.toLowerCase().includes(focus.toLowerCase().split(' ')[0]!) ? 'hl' : ''}>
-      <span className="chip-ic" style={{ ['--c' as string]: 'var(--orange)' }}><Icon name={IC[k] ?? 'check'} /></span><span className="mid"><b>{n}</b><small>{d}</small></span></li>)}</ul>
+    {mode === 'pro' ? <ul className="pw-feats">{PACKS.map(p => <li key={p.key} className={focusKey === p.key ? 'hl' : ''}>
+      <span className="chip-ic" style={{ ['--c' as string]: 'var(--orange)' }}><Icon name={p.icon} /></span><span className="mid"><b>{p.name}</b><small>{p.hint}</small></span></li>)}</ul>
+      : <div className="pw-packs">{PACKS.map(p => { const on = pick.includes(p.key); return <button key={p.key} role="checkbox" aria-checked={on} className={`pw-pack ${on ? 'on' : ''} ${focusKey === p.key ? 'hl' : ''}`} onClick={() => toggle(p.key)}>
+        <span className="pw-box">{on && <Icon name="check" />}</span>
+        <span className="chip-ic" style={{ ['--c' as string]: on ? 'var(--orange)' : 'var(--text-3)' }}><Icon name={p.icon} /></span>
+        <span className="mid"><b>{p.name}</b><small>{p.hint}</small></span>
+        <em>{usd(plan === 'month' ? p.month : Math.round(p.month * 8) - 0.01)}<small>{plan === 'month' ? '/мес' : '/год'}</small></em>
+      </button>; })}</div>}
 
-    {!paid || !sub.autoRenew ? <>
-      <div className="pw-plans" role="radiogroup" aria-label="Тариф">
-        {(Object.keys(PRICES) as PriceId[]).reverse().map(id => { const p = PRICES[id]; return <button key={id} role="radio" aria-checked={plan === id} className={`pw-plan ${plan === id ? 'on' : ''}`} onClick={() => { setPlan(id); buzz(6); }}>
+    {mode === 'custom' && pick.length > 0 && <div className={`pw-sum ${q.capped ? 'capped' : ''}`}>
+      <div><span>{pick.length} {word(pick.length)}</span><b>{usd(q.price)}<small> {PRICES[plan].per}</small></b>{q.capped && <s>{usd(q.sum)}</s>}</div>
+      <p>{q.capped ? `Набор упёрся в потолок — дороже ${usd(q.price)} не бывает.` : `Дешевле Pro на ${usd(q.toPro)}.`}{q.toPro <= 1.5 || q.capped ? <> Весь Pro — всего на <b>{usd(q.toPro)}</b> больше.</> : null}</p>
+      {(q.toPro <= 1.5 || q.capped) && <button className="btn-accent" onClick={() => { setMode('pro'); buzz(6); }}>Взять весь Pro за {usd(PRICES[plan].price)}</button>}
+    </div>}
+
+    {!paid || !sub.autoRenew || changed ? <>
+      <div className="pw-plans" role="radiogroup" aria-label="Период">
+        {(Object.keys(PRICES) as PriceId[]).reverse().map(id => { const p = PRICES[id], pr = priceOf(id); return <button key={id} role="radio" aria-checked={plan === id} className={`pw-plan ${plan === id ? 'on' : ''}`} onClick={() => { setPlan(id); buzz(6); }}>
           {id === 'year' && <em>−33%</em>}
-          <b>{p.title}</b><strong>{usd(p.price)}</strong><small>{'note' in p ? p.note : p.per}</small>
+          <b>{p.title}</b><strong>{mode === 'custom' && !pick.length ? '—' : usd(pr)}</strong><small>{id === 'year' ? (pr ? `${usd(Math.round(pr / 12 * 100) / 100)} в месяц` : 'в год') : p.per}</small>
         </button>; })}
       </div>
-      <button className="primary pw-cta" disabled={step === 'paying'} onClick={buy}>
-        {step === 'paying' ? <span className="spin" aria-label="Оформляю" /> : `Оформить за ${usd(PRICES[plan].price)} ${PRICES[plan].per}`}
+      <button className="primary pw-cta" disabled={step === 'paying' || (mode === 'custom' && !pick.length)} onClick={buy}>
+        {step === 'paying' ? <span className="spin" aria-label="Оформляю" /> : cta}
       </button>
     </> : null}
 
     <div className="pw-free"><b>Бесплатно навсегда</b>{FEATURES.base.map(([k, n]) => <span key={k}><Icon name="check" className="ic" />{n}</span>)}</div>
-    <p className="pw-small">Демонстрация: деньги не списываются, оплата подключится позже. Отменить можно в любой момент.</p>
-    <button className="link" onClick={async () => { const s = await call('/api/billing/resume'); if (s) toast(s.pro ? 'Покупки восстановлены' : 'Покупок не найдено'); }}>Восстановить покупки</button>
+    <p className="pw-small">Демонстрация: деньги не списываются, оплата подключится позже. Отменить или поменять набор можно в любой момент.</p>
+    <button className="link" onClick={async () => { const r = await call('/api/billing/resume'); if (r) toast(r.subscription.pro || r.subscription.features?.length ? 'Покупки восстановлены' : 'Покупок не найдено'); }}>Восстановить покупки</button>
   </div>;
 }

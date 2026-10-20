@@ -7,6 +7,7 @@ import { SubStatus } from '../components/Paywall';
 import { useToast } from '../components/Toasts';
 import { applyTheme, savedTheme, type Theme } from '../lib/theme';
 import { buzz } from '../lib/motion';
+import { can } from '../lib/features';
 
 // уже переехали в новую версию — открываются по-настоящему
 const MOVED = new Set(['goal', 'stats', 'awards']);
@@ -44,16 +45,16 @@ export function More({ me, onPaywall, onPro, onSettings, onInstall, onLogout, on
       <Icon name="edit" className="ic chev" />
     </button>
     <button className="sub-card" onClick={() => onPaywall()}>
-      <span className="mid"><b>Подписка</b><small>{sub.source === 'trial' ? `Пробный Pro закончится через ${sub.daysLeft} дн.` : sub.pro ? (sub.expiresAt ? `Pro до ${new Date(sub.expiresAt).toLocaleDateString('ru-RU')}` : 'Pro открыт навсегда') : 'Еда, вода, шаги и задачи — бесплатно'}</small></span>
+      <span className="mid"><b>Подписка</b><small>{sub.source === 'trial' ? `Пробный Pro закончится через ${sub.daysLeft} дн.` : sub.pro ? (sub.expiresAt ? `Pro до ${new Date(sub.expiresAt).toLocaleDateString('ru-RU')}` : 'Pro открыт навсегда') : sub.features?.length ? `Свой набор: ${sub.features.length} ${sub.features.length === 1 ? 'раздел' : sub.features.length < 5 ? 'раздела' : 'разделов'}${sub.expiresAt ? ` · до ${new Date(sub.expiresAt).toLocaleDateString('ru-RU')}` : ''}` : 'Еда, вода, шаги и задачи — бесплатно'}</small></span>
       <SubStatus sub={sub} />
     </button>
     <ThemePick me={me} onSaved={onSaved} />
     <div className="rows">
-      {PRO_SECTIONS.map(([k, n, ic, c]) => <button key={k} className="row" onClick={() => onPro(n)}>
+      {PRO_SECTIONS.map(([k, n, ic, c]) => { const open = can(sub, k === 'awards' ? 'stats' : k); return <button key={k} className="row" onClick={() => onPro(n)}>
         <span className="chip-ic" style={{ ['--c' as string]: c }}><Icon name={ic} /></span>
-        <span className="mid"><b>{n}</b><small>{sub.pro && MOVED.has(k) ? 'открыть' : sub.pro ? (sub.source === 'free' ? 'переезжает в новую версию — пока в старой' : 'скоро — в ближайшем обновлении') : 'часть Pro'}</small></span>
-        {!sub.pro ? <span className="lock">PRO</span> : <Icon name="chev" className="ic chev" />}
-      </button>)}
+        <span className="mid"><b>{n}</b><small>{open && MOVED.has(k) ? 'открыть' : open ? (sub.source === 'free' ? 'переезжает в новую версию — пока в старой' : 'скоро — в ближайшем обновлении') : 'в Pro или в своём наборе'}</small></span>
+        {!open ? <span className="lock">PRO</span> : <Icon name="chev" className="ic chev" />}
+      </button>; })}
     </div>
     <div className="rows">
       <button className="row" onClick={onInstall}><span className="chip-ic" style={{ ['--c' as string]: 'var(--navy)' }}><Icon name="plus" /></span><span className="mid"><b>Установить на телефон</b><small>как приложение, с иконкой на экране</small></span><Icon name="chev" className="ic chev" /></button>

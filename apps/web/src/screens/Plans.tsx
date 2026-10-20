@@ -1,4 +1,5 @@
 /** «Планы» (бесплатно — задачи): неделя полосой дней, задачи дня и без даты, добавление и правка */
+import { can } from '../lib/features';
 import { useCallback, useEffect, useState } from 'react';
 import { addDays, parseDay } from '@bortjournal/core';
 import { api, type Subscription, type TaskFull } from '../lib/api';
@@ -40,8 +41,8 @@ export function Plans({ today, sub, version, onAdd, onOpen, onPro, onChanged }: 
     </section>
     <button className="pro-card" onClick={() => onPro('Цели и повторы')}>
       <span className="chip-ic" style={{ ['--c' as string]: 'var(--orange)' }}><Icon name="repeat" /></span>
-      <span className="mid"><b>Цели на неделю–год и повторяющиеся задачи</b><small>{sub.pro ? (sub.source === 'free' ? 'переезжают в новую версию — пока в старой' : 'скоро — в ближайшем обновлении') : 'часть Pro'}</small></span>
-      {!sub.pro && <span className="lock">PRO</span>}
+      <span className="mid"><b>Цели на неделю–год и повторяющиеся задачи</b><small>{can(sub, 'plans') ? (sub.source === 'free' ? 'переезжают в новую версию — пока в старой' : 'скоро — в ближайшем обновлении') : 'часть Pro'}</small></span>
+      {!can(sub, 'plans') && <span className="lock">PRO</span>}
     </button>
   </div>;
 }

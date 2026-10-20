@@ -1002,3 +1002,35 @@ button.meal:active{transform:scale(.98)}
 /* нижняя строка карточки прижата к низу — плитки одной высоты выглядят ровно */
 .wc>.card-note:last-child{margin-top:auto}
 .gap-opt .mid b,.gap-opt .mid span,.gap-opt .mid small{white-space:normal;overflow:visible}
+
+/* ============ тарифы: свой набор ============ */
+.pw-mode{margin:2px 0}
+.pw-packs{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+@media (max-width:600px){.pw-packs{grid-template-columns:1fr}}
+.pw-pack{display:grid;grid-template-columns:22px 34px 1fr auto;align-items:center;gap:10px;padding:10px 12px;border-radius:var(--r2);background:var(--card);border:2px solid transparent;text-align:left;transition:border-color .2s,background .2s,transform .2s var(--spring)}
+.pw-pack:active{transform:scale(.98)}
+.pw-pack.on{border-color:var(--orange);background:color-mix(in srgb,var(--orange) 7%,var(--card))}
+.pw-pack.hl:not(.on){border-color:color-mix(in srgb,var(--orange) 40%,transparent)}
+.pw-pack .chip-ic{width:34px;height:34px;border-radius:10px}
+.pw-pack .chip-ic .ic{width:17px;height:17px}
+.pw-pack .mid{min-width:0}
+.pw-pack .mid b{font-size:13.5px;white-space:normal}
+.pw-pack .mid small{font-size:11.5px;white-space:normal;line-height:1.25}
+.pw-pack em{font:800 14px var(--display);font-style:normal;white-space:nowrap;text-align:right}
+.pw-pack em small{font:600 10.5px var(--sans);color:var(--text-3)}
+.pw-box{width:22px;height:22px;border-radius:7px;border:2px solid var(--line-2);display:grid;place-items:center;background:var(--field);transition:background .2s,border-color .2s}
+.pw-pack.on .pw-box{background:var(--orange);border-color:var(--orange);color:#fff}
+.pw-box .ic{width:14px;height:14px;stroke-width:3}
+.pw-sum{display:flex;flex-direction:column;gap:6px;padding:14px 16px;border-radius:var(--r3);background:var(--navy);color:#FBF4E6;animation:rise .35s var(--ease) both}
+.pw-sum>div{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.pw-sum span{font:700 11px var(--sans);letter-spacing:.14em;text-transform:uppercase;opacity:.7;flex:1}
+.pw-sum b{font:800 30px var(--display)}
+.pw-sum b small{font:600 13px var(--sans);opacity:.7}
+.pw-sum s{opacity:.55;font-size:14px}
+.pw-sum p{margin:0;font-size:13px;opacity:.85}
+.pw-sum p b{font-size:13px}
+.pw-sum .btn-accent{align-self:flex-start;--btn:rgba(251,244,230,.14);--btn-line:rgba(251,244,230,.3);--btn-fg:#FBF4E6}
+.pw-sum.capped{background:var(--orange)}
+.pw-picked{display:flex;flex-wrap:wrap;gap:6px;justify-content:center}
+.pw-manage .pw-picked{justify-content:flex-start}
+.pw-picked span{padding:4px 10px;border-radius:999px;background:var(--orange-soft);color:var(--orange);font-size:12.5px;font-weight:700}

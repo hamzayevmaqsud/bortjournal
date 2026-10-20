@@ -3,6 +3,7 @@
  * лента дня, сетка сплошных плиток (крем, синий, горчица, оранжевый, шалфей, персик).
  * На телефоне плитки идут столбиком, у ленты нет подписей и итогов, а шапку дня можно смахнуть влево-вправо.
  */
+import { can } from '../lib/features';
 import { useEffect, useRef, useState } from 'react';
 import { parseDay } from '@bortjournal/core';
 import { api, type Subscription, type Today as TodayData } from '../lib/api';
@@ -74,7 +75,7 @@ export function TodayWide({ wide = true, data, day, today, sub, still, onDay, on
     try { await api('/api/plans/tasks', { method: 'POST', body: { title: t, day } }); setTitle(''); onTaskAdded(); }
     catch (e) { toast(e instanceof Error ? e.message : 'Не получилось', { err: true }); } finally { setBusy(false); }
   };
-  const proBtn = (what: string, label: string, ic: string) => <button className="btn-accent" onClick={() => onPro(what)}><Icon name={ic} />{label}{!sub.pro && <span className="lock">PRO</span>}</button>;
+  const proBtn = (what: string, label: string, ic: string) => <button className="btn-accent" onClick={() => onPro(what)}><Icon name={ic} />{label}{!can(sub, what) && <span className="lock">PRO</span>}</button>;
 
   return <div className={`wide-page ${wide ? '' : 'narrow'}`} ref={page}>
     <header className="hero" ref={head}>
@@ -102,7 +103,7 @@ export function TodayWide({ wide = true, data, day, today, sub, still, onDay, on
 
     {!data ? <div className="wgrid"><div className="skel" style={{ gridColumn: 'span 12', height: 260 }} /><div className="skel" style={{ gridColumn: 'span 4', height: 230 }} /><div className="skel" style={{ gridColumn: 'span 4', height: 230 }} /><div className="skel" style={{ gridColumn: 'span 4', height: 230 }} /></div> : <>
       <section className="panel tl-panel">
-        <Timeline marks={marks} now={data.isToday ? data.now.hm : null} still={still} pro={sub.pro} sums={wide ? sums : undefined} onAdd={t => onAdd(t)} onDelete={onDelete} onEdit={onEdit} onToggleTask={onToggleTask} />
+        <Timeline marks={marks} now={data.isToday ? data.now.hm : null} still={still} pro={can(sub, 'study') || can(sub, 'gym')} sums={wide ? sums : undefined} onAdd={t => onAdd(t)} onDelete={onDelete} onEdit={onEdit} onToggleTask={onToggleTask} />
         <p className="tl-hint">{wide ? 'Нажми на пустое место дорожки — добавишь запись на это время. Нажми на отметку — изменишь её.' : 'Нажми пустое место — запись на это время, отметку — изменить.'}</p>
       </section>
 
@@ -132,7 +133,7 @@ export function TodayWide({ wide = true, data, day, today, sub, still, onDay, on
           <p className="card-note">{!body.steps ? 'Шаги за день ещё не записаны' : body.steps >= body.stepsGoal ? 'Цель по шагам выполнена' : `Осталось ${fmt(body.stepsGoal - body.steps)} шагов`}</p>
         </section>}
 
-        {sub.pro ? <>
+        {study || gym || (P.budget?.configured && P.budget.leftToday !== undefined) || P.books?.reading ? <>
           {study && <section className="wc solid s-orange span7 c-study" style={{ ['--i' as string]: 3 }}>
             <div className="card-head"><h2>{study.quiz.left ? 'Вопросы дня' : 'Учёба'}</h2><div className="card-actions"><button className="btn-accent" onClick={() => onPro('Учёба')}>Открыть</button></div></div>
             {study.quiz.left ? <><Big v={study.quiz.left} unit={`${plural(study.quiz.left, 'вопрос', 'вопроса', 'вопросов')} на сегодня`} /><p className="card-note">Всего ждут повторения {fmt(study.quiz.total)}</p></>
@@ -154,7 +155,7 @@ export function TodayWide({ wide = true, data, day, today, sub, still, onDay, on
             <span className="wbar" style={{ ['--c' as string]: 'var(--books)' }}><i style={{ width: `${P.books.reading.pct}%` }} /></span>
             <p className="card-note">{P.books.reading.pct}% · стр. {P.books.reading.page}{P.books.reading.pages ? ` из ${P.books.reading.pages}` : ''}{P.books.reading.todayPages ? ` · сегодня +${P.books.reading.todayPages}` : ''}</p>
           </section>}
-        </> : <section className="wc solid s-navy span12 pro-teaser c-teaser" style={{ ['--i' as string]: 3 }}>
+        </> : sub.pro ? null : <section className="wc solid s-navy span12 pro-teaser c-teaser" style={{ ['--i' as string]: 3 }}>
           <div><span className="lock">PRO</span><h3>Зал, учёба, бюджет, книги и статистика</h3><p className="card-note">Фото еды с подсчётом ИИ, цели на год, напоминания и итог недели.</p></div>
           <button className="btn-accent" onClick={onPaywall}>Посмотреть тарифы<Icon name="chev" /></button>
         </section>}
