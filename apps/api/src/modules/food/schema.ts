@@ -1,0 +1,60 @@
+/** Еда: приёмы пищи, напитки, «мои блюда» и наборы-избранное */
+import { sql } from 'drizzle-orm';
+import { date, doublePrecision, index, integer, jsonb, pgTable, text, uniqueIndex } from 'drizzle-orm/pg-core';
+import { createdAt, hhmm, id, legacyId, owner, updatedAt } from '../../db/columns.js';
+
+export const meals = pgTable('food_meals', {
+  id: id(), userId: owner(), legacyId: legacyId(),
+  day: date('day', { mode: 'string' }).notNull(),
+  time: hhmm('time'),
+  /** breakfast | lunch | dinner | snack; пусто — по времени */
+  slot: text('slot'),
+  name: text('name').notNull(),
+  kcal: doublePrecision('kcal').notNull().default(0),
+  protein: doublePrecision('protein').notNull().default(0),
+  fat: doublePrecision('fat').notNull().default(0),
+  carbs: doublePrecision('carbs').notNull().default(0),
+  /** клетчатка, сахар, соль — null, если неизвестно (не ноль!) */
+  fiber: doublePrecision('fiber'),
+  sugar: doublePrecision('sugar'),
+  salt: doublePrecision('salt'),
+  /** manual | photo | text | db — откуда пришла запись */
+  source: text('source').notNull().default('manual'),
+  createdAt: createdAt(), updatedAt: updatedAt()
+}, t => [index('food_meals_user_day_idx').on(t.userId, t.day), uniqueIndex('food_meals_legacy_uq').on(t.userId, t.legacyId).where(sql`${t.legacyId} is not null`)]);
+
+export const drinks = pgTable('food_drinks', {
+  id: id(), userId: owner(), legacyId: legacyId(),
+  day: date('day', { mode: 'string' }).notNull(),
+  time: hhmm('time'),
+  /** water | soda | tea | coffee | … | custom */
+  type: text('type').notNull(),
+  ml: integer('ml').notNull(),
+  /** только для custom */
+  name: text('name'),
+  kcalPer100: doublePrecision('kcal_per_100'),
+  sugarPer100: doublePrecision('sugar_per_100'),
+  createdAt: createdAt()
+}, t => [index('food_drinks_user_day_idx').on(t.userId, t.day), uniqueIndex('food_drinks_legacy_uq').on(t.userId, t.legacyId).where(sql`${t.legacyId} is not null`)]);
+
+/** Блюда, которые человек уже ел: подсказки и поиск «моё» */
+export const userFoods = pgTable('food_user_foods', {
+  id: id(), userId: owner(),
+  key: text('key').notNull(),
+  name: text('name').notNull(),
+  kcal: doublePrecision('kcal').notNull(),
+  protein: doublePrecision('protein').notNull().default(0),
+  fat: doublePrecision('fat').notNull().default(0),
+  carbs: doublePrecision('carbs').notNull().default(0),
+  fiber: doublePrecision('fiber'), sugar: doublePrecision('sugar'), salt: doublePrecision('salt'),
+  uses: integer('uses').notNull().default(1),
+  lastUsedOn: date('last_used_on', { mode: 'string' })
+}, t => [uniqueIndex('food_user_foods_key_uq').on(t.userId, t.key)]);
+
+/** Набор блюд «в избранное»: записать завтрак одним касанием */
+export const mealSets = pgTable('food_meal_sets', {
+  id: id(), userId: owner(), legacyId: legacyId(),
+  name: text('name').notNull(),
+  items: jsonb('items').$type<Array<{ name: string; kcal: number; protein: number; fat: number; carbs: number }>>().notNull(),
+  createdAt: createdAt()
+}, t => [uniqueIndex('food_meal_sets_legacy_uq').on(t.userId, t.legacyId).where(sql`${t.legacyId} is not null`)]);

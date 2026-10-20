@@ -1,0 +1,10 @@
+{
+  "name": "@bortjournal/core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Общая логика Бортжурнала без зависимостей: модули, тарифы, формулы — для API и фронта",
+  "exports": { ".": "./src/index.ts" },
+  "scripts": { "typecheck": "tsc --noEmit" },
+  "devDependencies": { "typescript": "5.9.3" }
+}

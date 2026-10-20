@@ -2,12 +2,22 @@
   "name": "bortjournal",
   "version": "1.1.0",
   "private": true,
-  "description": "Бортжурнал: личный ежедневник с локальными аккаунтами",
+  "description": "Бортжурнал: личный ежедневник. В корне — текущая версия (server.js, app.js); новая — в apps/ и packages/",
   "main": "server.js",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "api:dev": "npm run dev -w @bortjournal/api",
+    "db:generate": "npm run db:generate -w @bortjournal/api",
+    "db:migrate": "npm run db:migrate -w @bortjournal/api",
+    "import:legacy": "npm run import:legacy -w @bortjournal/api",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=22"
   }
 }
