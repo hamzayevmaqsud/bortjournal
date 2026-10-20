@@ -164,6 +164,7 @@ function PlanForm({ plan, from, onDone }: { plan?: any; from?: { title: string; 
 
 /* ---------------- экран ---------------- */
 export function Gym({ wide, version, onBack, onChanged }: { wide: boolean; version: number; onBack: () => void; onChanged: () => void }) {
+  const [shown, setShown] = useState(8);
   const toast = useToast(), [o, setO] = useState<any>(null), [live, setLiveState] = useState<Live | null>(null), [sheet, setSheet] = useState<null | { kind: 'info'; key: string } | { kind: 'plan'; plan?: any; from?: any } | { kind: 'start' }>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout>>(undefined), loaded = useRef(false);
   const load = useCallback(async () => {
@@ -243,13 +244,13 @@ export function Gym({ wide, version, onBack, onChanged }: { wide: boolean; versi
       {o.myExercises.length > 0 && <section className="wc span12"><div className="card-head"><h2>Мои упражнения</h2></div>
         <div className="gym-ex">{o.myExercises.slice(0, 24).map((m: any) => <button key={m.key} className="gym-ex-i" onClick={() => setSheet({ kind: 'info', key: m.key })}><GymIcon icon={m.ex.icon} group={m.ex.group} /><span><b>{m.ex.name}</b><small>{[bestText(m.ex.kind, m.best), `${m.times}×`, human(m.day)].filter(Boolean).join(' · ')}</small></span></button>)}</div></section>}
       {o.recent.length > 0 && <section className="wc span12"><div className="card-head"><h2>Журнал</h2></div>
-        {o.recent.map((w: any) => <article className="gw" key={w.id}>
+        {o.recent.slice(0, shown).map((w: any) => <article className="gw" key={w.id}>
           <header className="gw-head"><div><b>{w.title}</b><span>{human(w.day)}{w.time ? ` · ${w.time}` : ''}{w.minutes ? ` · ${w.minutes} мин` : ''}{w.volume ? ` · ${fmt(w.volume)} кг` : ''}</span></div>
             <div className="gw-act">{w.exercises.length > 0 && <><button className="btn-accent" onClick={() => begin(fromWorkout(w))}><Icon name="repeat" />Повторить</button><button className="btn-accent" onClick={() => setSheet({ kind: 'plan', from: { title: w.title, exercises: w.exercises } })}><Icon name="plans" />В план</button></>}
               <button className="ico" onClick={() => begin(fromWorkout(w, true))} aria-label="Изменить"><Icon name="edit" /></button><button className="ico del" onClick={() => remove(w)} aria-label="Удалить">×</button></div></header>
           <ul className="gw-ex">{w.exercises.map((e: any, i: number) => <li key={i}><button onClick={() => setSheet({ kind: 'info', key: e.key })}><GymIcon icon={e.ex.icon} group={e.ex.group} size="sm" /><span>{e.ex.name}</span></button><em>{e.sets.map((s: S) => setText(s, e.ex.kind)).join(', ')}</em></li>)}</ul>
           {w.note && <p className="card-note">{w.note}</p>}
-        </article>)}</section>}
+        </article>)}{o.recent.length > shown && <button className="link-btn gw-more" onClick={() => setShown(n => n + 10)}>Показать ещё {Math.min(10, o.recent.length - shown)} из {o.recent.length - shown}</button>}</section>}
     </div>
     {sheets}
   </div>;

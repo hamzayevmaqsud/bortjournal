@@ -41,7 +41,7 @@ const SECTION_NAME: Record<string, string> = { study: 'Учёба', gym: 'Зал
 // на компьютере в панели — и переехавшие разделы Pro
 const WIDE_TABS: Array<[string, string, string]> = [['today', 'today', 'Сегодня'], ['plans', 'plans', 'Планы'], ['food', 'food', 'Еда'], ['study', 'study', 'Учёба'], ['gym', 'gym', 'Зал'], ['budget', 'money', 'Бюджет'], ['books', 'books', 'Книги'], ['goal', 'target', 'Цель'], ['stats', 'stats', 'Статистика'], ['more', 'more', 'Ещё']];
 // разделы Pro, у которых уже есть свой экран
-const PRO_TABS: Record<string, string> = { 'Учёба': 'study:study', 'Учёба и вопросы': 'study:study', 'Вопросы дня': 'study:quiz', 'Вопросы': 'study:quiz', 'Зал': 'gym', 'Тренировка': 'gym', 'Бюджет': 'budget', 'Трата': 'budget', 'Книги': 'books', 'Чтение': 'books', 'Цель и прогноз': 'goal', 'Цель и план': 'goal', 'Статистика': 'stats', 'Статистика и итог недели': 'stats', 'Достижения': 'stats:awards', 'Итог недели': 'stats:week' };
+const PRO_TABS: Record<string, string> = { 'Цели и повторы': 'plans', 'Анализ еды': 'food', 'Учёба': 'study:study', 'Учёба и вопросы': 'study:study', 'Вопросы дня': 'study:quiz', 'Вопросы': 'study:quiz', 'Зал': 'gym', 'Тренировка': 'gym', 'Бюджет': 'budget', 'Трата': 'budget', 'Книги': 'books', 'Чтение': 'books', 'Цель и прогноз': 'goal', 'Цель и план': 'goal', 'Статистика': 'stats', 'Статистика и итог недели': 'stats', 'Достижения': 'stats:awards', 'Итог недели': 'stats:week' };
 // пояс телефона — серверу, чтобы «сегодня» и «сейчас» совпадали с часами человека
 const ME = () => `/api/me?tz=${-new Date().getTimezoneOffset()}`;
 
@@ -196,14 +196,14 @@ export function App() {
     patch(t => { const x = t.parts.plans?.tasks.find(k => k.id === id); if (x) x.done = !x.done; return t; });
     try { await api(`/api/plans/tasks/${id}/toggle`, { method: 'POST' }); setVersion(v => v + 1); } catch (e) { fail(e); loadDay(day); }
   };
-  // платное: без Pro — экран тарифов; с Pro — раздел ещё переезжает
+  // платное: без Pro — экран тарифов; с доступом — открываем раздел или нужный лист
   // разделы, которые уже переехали: с Pro открываются по-настоящему
   const PRO_OPEN: Record<string, (at?: string, d?: string) => SheetState> = {
     'Фото и описание еды': (at, d) => ({ kind: 'ai', at, mode: 'photo', day: d }), 'Описание еды': (at, d) => ({ kind: 'ai', at, mode: 'text', day: d }),
     'Напоминания': () => ({ kind: 'reminders' }),
     'Поиск еды': (at, d) => ({ kind: 'search', at, day: d }), 'Поиск по базе продуктов': (at, d) => ({ kind: 'search', at, day: d }),
   };
-  const pro = (what: string, at?: string, inDay?: string) => { if (!can(sub, what)) { open({ kind: 'paywall', focus: what }); return; } if (PRO_OPEN[what]) { open(PRO_OPEN[what]!(at, inDay)); return; } if (PRO_TABS[what]) { close(); const [t, st] = PRO_TABS[what]!.split(':'); if (t === 'study') setStudyTab(st as 'study' | 'quiz'); else setStatsTab(st as StatsTab | undefined); go(t!); return; } close(); toast(sub.source === 'free' ? `«${what}» переезжает в новую версию — пока он в старой` : `«${what}» появится в ближайшем обновлении — Pro уже включает его`); };
+  const pro = (what: string, at?: string, inDay?: string) => { if (!can(sub, what)) { open({ kind: 'paywall', focus: what }); return; } if (PRO_OPEN[what]) { open(PRO_OPEN[what]!(at, inDay)); return; } if (PRO_TABS[what]) { close(); const [t, st] = PRO_TABS[what]!.split(':'); if (t === 'study') setStudyTab(st as 'study' | 'quiz'); else setStatsTab(st as StatsTab | undefined); go(t!); return; } close(); toast(`«${what}» скоро появится`); };
   const setSub = (s: Subscription) => { setMe(m => m ? { ...m, subscription: s } : m); setDays({}); if (day) loadDay(day); };
   const [back, setBack] = useState('today'), [statsTab, setStatsTab] = useState<StatsTab | undefined>(), [studyTab, setStudyTab] = useState<'study' | 'quiz' | undefined>();
   const go = (name: string) => {

@@ -104,6 +104,22 @@ export async function authRoutes(app: FastifyInstance, { db }: { db: DB }) {
     return { ok: true };
   });
 
+  // смена пароля: нужен текущий; остальные устройства выходят, это остаётся
+  app.post('/api/auth/password', async (req, reply) => {
+    if (!req.userId) return reply.code(401).send({ error: 'Нужно войти.' });
+    const b = (req.body ?? {}) as { current?: unknown; next?: unknown };
+    const current = String(b.current ?? '').slice(0, 512), next = String(b.next ?? '');
+    if (tooMany(`pw:${req.userId}`)) return reply.code(429).send({ error: 'Слишком много попыток. Подожди 15 минут.' });
+    const [u] = await db.select({ hash: users.passwordHash }).from(users).where(eq(users.id, req.userId));
+    if (!(await verifyPassword(current, u?.hash))) { fail(`pw:${req.userId}`); return reply.code(400).send({ error: 'Текущий пароль неверный.' }); }
+    if (next.length < 8 || next.length > 512) return reply.code(400).send({ error: 'Новый пароль — не короче 8 символов.' });
+    if (next === current) return reply.code(400).send({ error: 'Новый пароль совпадает с текущим.' });
+    await db.update(users).set({ passwordHash: await hashPassword(next) }).where(eq(users.id, req.userId));
+    const t = tokenOf(req);
+    const out = await db.delete(sessions).where(and(eq(sessions.userId, req.userId), t ? sql`${sessions.tokenHash} <> ${sha(t)}` : sql`true`)).returning({ h: sessions.tokenHash });
+    return { ok: true, signedOut: out.length };
+  });
+
   app.get('/api/me', async (req, reply) => {
     if (!req.userId) return reply.code(401).send({ error: 'Нужно войти.' });
     // часовой пояс приходит с устройства: по нему считаются «сегодня», «сейчас» и напоминания

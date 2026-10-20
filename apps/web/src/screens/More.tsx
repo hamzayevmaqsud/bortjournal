@@ -4,13 +4,13 @@ import { api, ApiError, type Me } from '../lib/api';
 import { fmt, fmt1 } from '../lib/format';
 import { Icon } from '../components/Icon';
 import { SubStatus } from '../components/Paywall';
+import { Sheet } from '../components/Sheet';
 import { useToast } from '../components/Toasts';
 import { applyTheme, savedTheme, type Theme } from '../lib/theme';
 import { buzz } from '../lib/motion';
 import { can } from '../lib/features';
 
 // уже переехали в новую версию — открываются по-настоящему
-const MOVED = new Set(['goal', 'stats', 'awards', 'gym', 'budget', 'books', 'study', 'reminders']);
 const PRO_SECTIONS: Array<[string, string, string, string]> = [
   ['goal', 'Цель и прогноз', 'target', 'var(--steps)'], ['gym', 'Зал', 'gym', 'var(--gym)'], ['study', 'Учёба и вопросы', 'study', 'var(--study)'],
   ['budget', 'Бюджет', 'money', 'var(--money)'], ['books', 'Книги', 'books', 'var(--books)'], ['stats', 'Статистика и итог недели', 'stats', 'var(--orange)'],
@@ -36,7 +36,7 @@ function ThemePick({ me, onSaved }: { me: Me; onSaved: (s: Record<string, unknow
 }
 
 export function More({ me, onPaywall, onPro, onSettings, onInstall, onLogout, onSaved }: { me: Me; onPaywall: (focus?: string) => void; onPro: (what: string) => void; onSettings: () => void; onInstall: () => void; onLogout: () => void; onSaved: (s: Record<string, unknown>) => void }) {
-  const s = me.profile?.settings ?? {}, sub = me.subscription;
+  const s = me.profile?.settings ?? {}, sub = me.subscription, [pw, setPw] = useState(false);
   return <div className="day more-page">
     <header className="dayhead"><div className="daytitle"><span>ещё</span><b>{s.name || me.username}</b></div></header>
     <button className="profile-card" onClick={onSettings}>
@@ -52,15 +52,18 @@ export function More({ me, onPaywall, onPro, onSettings, onInstall, onLogout, on
     <div className="rows">
       {PRO_SECTIONS.map(([k, n, ic, c]) => { const open = can(sub, k === 'awards' ? 'stats' : k); return <button key={k} className="row" onClick={() => onPro(n)}>
         <span className="chip-ic" style={{ ['--c' as string]: c }}><Icon name={ic} /></span>
-        <span className="mid"><b>{n}</b><small>{open && MOVED.has(k) ? 'открыть' : open ? (sub.source === 'free' ? 'переезжает в новую версию — пока в старой' : 'скоро — в ближайшем обновлении') : 'в Pro или в своём наборе'}</small></span>
+        <span className="mid"><b>{n}</b><small>{open ? 'открыть' : 'в Pro или в своём наборе'}</small></span>
         {!open ? <span className="lock">PRO</span> : <Icon name="chev" className="ic chev" />}
       </button>; })}
     </div>
     <div className="rows">
-      <button className="row" onClick={onInstall}><span className="chip-ic" style={{ ['--c' as string]: 'var(--navy)' }}><Icon name="plus" /></span><span className="mid"><b>Установить на телефон</b><small>как приложение, с иконкой на экране</small></span><Icon name="chev" className="ic chev" /></button>
+      <button className="row" onClick={onInstall}><span className="chip-ic" style={{ ['--c' as string]: 'var(--water)' }}><Icon name="plus" /></span><span className="mid"><b>Установить на телефон</b><small>как приложение, с иконкой на экране</small></span><Icon name="chev" className="ic chev" /></button>
+      <button className="row" onClick={() => setPw(true)}><span className="chip-ic" style={{ ['--c' as string]: 'var(--orange)' }}><Icon name="edit" /></span><span className="mid"><b>Сменить пароль</b><small>другие устройства выйдут из аккаунта</small></span><Icon name="chev" className="ic chev" /></button>
+      <a className="row" href="/api/export" download><span className="chip-ic" style={{ ['--c' as string]: 'var(--steps)' }}><Icon name="stats" /></span><span className="mid"><b>Выгрузить мои данные</b><small>всё, что записано, — одним файлом JSON</small></span><Icon name="chev" className="ic chev" /></a>
       <button className="row" onClick={onLogout}><span className="chip-ic" style={{ ['--c' as string]: 'var(--bad)' }}><Icon name="chevL" /></span><span className="mid"><b>Выйти</b><small>{me.username}</small></span></button>
     </div>
     <p className="hint">Бортжурнал · новая версия</p>
+    <Sheet open={pw} onClose={() => setPw(false)} title="Сменить пароль">{pw && <PasswordForm onDone={() => setPw(false)} />}</Sheet>
   </div>;
 }
 
@@ -98,4 +101,21 @@ export function InstallHelp() {
     </div>
     <p className="hint" style={{ textAlign: 'left' }}>Обе ссылки открывают один журнал и одну базу: записал на телефоне — через несколько секунд видно на компьютере, и наоборот.</p>
   </div>;
+}
+
+function PasswordForm({ onDone }: { onDone: () => void }) {
+  const toast = useToast(), [v, setV] = useState({ current: '', next: '', again: '' }), [err, setErr] = useState(''), [busy, setBusy] = useState(false);
+  return <form className="form" onSubmit={async e => {
+    e.preventDefault(); setErr('');
+    if (v.next !== v.again) { setErr('Новые пароли не совпадают.'); return; }
+    setBusy(true);
+    try { const r = await api<{ signedOut: number }>('/api/auth/password', { method: 'POST', body: { current: v.current, next: v.next } }); toast(r.signedOut ? `Пароль изменён. Вышли с других устройств: ${r.signedOut}` : 'Пароль изменён'); onDone(); }
+    catch (x) { setErr(x instanceof ApiError ? x.message : 'Не получилось'); } finally { setBusy(false); }
+  }}>
+    <label className="fld"><span>Текущий пароль</span><input className="in" type="password" autoComplete="current-password" required value={v.current} onChange={e => setV({ ...v, current: e.target.value })} /></label>
+    <label className="fld"><span>Новый пароль</span><input className="in" type="password" autoComplete="new-password" required minLength={8} value={v.next} onChange={e => setV({ ...v, next: e.target.value })} /></label>
+    <label className="fld"><span>Ещё раз</span><input className="in" type="password" autoComplete="new-password" required minLength={8} value={v.again} onChange={e => setV({ ...v, again: e.target.value })} /></label>
+    {err && <p className="form-err">{err}</p>}
+    <button className="primary" disabled={busy}>Сменить пароль</button>
+  </form>;
 }

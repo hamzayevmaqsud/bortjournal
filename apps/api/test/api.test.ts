@@ -155,3 +155,25 @@ describe('повтор записи из очереди телефона', () =>
     expect((await req('GET', `/api/today?day=${day}`)).json().parts.food.waterMl).toBe(500);
   });
 });
+
+describe('аккаунт: пароль и выгрузка', () => {
+  it('выгрузка — только свои строки и без секретов', async () => {
+    const r = await req('GET', '/api/export');
+    expect(r.statusCode).toBe(200);
+    expect(String(r.headers['content-disposition'])).toMatch(/attachment; filename="bortjournal-Maqsud-/);
+    const j = r.json();
+    expect(j.account.username).toBe('Maqsud');
+    expect(j.food_drinks.length).toBeGreaterThan(0);
+    expect(j.sessions).toBeUndefined();
+    expect(JSON.stringify(j)).not.toMatch(/scrypt\$/);
+  });
+  it('смена пароля: нужен текущий, другие устройства выходят', async () => {
+    const other = String((await app.inject({ method: 'POST', url: '/api/auth/login', headers: H, payload: { username: 'maqsud', password: 'secret12' } })).headers['set-cookie']).split(';')[0]!;
+    expect((await req('POST', '/api/auth/password', { current: 'wrong-one', next: 'newsecret12' })).statusCode).toBe(400);
+    expect((await req('POST', '/api/auth/password', { current: 'secret12', next: 'short' })).statusCode).toBe(400);
+    expect((await req('POST', '/api/auth/password', { current: 'secret12', next: 'newsecret12' })).json()).toMatchObject({ ok: true });
+    expect((await req('GET', '/api/today')).statusCode).toBe(200);
+    expect((await app.inject({ method: 'GET', url: '/api/today', headers: { ...H, cookie: other } })).statusCode).toBe(401);
+    expect((await app.inject({ method: 'POST', url: '/api/auth/login', headers: H, payload: { username: 'maqsud', password: 'newsecret12' } })).statusCode).toBe(200);
+  });
+});
