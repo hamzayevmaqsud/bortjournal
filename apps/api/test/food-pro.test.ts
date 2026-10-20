@@ -80,4 +80,13 @@ describe('еда Pro', () => {
     // записанное попадает в «моё» и находится поиском
     expect((await as('pro', 'GET', '/api/food/search?q=котлета')).json().mine[0].name).toBe('Котлета, 100 г');
   });
+  it('анализ дня: доли БЖУ, клетчатка из фото, календарь; без Pro — 402', async () => {
+    expect((await as('free', 'GET', '/api/food/analysis?day=2026-10-20')).statusCode).toBe(402);
+    const a = (await as('pro', 'GET', '/api/food/analysis?day=2026-10-20')).json();
+    expect(a.totals).toMatchObject({ kcal: 440, fiber: 4, meals: 2 });
+    expect(a.split.map((x: any) => x.key)).toEqual(['protein', 'fat', 'carbs']);
+    expect(a.split.reduce((s: number, x: any) => s + x.pct, 0)).toBeGreaterThanOrEqual(99);
+    expect(a.calendar.cells.find((c: any) => c.day === '2026-10-20').kcal).toBe(440);
+    expect(a.timing.slots[1]).toMatchObject({ key: 'day', pct: 100 });
+  });
 });

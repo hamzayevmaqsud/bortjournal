@@ -9,6 +9,8 @@
   --good:#3C5B38; --bad:#B8432E; --bad-soft:#F3C8BB; --mustard:#CFA232;
   --sage:#C8D8BD; --on-sage:#3C5B38; --peach:#F4D4BE; --on-peach:#8E2F22; --on-mustard:#FBF4E6; --water-on-navy:#6FB4EA;
   --mustard-solid:#CFA232;
+  --c-kcal:#D9622B; --c-prot:#3F6FB5; --c-fat:#B07D0A; --c-carb:#1F9473; --c-water:#2A7FB8; --c-caf:#5A3A22; --c-fiber:#6B8E23; --c-sugar:#C2185B; --c-salt:#5F6B7A;
+  --st-good:#3C7A3A; --st-warn:#B5891E; --st-bad:#C0392B;
   --display:'Rubik',system-ui,sans-serif; --sans:'Onest',system-ui,-apple-system,'Segoe UI',sans-serif;
   --r1:10px; --r2:14px; --r3:20px; --r4:28px;
   --sh1:0 1px 0 rgba(46,58,78,.05); --sh2:0 6px 18px rgba(46,58,78,.10); --sh3:0 -12px 40px rgba(35,42,56,.22);
@@ -25,6 +27,8 @@
   --food:#E5733C; --water:#5AA6E0; --steps:#6FA9A4; --study:#9AAACB; --gym:#7FA877; --money:#5DAA8A; --books:#C08A5E; --quiz:#D9B04A;
   --good:#7FA877; --bad:#E07A62; --bad-soft:#4A2620; --mustard:#D9B04A;
   --sage:#2E3A2B; --on-sage:#B9D3AE; --peach:#3F2A21; --on-peach:#F2C2A6; --on-mustard:#FFF3D6; --water-on-navy:#6FB4EA; --mustard-solid:#8A6A1A;
+  --c-kcal:#E5733C; --c-prot:#6E9BE0; --c-fat:#D9A93A; --c-carb:#3DBB95; --c-water:#5AA6E0; --c-caf:#B58A63; --c-fiber:#94B84A; --c-sugar:#E8649A; --c-salt:#9AA7B8;
+  --st-good:#7FBF6E; --st-warn:#E0B44A; --st-bad:#EA7A62;
   --sh1:0 1px 0 rgba(0,0,0,.2); --sh2:0 8px 22px rgba(0,0,0,.35); --sh3:0 -12px 40px rgba(0,0,0,.5);
 }}
 :root[data-theme="dark"]{
@@ -37,5 +41,7 @@
   --food:#E5733C; --water:#5AA6E0; --steps:#6FA9A4; --study:#9AAACB; --gym:#7FA877; --money:#5DAA8A; --books:#C08A5E; --quiz:#D9B04A;
   --good:#7FA877; --bad:#E07A62; --bad-soft:#4A2620; --mustard:#D9B04A;
   --sage:#2E3A2B; --on-sage:#B9D3AE; --peach:#3F2A21; --on-peach:#F2C2A6; --on-mustard:#FFF3D6; --water-on-navy:#6FB4EA; --mustard-solid:#8A6A1A;
+  --c-kcal:#E5733C; --c-prot:#6E9BE0; --c-fat:#D9A93A; --c-carb:#3DBB95; --c-water:#5AA6E0; --c-caf:#B58A63; --c-fiber:#94B84A; --c-sugar:#E8649A; --c-salt:#9AA7B8;
+  --st-good:#7FBF6E; --st-warn:#E0B44A; --st-bad:#EA7A62;
   --sh1:0 1px 0 rgba(0,0,0,.2); --sh2:0 8px 22px rgba(0,0,0,.35); --sh3:0 -12px 40px rgba(0,0,0,.5);
 }

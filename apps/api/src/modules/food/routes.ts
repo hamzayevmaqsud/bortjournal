@@ -5,6 +5,8 @@ import type { DB } from '../../db/index.js';
 import { addDrink, addMeal, dayFood, deleteEntry, myFoods, updateDrink, updateMeal, type MealInput } from './service.js';
 import { aiEnabled, recognizeFood, takeQuota } from './ai.js';
 import { searchCatalog } from './catalog.js';
+import { foodAnalysis } from './analysis.js';
+import { userContext } from '../../core/context.js';
 
 const SLOTS = new Set(['breakfast', 'lunch', 'dinner', 'snack']), SOURCES = new Set(['manual', 'photo', 'text', 'db']);
 const n = (v: unknown, hi: number, name: string) => { const x = Number(String(v ?? 0).replace(',', '.')); if (!Number.isFinite(x) || x < 0 || x > hi) throw bad(`${name}: от 0 до ${hi}.`); return Math.round(x * 10) / 10; };
@@ -50,6 +52,12 @@ export async function foodRoutes(app: FastifyInstance, { db }: { db: DB }) {
     const q = String((req.query as any).q ?? '').trim().slice(0, 60);
     if (q.length < 2) return { mine: [], catalog: [] };
     return { mine: await myFoods(db, uid(req), q), catalog: searchCatalog(q) };
+  });
+
+  // Pro: анализ — календарь питания, нутриенты, баланс БЖУ, время еды, отчёт недели, чем закрыть норму
+  app.get('/analysis', { preHandler: pro }, async req => {
+    const q = req.query as { day?: string; month?: string }, ctx = await userContext(db, uid(req));
+    return foodAnalysis(db, uid(req), ctx, q.day ? dayParam(q.day) : ctx.today, q.month);
   });
 
   // Pro: еда по фото или описанию

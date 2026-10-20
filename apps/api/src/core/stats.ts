@@ -5,7 +5,7 @@
  */
 import { eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
-import { addDays, localNow, parseDay, waterNorm } from '@bortjournal/core';
+import { addDays, parseDay } from '@bortjournal/core';
 import type { DB, Tx } from '../db/index.js';
 import { topMeals } from '../modules/food/index.js';
 import { MODULES_LIST } from '../modules/index.js';
@@ -13,10 +13,10 @@ import { requirePro } from './billing.js';
 import { requireUser } from './auth.js';
 import { bad } from './http.js';
 import type { DayFacts, Totals } from './module.js';
-import { achievements, dayJournal, profiles, users } from './schema.js';
+import { achievements, dayJournal } from './schema.js';
+import { userContext, type Norms } from './context.js';
 
 type F = DayFacts & { day: string };
-interface Norms { kcal: number; protein: number; water: number; steps: number; study: number }
 const avg = (a: number[]) => a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0;
 const days = (n: number, end: string) => Array.from({ length: n }, (_, k) => addDays(end, k - n + 1));
 const pct = (v: number) => Math.round(v * 100);
@@ -37,14 +37,7 @@ async function totals(db: Tx, userId: string) {
   for (const m of MODULES_LIST) if (m.totals) Object.assign(t, await m.totals(db, userId));
   return t;
 }
-async function context(db: Tx, userId: string) {
-  const [u] = await db.select({ tz: users.tzOffset }).from(users).where(eq(users.id, userId));
-  const today = localNow(u?.tz ?? 0).day;
-  const [p] = await db.select().from(profiles).where(eq(profiles.userId, userId));
-  const s = (p?.settings ?? {}) as Record<string, unknown>;
-  const norms: Norms = { kcal: Number(s.kcal) || 2200, protein: Number(s.protein) || 0, water: Number(s.water) || waterNorm(p?.sex, null), steps: Number(s.steps) || 10000, study: Number(s.study) || 60 };
-  return { today, norms, goal: p?.goal ?? null };
-}
+const context = userContext;
 
 /* ---------- оценка дня ---------- */
 const hasAny = (f?: F) => !!f && !!((f.meals ?? 0) || (f.studyMin ?? 0) || (f.workouts ?? 0) || (f.steps ?? 0));

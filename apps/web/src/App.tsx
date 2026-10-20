@@ -37,10 +37,10 @@ const PRO_TABS: Record<string, string> = { 'Цель и прогноз': 'goal',
 const ME = () => `/api/me?tz=${-new Date().getTimezoneOffset()}`;
 
 type SheetState =
-  | { kind: 'none' } | { kind: 'add'; at?: string } | { kind: 'meal'; at?: string; meal?: Meal } | { kind: 'drink'; at?: string; drink?: Drink }
+  | { kind: 'none' } | { kind: 'add'; at?: string } | { kind: 'meal'; at?: string; meal?: Meal; day?: string } | { kind: 'drink'; at?: string; drink?: Drink; day?: string }
   | { kind: 'steps' } | { kind: 'weight' } | { kind: 'task'; day: string | null; task?: TaskFull }
   | { kind: 'paywall'; focus?: string } | { kind: 'settings' } | { kind: 'install' }
-  | { kind: 'search'; at?: string } | { kind: 'ai'; at?: string; mode: 'photo' | 'text' };
+  | { kind: 'search'; at?: string; day?: string } | { kind: 'ai'; at?: string; mode: 'photo' | 'text'; day?: string };
 const TITLES: Record<string, string> = { add: 'Записать', meal: 'Приём пищи', drink: 'Напиток', steps: 'Шаги за день', weight: 'Вес', task: 'Задача', paywall: '', settings: 'Профиль и нормы', install: 'На экран «Домой»', search: 'Поиск еды', ai: 'Еда по фото или описанию' };
 
 export function App() {
@@ -49,7 +49,7 @@ export function App() {
   const [tab, setTab] = useState('today');
   const [day, setDay] = useState<string | null>(null), [today, setToday] = useState<string | null>(null);
   const [days, setDays] = useState<Record<string, TodayData>>({});
-  const [food, setFood] = useState<FoodDay | null>(null), [version, setVersion] = useState(0);
+  const [version, setVersion] = useState(0);
   const [sheet, setSheet] = useState<SheetState>({ kind: 'none' }), [sheetOpen, setSheetOpen] = useState(false);
   const [still, setStill] = useState(false);
   const sub: Subscription = me?.subscription ?? { pro: false, source: null, expiresAt: null, daysLeft: null, plan: null, autoRenew: false };
@@ -70,7 +70,6 @@ export function App() {
       return t;
     } catch (e) { fail(e); return null; }
   }, [fail]);
-  const loadFood = useCallback(async (d: string) => { try { setFood(await api<FoodDay>(`/api/food/day?day=${d}`)); } catch (e) { fail(e); } }, [fail]);
 
   useEffect(() => { loadMe(); }, [loadMe]);
   // тема из профиля — одна на телефоне и компьютере
@@ -78,12 +77,11 @@ export function App() {
   useEffect(() => { if (theme) applyTheme(theme); }, [theme]);
   useEffect(() => { if (me) loadDay(); }, [me?.username]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (me && day && !days[day]) loadDay(day); }, [me, day, days, loadDay]);
-  useEffect(() => { if (tab === 'food' && today) loadFood(today); }, [tab, today, loadFood, version]);
 
   const data = day ? days[day] ?? null : null;
   const patch = (fn: (t: TodayData) => TodayData) => { if (!day) return; setStill(true); setDays(x => x[day] ? { ...x, [day]: fn(structuredClone(x[day]!)) } : x); };
   // после любой записи: перечитать день, еду и списки; подписку — тоже (её мог изменить экран Pro)
-  const refresh = useCallback(() => { setStill(true); if (day) loadDay(day); if (today && day !== today) loadDay(today); if (today) loadFood(today); setVersion(v => v + 1); }, [day, today, loadDay, loadFood]);
+  const refresh = useCallback(() => { setStill(true); if (day) loadDay(day); if (today && day !== today) loadDay(today); setVersion(v => v + 1); }, [day, today, loadDay]);
   // после записи: открылось ли новое достижение (Pro) — поздравляем
   const checkAwards = async () => {
     if (!sub.pro) return;
@@ -148,11 +146,11 @@ export function App() {
   };
   // платное: без Pro — экран тарифов; с Pro — раздел ещё переезжает
   // разделы, которые уже переехали: с Pro открываются по-настоящему
-  const PRO_OPEN: Record<string, (at?: string) => SheetState> = {
-    'Фото и описание еды': at => ({ kind: 'ai', at, mode: 'photo' }), 'Описание еды': at => ({ kind: 'ai', at, mode: 'text' }),
-    'Поиск еды': at => ({ kind: 'search', at }), 'Поиск по базе продуктов': at => ({ kind: 'search', at }),
+  const PRO_OPEN: Record<string, (at?: string, d?: string) => SheetState> = {
+    'Фото и описание еды': (at, d) => ({ kind: 'ai', at, mode: 'photo', day: d }), 'Описание еды': (at, d) => ({ kind: 'ai', at, mode: 'text', day: d }),
+    'Поиск еды': (at, d) => ({ kind: 'search', at, day: d }), 'Поиск по базе продуктов': (at, d) => ({ kind: 'search', at, day: d }),
   };
-  const pro = (what: string, at?: string) => { if (!sub.pro) { open({ kind: 'paywall', focus: what }); return; } if (PRO_OPEN[what]) { open(PRO_OPEN[what]!(at)); return; } if (PRO_TABS[what]) { close(); const [t, st] = PRO_TABS[what]!.split(':'); setStatsTab(st as StatsTab | undefined); go(t!); return; } close(); toast(sub.source === 'free' ? `«${what}» переезжает в новую версию — пока он в старой` : `«${what}» появится в ближайшем обновлении — Pro уже включает его`); };
+  const pro = (what: string, at?: string, inDay?: string) => { if (!sub.pro) { open({ kind: 'paywall', focus: what }); return; } if (PRO_OPEN[what]) { open(PRO_OPEN[what]!(at, inDay)); return; } if (PRO_TABS[what]) { close(); const [t, st] = PRO_TABS[what]!.split(':'); setStatsTab(st as StatsTab | undefined); go(t!); return; } close(); toast(sub.source === 'free' ? `«${what}» переезжает в новую версию — пока он в старой` : `«${what}» появится в ближайшем обновлении — Pro уже включает его`); };
   const setSub = (s: Subscription) => { setMe(m => m ? { ...m, subscription: s } : m); setDays({}); if (day) loadDay(day); };
   const [back, setBack] = useState('today'), [statsTab, setStatsTab] = useState<StatsTab | undefined>();
   const go = (name: string) => {
@@ -182,8 +180,8 @@ export function App() {
         {today && <Plans today={today} sub={sub} version={version} onAdd={d => open({ kind: 'task', day: d })} onOpen={t => open({ kind: 'task', day: t.day, task: t })} onPro={pro} onChanged={() => { if (day) loadDay(day); }} />}
       </section>
       <section className="screen" data-pos={pos('food')} aria-hidden={tab !== 'food'}>
-        {tab === 'food' || food ? <Food data={food} norm={{ kcal: foodPart?.norm.kcal ?? data?.plan.kcal ?? 2000, protein: foodPart?.norm.protein ?? data?.plan.protein ?? 0, fat: foodPart?.norm.fat ?? 0, carbs: foodPart?.norm.carbs ?? 0 }}
-          onAddMeal={() => open({ kind: 'meal' })} onMeal={meal => open({ kind: 'meal', meal })} onDrink={drink => open({ kind: 'drink', drink })} onPro={pro} sub={sub} /> : null}
+        {today && tab === 'food' && <Food today={today} sub={sub} version={version} wide={wide} onChanged={() => { setStill(true); if (day) loadDay(day); }}
+          onAddMeal={d => open({ kind: 'meal', day: d })} onAddDrink={d => open({ kind: 'drink', day: d })} onMeal={meal => open({ kind: 'meal', meal })} onDrink={drink => open({ kind: 'drink', drink })} onPro={(w, d) => pro(w, undefined, d)} />}
       </section>
       <section className="screen" data-pos={pos('goal')} aria-hidden={tab !== 'goal'}>
         {tab === 'goal' && <Goal wide={wide} onBack={() => setTab(back)} onWeigh={() => open({ kind: 'weight' })} onRedo={() => setRedo(true)} onChanged={() => { setDays({}); if (day) loadDay(day); }} />}
@@ -221,16 +219,16 @@ export function App() {
           {lockTile('Зал', 'gym', 'var(--gym)')}{lockTile('Учёба', 'study', 'var(--study)')}{lockTile('Трата', 'money', 'var(--money)')}{lockTile('Чтение', 'books', 'var(--books)')}
         </div>
       </>}
-      {sheet.kind === 'meal' && day && <MealForm key={sheet.meal?.id ?? 'new'} day={sheet.meal?.day ?? day} time={sheet.at} meal={sheet.meal} onDone={done} />}
-      {sheet.kind === 'drink' && day && <DrinkForm key={sheet.drink?.id ?? 'new'} day={sheet.drink?.day ?? day} time={sheet.at} drink={sheet.drink} onDone={done} />}
+      {sheet.kind === 'meal' && day && <MealForm key={sheet.meal?.id ?? 'new'} day={sheet.meal?.day ?? sheet.day ?? day} time={sheet.at} meal={sheet.meal} onDone={done} />}
+      {sheet.kind === 'drink' && day && <DrinkForm key={sheet.drink?.id ?? 'new'} day={sheet.drink?.day ?? sheet.day ?? day} time={sheet.at} drink={sheet.drink} onDone={done} />}
       {sheet.kind === 'steps' && day && <NumberForm kind="steps" day={day} value={body?.steps || null} onDone={done} />}
       {sheet.kind === 'weight' && day && <NumberForm kind="weight" day={day} value={body?.weight?.today ? body.weight.kg : null} onDone={done} />}
       {sheet.kind === 'task' && <TaskForm key={sheet.task?.id ?? `new-${sheet.day}`} day={sheet.day} task={sheet.task} onDone={done} />}
       {sheet.kind === 'paywall' && <Paywall sub={sub} focus={sheet.focus} onChange={setSub} onClose={close} />}
       {sheet.kind === 'settings' && <SettingsForm me={me} onDone={s => { setMe(m => m && m.profile ? { ...m, profile: { ...m.profile, settings: s } } : m); done(); setDays({}); }} onRedo={() => { close(); setRedo(true); }} />}
       {sheet.kind === 'install' && <InstallHelp />}
-      {sheet.kind === 'search' && day && <FoodSearch day={day} time={sheet.at} onDone={done} />}
-      {sheet.kind === 'ai' && day && <FoodAi key={sheet.mode} day={day} time={sheet.at} mode={sheet.mode} onDone={done} />}
+      {sheet.kind === 'search' && day && <FoodSearch day={sheet.day ?? day} time={sheet.at} onDone={done} />}
+      {sheet.kind === 'ai' && day && <FoodAi key={sheet.mode} day={sheet.day ?? day} time={sheet.at} mode={sheet.mode} onDone={done} />}
     </Sheet>
   </div>;
 }
