@@ -1,4 +1,4 @@
-import { and, desc, eq, isNotNull, lte } from 'drizzle-orm';
+import { and, desc, eq, gte, isNotNull, lte } from 'drizzle-orm';
 import type { DayContext } from '../../core/module.js';
 import type { Tx } from '../../db/index.js';
 import { bodyDays } from './schema.js';
@@ -20,4 +20,10 @@ export async function setBodyDay(db: Tx, userId: string, day: string, v: { weigh
   if (v.steps !== undefined) set.steps = v.steps;
   if (!Object.keys(set).length) return;
   await db.insert(bodyDays).values({ userId, day, ...set }).onConflictDoUpdate({ target: [bodyDays.userId, bodyDays.day], set });
+}
+
+/** вес и шаги по дням за период — для цели и статистики */
+export async function bodySeries(db: Tx, userId: string, from: string, to: string) {
+  return db.select({ day: bodyDays.day, weightKg: bodyDays.weightKg, steps: bodyDays.steps }).from(bodyDays)
+    .where(and(eq(bodyDays.userId, userId), gte(bodyDays.day, from), lte(bodyDays.day, to))).orderBy(bodyDays.day);
 }

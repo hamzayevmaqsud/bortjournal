@@ -12,6 +12,7 @@ import { authRoutes, sessionHook } from './core/auth.js';
 import { billingRoutes } from './core/billing.js';
 import { HttpError } from './core/http.js';
 import { profileRoutes } from './core/profile.js';
+import { goalRoutes } from './core/goal.js';
 import { todayRoutes } from './core/today.js';
 import { connect, type DB } from './db/index.js';
 import { MODULES_LIST } from './modules/index.js';
@@ -43,7 +44,7 @@ export async function buildApp({ db, serveWeb = fs.existsSync(WEB_DIST) }: { db:
   });
 
   app.addHook('preHandler', sessionHook(db));
-  await app.register(async scope => { await authRoutes(scope, { db }); await todayRoutes(scope, { db }); await billingRoutes(scope, { db }); await profileRoutes(scope, { db }); });
+  await app.register(async scope => { await authRoutes(scope, { db }); await todayRoutes(scope, { db }); await billingRoutes(scope, { db }); await profileRoutes(scope, { db }); await goalRoutes(scope, { db }); });
   for (const m of MODULES_LIST) if (m.routes) await app.register(async scope => { await m.routes!(scope, { db }); }, { prefix: `/api/${m.name}` });
 
   if (serveWeb) {

@@ -1,5 +1,5 @@
 /** Еда: сводка дня и записи. Напитки с калориями считаются и в еде, и в воде */
-import { and, asc, desc, eq, ilike, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, ilike, lte, sql } from 'drizzle-orm';
 import { drinkName, drinkTotals, waterNorm } from '@bortjournal/core';
 import { recordEvent, removeEvents } from '../../core/events.js';
 import type { DayContext } from '../../core/module.js';
@@ -66,4 +66,16 @@ export async function updateDrink(db: Tx, userId: string, id: string, v: { day: 
 export async function myFoods(db: Tx, userId: string, q: string) {
   const where = q ? and(eq(userFoods.userId, userId), ilike(userFoods.name, `%${q.replace(/[%_\\]/g, '')}%`)) : eq(userFoods.userId, userId);
   return db.select({ name: userFoods.name, kcal: userFoods.kcal, protein: userFoods.protein, fat: userFoods.fat, carbs: userFoods.carbs, uses: userFoods.uses }).from(userFoods).where(where).orderBy(desc(userFoods.uses), desc(userFoods.lastUsedOn)).limit(q ? 8 : 12);
+}
+
+/** итоги по дням за период (еда + калорийные напитки, вода) — для цели и статистики; дни без записей не возвращаются */
+export async function foodSeries(db: Tx, userId: string, from: string, to: string) {
+  const ms = await db.select({ day: meals.day, kcal: sql<number>`sum(${meals.kcal})`, protein: sql<number>`sum(${meals.protein})`, fat: sql<number>`sum(${meals.fat})`, carbs: sql<number>`sum(${meals.carbs})`, n: sql<number>`count(*)` })
+    .from(meals).where(and(eq(meals.userId, userId), gte(meals.day, from), lte(meals.day, to))).groupBy(meals.day);
+  const ds = await db.select().from(drinks).where(and(eq(drinks.userId, userId), gte(drinks.day, from), lte(drinks.day, to)));
+  const by = new Map<string, { day: string; kcal: number; protein: number; fat: number; carbs: number; waterMl: number; meals: number }>();
+  const at = (day: string) => by.get(day) ?? by.set(day, { day, kcal: 0, protein: 0, fat: 0, carbs: 0, waterMl: 0, meals: 0 }).get(day)!;
+  for (const m of ms) Object.assign(at(m.day), { kcal: Number(m.kcal), protein: Number(m.protein), fat: Number(m.fat), carbs: Number(m.carbs), meals: Number(m.n) });
+  for (const d of ds) { const t = drinkTotals(d), r = at(d.day); r.kcal += t.kcal; r.protein += t.p; r.fat += t.f; r.carbs += t.c; r.waterMl += t.hyd; }
+  return [...by.values()].map(r => ({ ...r, kcal: Math.round(r.kcal), waterMl: Math.round(r.waterMl) })).sort((a, b) => a.day.localeCompare(b.day));
 }

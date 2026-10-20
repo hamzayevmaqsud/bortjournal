@@ -81,3 +81,27 @@ export function weeksTo(p: PlanProfile, w0: number, kcal: number, level: Activit
 }
 /** норма воды, мл: база по полу + активность */
 export const waterGoal = (sex: string | null | undefined, level?: string | null) => (sex === 'f' ? 1600 : 2000) + (({ sed: 0, light: 250, mod: 400, high: 600, ath: 800 } as Record<string, number>)[level ?? 'sed'] ?? 0);
+
+/** вес по неделям при постоянных калориях: расход пересчитывается под новый вес. [0] — старт */
+export function simulate(p: PlanProfile, w0: number, kcal: number, level: ActivityLevel, weeks: number, steps = p.steps ?? 6000) {
+  const f = ACTIVITY[level]?.f ?? 1.2, out = [w0];
+  let w = w0;
+  for (let k = 0; k < weeks; k++) { w += (kcal - bmr(p, w) * f - stepsKcal(steps, w, p.height)) * 7 / KCAL_PER_KG; out.push(w); }
+  return out;
+}
+
+/** тренд веса — наименьшие квадраты; points: { t — день от начала окна, v — кг }. Нужно ≥3 замеров на ≥7 днях */
+export function trend(points: Array<{ t: number; v: number }>) {
+  const n = points.length;
+  if (n < 3) return null;
+  const span = points[n - 1]!.t - points[0]!.t;
+  if (span < 7) return null;
+  const mt = points.reduce((a, p) => a + p.t, 0) / n, mv = points.reduce((a, p) => a + p.v, 0) / n;
+  let sxy = 0, sxx = 0;
+  for (const p of points) { sxy += (p.t - mt) * (p.v - mv); sxx += (p.t - mt) ** 2; }
+  const slope = sxx ? sxy / sxx : 0;
+  return { slope, at: (t: number) => mv + slope * (t - mt), n, span };
+}
+
+/** реальный расход по факту: что съедено минус то, что ушло в вес (наклон тренда, кг в день) */
+export const factTdee = (avgIntake: number, slopePerDay: number) => avgIntake - slopePerDay * KCAL_PER_KG;

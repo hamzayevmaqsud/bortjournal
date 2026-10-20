@@ -8,8 +8,10 @@ import { useToast } from '../components/Toasts';
 import { applyTheme, savedTheme, type Theme } from '../lib/theme';
 import { buzz } from '../lib/motion';
 
+// уже переехали в новую версию — открываются по-настоящему
+const MOVED = new Set(['goal']);
 const PRO_SECTIONS: Array<[string, string, string, string]> = [
-  ['goal', 'Цель и прогноз', 'today', 'var(--steps)'], ['gym', 'Зал', 'gym', 'var(--gym)'], ['study', 'Учёба и вопросы', 'study', 'var(--study)'],
+  ['goal', 'Цель и прогноз', 'target', 'var(--steps)'], ['gym', 'Зал', 'gym', 'var(--gym)'], ['study', 'Учёба и вопросы', 'study', 'var(--study)'],
   ['budget', 'Бюджет', 'money', 'var(--money)'], ['books', 'Книги', 'books', 'var(--books)'], ['stats', 'Статистика и итог недели', 'flame', 'var(--orange)'],
   ['awards', 'Достижения', 'check', 'var(--quiz)'], ['reminders', 'Напоминания', 'drop', 'var(--water)']
 ];
@@ -32,7 +34,7 @@ function ThemePick({ me, onSaved }: { me: Me; onSaved: (s: Record<string, unknow
   </section>;
 }
 
-export function More({ me, onPaywall, onSettings, onInstall, onLogout, onSaved }: { me: Me; onPaywall: (focus?: string) => void; onSettings: () => void; onInstall: () => void; onLogout: () => void; onSaved: (s: Record<string, unknown>) => void }) {
+export function More({ me, onPaywall, onPro, onSettings, onInstall, onLogout, onSaved }: { me: Me; onPaywall: (focus?: string) => void; onPro: (what: string) => void; onSettings: () => void; onInstall: () => void; onLogout: () => void; onSaved: (s: Record<string, unknown>) => void }) {
   const s = me.profile?.settings ?? {}, sub = me.subscription;
   return <div className="day more-page">
     <header className="dayhead"><div className="daytitle"><span>ещё</span><b>{s.name || me.username}</b></div></header>
@@ -47,9 +49,9 @@ export function More({ me, onPaywall, onSettings, onInstall, onLogout, onSaved }
     </button>
     <ThemePick me={me} onSaved={onSaved} />
     <div className="rows">
-      {PRO_SECTIONS.map(([k, n, ic, c]) => <button key={k} className="row" onClick={() => onPaywall(n)}>
+      {PRO_SECTIONS.map(([k, n, ic, c]) => <button key={k} className="row" onClick={() => onPro(n)}>
         <span className="chip-ic" style={{ ['--c' as string]: c }}><Icon name={ic} /></span>
-        <span className="mid"><b>{n}</b><small>{sub.pro ? (sub.source === 'free' ? 'переезжает в новую версию — пока в старой' : 'скоро — в ближайшем обновлении') : 'часть Pro'}</small></span>
+        <span className="mid"><b>{n}</b><small>{sub.pro && MOVED.has(k) ? 'открыть' : sub.pro ? (sub.source === 'free' ? 'переезжает в новую версию — пока в старой' : 'скоро — в ближайшем обновлении') : 'часть Pro'}</small></span>
         {!sub.pro ? <span className="lock">PRO</span> : <Icon name="chev" className="ic chev" />}
       </button>)}
     </div>

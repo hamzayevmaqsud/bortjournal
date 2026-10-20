@@ -22,12 +22,17 @@ import { InstallHelp, More, SettingsForm } from './screens/More';
 import { Onboarding } from './screens/Onboarding';
 import { Plans } from './screens/Plans';
 import { Today } from './screens/Today';
+import { Goal } from './screens/Goal';
 import { TodayWide } from './screens/TodayWide';
 import { useWide } from './lib/wide';
 import { applyTheme, type Theme } from './lib/theme';
 
 const TABS: Array<[string, string, string]> = [['today', 'today', 'Сегодня'], ['plans', 'plans', 'Планы'], ['add', 'plus', 'Записать'], ['food', 'food', 'Еда'], ['more', 'more', 'Ещё']];
-const ORDER = ['today', 'plans', 'food', 'more'];
+const ORDER = ['today', 'plans', 'food', 'goal', 'more'];
+// на компьютере в панели — и переехавшие разделы Pro
+const WIDE_TABS: Array<[string, string, string]> = [['today', 'today', 'Сегодня'], ['plans', 'plans', 'Планы'], ['food', 'food', 'Еда'], ['goal', 'target', 'Цель'], ['more', 'more', 'Ещё']];
+// разделы Pro, у которых уже есть свой экран
+const PRO_TABS: Record<string, string> = { 'Цель и прогноз': 'goal', 'Цель и план': 'goal' };
 // пояс телефона — серверу, чтобы «сегодня» и «сейчас» совпадали с часами человека
 const ME = () => `/api/me?tz=${-new Date().getTimezoneOffset()}`;
 
@@ -136,9 +141,15 @@ export function App() {
     'Фото и описание еды': at => ({ kind: 'ai', at, mode: 'photo' }), 'Описание еды': at => ({ kind: 'ai', at, mode: 'text' }),
     'Поиск еды': at => ({ kind: 'search', at }), 'Поиск по базе продуктов': at => ({ kind: 'search', at }),
   };
-  const pro = (what: string, at?: string) => { if (!sub.pro) { open({ kind: 'paywall', focus: what }); return; } if (PRO_OPEN[what]) { open(PRO_OPEN[what]!(at)); return; } close(); toast(sub.source === 'free' ? `«${what}» переезжает в новую версию — пока он в старой` : `«${what}» появится в ближайшем обновлении — Pro уже включает его`); };
+  const pro = (what: string, at?: string) => { if (!sub.pro) { open({ kind: 'paywall', focus: what }); return; } if (PRO_OPEN[what]) { open(PRO_OPEN[what]!(at)); return; } if (PRO_TABS[what]) { close(); go(PRO_TABS[what]!); return; } close(); toast(sub.source === 'free' ? `«${what}» переезжает в новую версию — пока он в старой` : `«${what}» появится в ближайшем обновлении — Pro уже включает его`); };
   const setSub = (s: Subscription) => { setMe(m => m ? { ...m, subscription: s } : m); setDays({}); if (day) loadDay(day); };
-  const go = (name: string) => { if (name === 'add') { open({ kind: 'add' }); return; } setTab(name); buzz(6); };
+  const [back, setBack] = useState('today');
+  const go = (name: string) => {
+    if (name === 'add') { open({ kind: 'add' }); return; }
+    if (name === 'goal' && !sub.pro) { open({ kind: 'paywall', focus: 'Цель и прогноз' }); return; }
+    if (name === 'goal') setBack(tab === 'goal' ? back : tab);
+    setTab(name); buzz(6);
+  };
 
   if (me === undefined) return <div className="app" />;
   if (me === null) return <Login onDone={loadMe} />;
@@ -165,14 +176,17 @@ export function App() {
         {tab === 'food' || food ? <Food data={food} norm={{ kcal: foodPart?.norm.kcal ?? data?.plan.kcal ?? 2000, protein: foodPart?.norm.protein ?? data?.plan.protein ?? 0, fat: foodPart?.norm.fat ?? 0, carbs: foodPart?.norm.carbs ?? 0 }}
           onAddMeal={() => open({ kind: 'meal' })} onMeal={meal => open({ kind: 'meal', meal })} onDrink={drink => open({ kind: 'drink', drink })} onPro={pro} sub={sub} /> : null}
       </section>
+      <section className="screen" data-pos={pos('goal')} aria-hidden={tab !== 'goal'}>
+        {tab === 'goal' && <Goal wide={wide} onBack={() => setTab(back)} onWeigh={() => open({ kind: 'weight' })} onRedo={() => setRedo(true)} onChanged={() => { setDays({}); if (day) loadDay(day); }} key={version} />}
+      </section>
       <section className="screen" data-pos={pos('more')} aria-hidden={tab !== 'more'}>
-        <More me={me} onSaved={st => setMe(m => m && m.profile ? { ...m, profile: { ...m.profile, settings: st } } : m)} onPaywall={focus => open({ kind: 'paywall', focus })} onSettings={() => open({ kind: 'settings' })} onInstall={() => open({ kind: 'install' })}
+        <More me={me} onPro={pro} onSaved={st => setMe(m => m && m.profile ? { ...m, profile: { ...m.profile, settings: st } } : m)} onPaywall={focus => open({ kind: 'paywall', focus })} onSettings={() => open({ kind: 'settings' })} onInstall={() => open({ kind: 'install' })}
           onLogout={async () => { await api('/api/auth/logout', { method: 'POST' }).catch(() => {}); setMe(null); setDays({}); setDay(null); setToday(null); setTab('today'); }} />
       </section>
     </div>
     <nav className="tabs" aria-label="Разделы">
-      {TABS.filter(([name]) => !wide || name !== 'add').map(([name, icon, label]) => <button key={name} className={`tab ${name === 'add' ? 'add' : ''}`} aria-current={tab === name ? 'page' : undefined} onClick={() => go(name)} aria-label={label}>
-        <span className="pill"><Icon name={icon} /></span>{label}</button>)}
+      {(wide ? WIDE_TABS : TABS).map(([name, icon, label]) => <button key={name} className={`tab ${name === 'add' ? 'add' : ''}`} aria-current={tab === name ? 'page' : undefined} onClick={() => go(name)} aria-label={label}>
+        <span className="pill"><Icon name={icon} /></span>{label}{name === 'goal' && !sub.pro && <span className="lock dock-lock">PRO</span>}</button>)}
     </nav>
 
     <Sheet open={sheetOpen} onClose={close} tall={sheet.kind === 'paywall' || sheet.kind === 'search' || sheet.kind === 'ai'} title={sheet.kind === 'add' && sheet.at ? `Записать на ${sheet.at}` : TITLES[sheet.kind] ?? ''}>
