@@ -10,7 +10,7 @@ import { buzz } from '../lib/motion';
 import { can } from '../lib/features';
 
 // уже переехали в новую версию — открываются по-настоящему
-const MOVED = new Set(['goal', 'stats', 'awards', 'gym', 'budget', 'books', 'study']);
+const MOVED = new Set(['goal', 'stats', 'awards', 'gym', 'budget', 'books', 'study', 'reminders']);
 const PRO_SECTIONS: Array<[string, string, string, string]> = [
   ['goal', 'Цель и прогноз', 'target', 'var(--steps)'], ['gym', 'Зал', 'gym', 'var(--gym)'], ['study', 'Учёба и вопросы', 'study', 'var(--study)'],
   ['budget', 'Бюджет', 'money', 'var(--money)'], ['books', 'Книги', 'books', 'var(--books)'], ['stats', 'Статистика и итог недели', 'stats', 'var(--orange)'],

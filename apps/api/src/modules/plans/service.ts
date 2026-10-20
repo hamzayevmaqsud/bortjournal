@@ -2,7 +2,7 @@ import { and, asc, eq, gte, isNull, lte, or, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { recordEvent, removeEvents } from '../../core/events.js';
 import { bad, dayParam, guard, hmParam, idParam, notFound, uid } from '../../core/http.js';
-import type { DayContext } from '../../core/module.js';
+import type { DayContext, Nudge } from '../../core/module.js';
 import type { DB, Tx } from '../../db/index.js';
 import { tasks } from './schema.js';
 
@@ -68,4 +68,11 @@ export async function plansDaily(db: Tx, userId: string, from: string, to: strin
 export async function plansTotals(db: Tx, userId: string) {
   const [r] = await db.select({ n: sql<number>`count(*) filter (where ${tasks.done})::int` }).from(tasks).where(eq(tasks.userId, userId));
   return { tasksDone: r?.n ?? 0 };
+}
+
+const hmMin = (s: string | null | undefined) => { const m = /^(\d{1,2}):(\d{2})/.exec(s ?? ''); return m ? +m[1]! * 60 + +m[2]! : null; };
+/** задачи со временем: напомнить в это время, если ещё не сделаны */
+export async function plansRemind({ db, userId, now }: DayContext & { min: number }): Promise<Nudge[]> {
+  const ts = await db.select({ id: tasks.id, title: tasks.title, time: tasks.time }).from(tasks).where(and(eq(tasks.userId, userId), eq(tasks.day, now.day), eq(tasks.done, false)));
+  return ts.filter(t => t.time).map(t => ({ key: `tasks:${t.id}`, kind: 'tasks', title: `Задача в ${t.time!.slice(0, 5)}`, body: t.title, url: '/#plans', at: hmMin(t.time)! }));
 }

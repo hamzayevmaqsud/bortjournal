@@ -2,7 +2,7 @@
 import { and, asc, desc, eq, gte, ilike, lte, sql } from 'drizzle-orm';
 import { drinkName, drinkTotals, waterNorm } from '@bortjournal/core';
 import { recordEvent, removeEvents } from '../../core/events.js';
-import type { DayContext } from '../../core/module.js';
+import type { DayContext, Nudge } from '../../core/module.js';
 import type { Tx } from '../../db/index.js';
 import { drinks, meals, userFoods } from './schema.js';
 
@@ -85,4 +85,18 @@ export async function topMeals(db: Tx, userId: string, from: string, to: string,
   const rows = await db.select({ name: sql<string>`min(${meals.name})`, n: sql<number>`count(*)::int`, kcal: sql<number>`avg(${meals.kcal})` }).from(meals)
     .where(and(eq(meals.userId, userId), gte(meals.day, from), lte(meals.day, to))).groupBy(sql`lower(trim(${meals.name}))`).orderBy(sql`count(*) desc`).limit(limit);
   return rows.map(r => ({ name: r.name, n: r.n, kcal: Math.round(Number(r.kcal)) }));
+}
+
+const hmMin = (s: string | null | undefined) => { const m = /^(\d{1,2}):(\d{2})/.exec(s ?? ''); return m ? +m[1]! * 60 + +m[2]! : null; };
+const fmtL = (ml: number) => (Math.round(ml / 100) / 10).toString().replace('.', ',');
+/** напоминания еды: обед не записан; вода — с 10 до 21, если отстаёшь от равномерного графика и давно не пил */
+export async function foodRemind(ctx: DayContext & { min: number }): Promise<Nudge[]> {
+  const { db, userId, now, min } = ctx, { meals: ms, drinks: ds, totals } = await dayFood(db, userId, now.day), out: Nudge[] = [];
+  if (!ms.length) out.push({ key: 'food', kind: 'food', title: 'Записать обед?', body: 'Сегодня ещё нет записей еды — хватит фото или пары слов.', url: '/#food', at: 13 * 60 + 30 });
+  if (min >= 10 * 60 && min < 21 * 60) {
+    const norm = (await foodToday({ ...ctx, day: now.day })).norm.water || 2000, expect = norm * Math.min(1, Math.max(0, (min / 60 - 8) / 13));
+    const last = Math.max(-1, ...ds.filter(d => d.hyd > 0).map(d => hmMin(d.time) ?? -1));
+    if (totals.waterMl < expect - 400 && (last < 0 || min - last > 120)) out.push({ key: 'water', kind: 'water', title: 'Пора выпить воды', body: `Выпито ${fmtL(totals.waterMl)} из ${fmtL(norm)} л.`, url: '/#today', every: 150 });
+  }
+  return out;
 }

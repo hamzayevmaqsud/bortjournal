@@ -27,6 +27,7 @@ import { Gym } from './screens/Gym';
 import { Budget } from './screens/Budget';
 import { Books } from './screens/Books';
 import { Study } from './screens/Study';
+import { Reminders } from './components/Reminders';
 import { Stats, type StatsTab } from './screens/Stats';
 import { TodayWide } from './screens/TodayWide';
 import { useWide } from './lib/wide';
@@ -47,15 +48,23 @@ const ME = () => `/api/me?tz=${-new Date().getTimezoneOffset()}`;
 type SheetState =
   | { kind: 'none' } | { kind: 'add'; at?: string } | { kind: 'meal'; at?: string; meal?: Meal; day?: string } | { kind: 'drink'; at?: string; drink?: Drink; day?: string }
   | { kind: 'steps' } | { kind: 'weight' } | { kind: 'task'; day: string | null; task?: TaskFull }
-  | { kind: 'paywall'; focus?: string } | { kind: 'settings' } | { kind: 'install' }
+  | { kind: 'paywall'; focus?: string } | { kind: 'settings' } | { kind: 'install' } | { kind: 'reminders' }
   | { kind: 'search'; at?: string; day?: string } | { kind: 'ai'; at?: string; mode: 'photo' | 'text'; day?: string };
-const TITLES: Record<string, string> = { add: 'Записать', meal: 'Приём пищи', drink: 'Напиток', steps: 'Шаги за день', weight: 'Вес', task: 'Задача', paywall: '', settings: 'Профиль и нормы', install: 'На экран «Домой»', search: 'Поиск еды', ai: 'Еда по фото или описанию' };
+const TITLES: Record<string, string> = { add: 'Записать', meal: 'Приём пищи', drink: 'Напиток', steps: 'Шаги за день', weight: 'Вес', task: 'Задача', paywall: '', settings: 'Профиль и нормы', install: 'На экран «Домой»', reminders: 'Напоминания', search: 'Поиск еды', ai: 'Еда по фото или описанию' };
 
 export function App() {
   const toast = useToast(), wide = useWide();
   // телефон: панель разделов уезжает вниз вместе с прокруткой (на столько же пикселей), листаешь вверх — так же выезжает;
   // когда прокрутка остановилась, панель плавно доезжает до ближайшего положения. Стиль пишем прямо в элемент — без перерисовки React
-  const tabsRef = useRef<HTMLElement>(null), shift = useRef(0);
+  const tabsRef = useRef<HTMLElement>(null), shift = useRef(0), goRef = useRef<(name: string) => void>(() => {});
+  // уведомление ведёт в раздел: «/#plans» при открытии или сообщение от service worker, если окно уже открыто
+  useEffect(() => {
+    const nav = (h: string) => { if (ORDER.includes(h)) { goRef.current(h); history.replaceState(null, '', location.pathname); } };
+    const onMsg = (e: MessageEvent) => { if (typeof e.data?.nav === 'string') nav(e.data.nav); };
+    const onHash = () => nav(location.hash.slice(1));
+    navigator.serviceWorker?.addEventListener('message', onMsg); addEventListener('hashchange', onHash);
+    return () => { navigator.serviceWorker?.removeEventListener('message', onMsg); removeEventListener('hashchange', onHash); };
+  }, []);
   const showTabs = useCallback(() => { const n = tabsRef.current; shift.current = 0; if (n) { n.style.transition = ''; n.style.transform = ''; } }, []);
   useEffect(() => {
     if (wide) { showTabs(); return; }
@@ -74,6 +83,8 @@ export function App() {
     return () => { clearTimeout(idle); document.removeEventListener('scroll', on, { capture: true }); };
   }, [wide, showTabs]);
   const [me, setMe] = useState<Me | null | undefined>(undefined), [redo, setRedo] = useState(false);
+  const ready = !!me?.profile?.heightCm;
+  useEffect(() => { const h = location.hash.slice(1); if (ready && ORDER.includes(h)) { goRef.current(h); history.replaceState(null, '', location.pathname); } }, [ready]);
   const [tab, setTab] = useState('today');
   const [day, setDay] = useState<string | null>(null), [today, setToday] = useState<string | null>(null);
   const [days, setDays] = useState<Record<string, TodayData>>({});
@@ -176,6 +187,7 @@ export function App() {
   // разделы, которые уже переехали: с Pro открываются по-настоящему
   const PRO_OPEN: Record<string, (at?: string, d?: string) => SheetState> = {
     'Фото и описание еды': (at, d) => ({ kind: 'ai', at, mode: 'photo', day: d }), 'Описание еды': (at, d) => ({ kind: 'ai', at, mode: 'text', day: d }),
+    'Напоминания': () => ({ kind: 'reminders' }),
     'Поиск еды': (at, d) => ({ kind: 'search', at, day: d }), 'Поиск по базе продуктов': (at, d) => ({ kind: 'search', at, day: d }),
   };
   const pro = (what: string, at?: string, inDay?: string) => { if (!can(sub, what)) { open({ kind: 'paywall', focus: what }); return; } if (PRO_OPEN[what]) { open(PRO_OPEN[what]!(at, inDay)); return; } if (PRO_TABS[what]) { close(); const [t, st] = PRO_TABS[what]!.split(':'); if (t === 'study') setStudyTab(st as 'study' | 'quiz'); else setStatsTab(st as StatsTab | undefined); go(t!); return; } close(); toast(sub.source === 'free' ? `«${what}» переезжает в новую версию — пока он в старой` : `«${what}» появится в ближайшем обновлении — Pro уже включает его`); };
@@ -188,6 +200,7 @@ export function App() {
     if (name in SECTIONS) setBack(tab in SECTIONS ? back : tab);
     setTab(name); showTabs(); buzz(6);
   };
+  goRef.current = go;
 
   if (me === undefined) return <div className="app" />;
   if (me === null) return <Login onDone={loadMe} />;
@@ -268,6 +281,7 @@ export function App() {
       {sheet.kind === 'paywall' && <Paywall sub={sub} focus={sheet.focus} onChange={setSub} onClose={close} />}
       {sheet.kind === 'settings' && <SettingsForm me={me} onDone={s => { setMe(m => m && m.profile ? { ...m, profile: { ...m.profile, settings: s } } : m); done(); setDays({}); }} onRedo={() => { close(); setRedo(true); }} />}
       {sheet.kind === 'install' && <InstallHelp />}
+      {sheet.kind === 'reminders' && <Reminders onInstall={() => open({ kind: 'install' })} />}
       {sheet.kind === 'search' && day && <FoodSearch day={sheet.day ?? day} time={sheet.at} onDone={done} />}
       {sheet.kind === 'ai' && day && <FoodAi key={sheet.mode} day={sheet.day ?? day} time={sheet.at} mode={sheet.mode} onDone={done} />}
     </Sheet>

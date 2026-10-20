@@ -44,6 +44,13 @@ export interface DayFacts {
 /** Итоги за всё время, которые не сложить из дней */
 export interface Totals { tasksDone?: number; booksDone?: number; booksOwned?: number; quotes?: number; pagesTotal?: number; booksDoneInRange?: Array<{ title: string; day: string }> }
 
+/**
+ * Подсказка-напоминание от модуля. Ядро решает, отправлять ли: at — время (минуты от полуночи), окно 30 минут,
+ * не чаще раза в день по ключу; every — повторяемая (например вода): не чаще, чем раз в every минут.
+ * Ключ начинается с вида напоминания (food, water, tasks, gym, quiz…) — по нему его можно выключить в настройках.
+ */
+export interface Nudge { key: string; kind: string; title: string; body: string; url: string; at?: number; every?: number }
+
 export interface AppModule {
   name: ModuleName;
   importLegacy?(ctx: ImportContext, state: LegacyState): Promise<void>;
@@ -56,4 +63,6 @@ export interface AppModule {
   daily?(db: Tx, userId: string, from: string, to: string): Promise<Array<{ day: string } & DayFacts>>;
   /** итоги за всё время — для достижений */
   totals?(db: Tx, userId: string): Promise<Totals>;
+  /** напоминания на «сейчас» (ctx.now) — ядро само проверит время, повторы и настройки */
+  remind?(ctx: DayContext & { min: number }): Promise<Nudge[]>;
 }

@@ -2,7 +2,7 @@ import { and, eq, gte, lte, sql } from 'drizzle-orm';
 import { users } from '../../core/schema.js';
 import { allCards, dueCards, type SrsState } from './cards.js';
 import { obsFor } from './obsidian.js';
-import type { DayContext } from '../../core/module.js';
+import type { DayContext, Nudge } from '../../core/module.js';
 import type { Tx } from '../../db/index.js';
 import { quizzes, srsCards, studySessions, studyTime } from './schema.js';
 
@@ -36,4 +36,10 @@ export async function studyDaily(db: Tx, userId: string, from: string, to: strin
   const qs = await db.select().from(quizzes).where(and(eq(quizzes.userId, userId), gte(quizzes.day, from), lte(quizzes.day, to)));
   for (const q of qs) { const items = (q.items as Array<{ result?: string | null }>) ?? [], r = at(q.day); r.quizTotal += items.length; r.quizAnswered += items.filter(i => i.result).length; r.quizGood += items.filter(i => i.result === 'good').length; }
   return [...by.values()];
+}
+
+/** вопросы на повторение — в 10 утра, если есть что повторять */
+export async function studyRemind(ctx: DayContext & { min: number }): Promise<Nudge[]> {
+  const { quiz } = await studyToday({ ...ctx, day: ctx.now.day });
+  return quiz.left > 0 ? [{ key: 'quiz', kind: 'quiz', title: `Вопросы дня: ${quiz.left}`, body: 'Пара минут — и знания не выветрятся.', url: '/#study', at: 10 * 60 }] : [];
 }

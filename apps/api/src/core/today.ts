@@ -14,12 +14,15 @@ import { bad } from './http.js';
 import { events, profiles, users } from './schema.js';
 
 /** дни с записями: еда, учёба, тренировка или шаги — как в старом журнале */
-async function streak(db: DB, userId: string, today: string) {
+export async function activeDays(db: DB, userId: string, today: string) {
   const since = addDays(today, -400);
   const rows = await db.execute<{ day: string }>(sql`
     select distinct day::text as day from ${events} where ${events.userId} = ${userId} and ${events.kind} in ('meal', 'session', 'workout') and ${events.day} >= ${since}
     union select day::text from body_days where user_id = ${userId} and steps > 0 and day >= ${since}`);
-  const days = new Set(rows.rows.map(r => r.day));
+  return new Set(rows.rows.map(r => r.day));
+}
+async function streak(db: DB, userId: string, today: string) {
+  const days = await activeDays(db, userId, today);
   let d = days.has(today) ? today : addDays(today, -1), n = 0;
   while (days.has(d) && n < 400) { n++; d = addDays(d, -1); }
   return n;
