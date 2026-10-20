@@ -54,6 +54,8 @@ export async function profileRoutes(app: FastifyInstance, { db }: { db: DB }) {
     if (b.protein !== undefined) s.protein = Math.round(num(b.protein, 0, 400, 'Белок'));
     if (b.steps !== undefined) s.steps = Math.round(num(b.steps, 1000, 50000, 'Шаги'));
     if (b.water !== undefined) s.water = Math.round(num(b.water, 500, 6000, 'Вода'));
+    // оформление общее для всех устройств: system — как в настройках телефона или компьютера
+    if (b.theme !== undefined) { if (!['system', 'light', 'dark'].includes(String(b.theme))) throw bad('Тема: system, light или dark.'); s.theme = b.theme; }
     await db.insert(profiles).values({ userId: req.userId!, settings: s }).onConflictDoUpdate({ target: profiles.userId, set: { settings: s, updatedAt: new Date() } });
     return { settings: s };
   });

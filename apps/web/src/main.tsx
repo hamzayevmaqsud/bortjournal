@@ -4,6 +4,12 @@ import { App } from './App';
 import { ToastProvider } from './components/Toasts';
 import './styles/tokens.css';
 import './styles/app.css';
+import { applyTheme, savedTheme } from './lib/theme';
+import { mobileOnly } from './lib/wide';
+
+applyTheme(savedTheme());
+// телефонный адрес ставится на экран «Домой» со своим началом — /m
+if (mobileOnly()) document.querySelector('link[rel="manifest"]')?.setAttribute('href', '/manifest-m.webmanifest');
 
 createRoot(document.getElementById('root')!).render(<StrictMode><ToastProvider><App /></ToastProvider></StrictMode>);
 

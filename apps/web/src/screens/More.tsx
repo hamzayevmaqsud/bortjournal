@@ -5,6 +5,8 @@ import { fmt, fmt1 } from '../lib/format';
 import { Icon } from '../components/Icon';
 import { SubStatus } from '../components/Paywall';
 import { useToast } from '../components/Toasts';
+import { applyTheme, savedTheme, type Theme } from '../lib/theme';
+import { buzz } from '../lib/motion';
 
 const PRO_SECTIONS: Array<[string, string, string, string]> = [
   ['goal', 'Цель и прогноз', 'today', 'var(--steps)'], ['gym', 'Зал', 'gym', 'var(--gym)'], ['study', 'Учёба и вопросы', 'study', 'var(--study)'],
@@ -12,7 +14,25 @@ const PRO_SECTIONS: Array<[string, string, string, string]> = [
   ['awards', 'Достижения', 'check', 'var(--quiz)'], ['reminders', 'Напоминания', 'drop', 'var(--water)']
 ];
 
-export function More({ me, onPaywall, onSettings, onInstall, onLogout }: { me: Me; onPaywall: (focus?: string) => void; onSettings: () => void; onInstall: () => void; onLogout: () => void }) {
+const THEMES: Array<[Theme, string, string]> = [['system', 'Как в системе', 'auto'], ['light', 'Светлая', 'sun'], ['dark', 'Тёмная', 'moon']];
+
+/** Оформление: применяется сразу, сохраняется в профиль — телефон и компьютер подхватят */
+function ThemePick({ me, onSaved }: { me: Me; onSaved: (s: Record<string, unknown>) => void }) {
+  const toast = useToast(), [cur, setCur] = useState<Theme>((me.profile?.settings?.theme as Theme) ?? savedTheme());
+  const pick = async (t: Theme) => {
+    if (t === cur) return; const was = cur;
+    setCur(t); applyTheme(t); buzz(6);
+    try { const r = await api<{ settings: Record<string, unknown> }>('/api/profile/settings', { method: 'PUT', body: { theme: t } }); onSaved(r.settings); }
+    catch { setCur(was); applyTheme(was); toast('Не получилось сохранить тему', { err: true }); }
+  };
+  return <section className="panel">
+    <div className="panel-h"><h2>Оформление</h2><small>общее для всех устройств</small></div>
+    <div className="seg3" role="radiogroup" aria-label="Тема">{THEMES.map(([k, n, ic]) => <button key={k} role="radio" aria-checked={cur === k} className={cur === k ? 'on' : ''} onClick={() => pick(k)}>
+      <span className={`th-sw th-${ic}`} aria-hidden="true" />{n}</button>)}</div>
+  </section>;
+}
+
+export function More({ me, onPaywall, onSettings, onInstall, onLogout, onSaved }: { me: Me; onPaywall: (focus?: string) => void; onSettings: () => void; onInstall: () => void; onLogout: () => void; onSaved: (s: Record<string, unknown>) => void }) {
   const s = me.profile?.settings ?? {}, sub = me.subscription;
   return <div className="day more-page">
     <header className="dayhead"><div className="daytitle"><span>ещё</span><b>{s.name || me.username}</b></div></header>
@@ -25,6 +45,7 @@ export function More({ me, onPaywall, onSettings, onInstall, onLogout }: { me: M
       <span className="mid"><b>Подписка</b><small>{sub.source === 'trial' ? `Пробный Pro закончится через ${sub.daysLeft} дн.` : sub.pro ? (sub.expiresAt ? `Pro до ${new Date(sub.expiresAt).toLocaleDateString('ru-RU')}` : 'Pro открыт навсегда') : 'Еда, вода, шаги и задачи — бесплатно'}</small></span>
       <SubStatus sub={sub} />
     </button>
+    <ThemePick me={me} onSaved={onSaved} />
     <div className="rows">
       {PRO_SECTIONS.map(([k, n, ic, c]) => <button key={k} className="row" onClick={() => onPaywall(n)}>
         <span className="chip-ic" style={{ ['--c' as string]: c }}><Icon name={ic} /></span>
@@ -66,8 +87,12 @@ export function InstallHelp() {
   const ios = /iPhone|iPad|iPod/.test(navigator.userAgent);
   return <div className="form">
     <p style={{ margin: 0 }}>Бортжурнал ставится на экран «Домой» и открывается как приложение — без браузерных панелей.</p>
-    {ios ? <ol className="steps"><li>Открой эту страницу в <b>Safari</b>.</li><li>Нажми <b>«Поделиться»</b> внизу экрана.</li><li>Выбери <b>«На экран „Домой“»</b> → «Добавить».</li><li>Открывай журнал с новой иконки.</li></ol>
+    {ios ? <ol className="steps"><li>Открой ссылку для телефона в <b>Safari</b>.</li><li>Нажми <b>«Поделиться»</b> внизу экрана.</li><li>Выбери <b>«На экран „Домой“»</b> → «Добавить».</li><li>Открывай журнал с новой иконки.</li></ol>
       : <ol className="steps"><li>Открой меню браузера (⋮).</li><li>Выбери <b>«Установить приложение»</b> или «Добавить на главный экран».</li></ol>}
-    <p className="hint" style={{ textAlign: 'left' }}>Компьютер и телефон смотрят в одну базу: записал на одном — видно на другом.</p>
+    <div className="links">
+      <div><b>Для компьютера</b><code>{location.origin}/</code></div>
+      <div><b>Для телефона</b><code>{location.origin}/m</code></div>
+    </div>
+    <p className="hint" style={{ textAlign: 'left' }}>Обе ссылки открывают один журнал и одну базу: записал на телефоне — через несколько секунд видно на компьютере, и наоборот.</p>
   </div>;
 }

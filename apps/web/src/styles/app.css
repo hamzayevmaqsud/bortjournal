@@ -492,3 +492,20 @@ button.meal:active{transform:scale(.98)}
 .app.wide .day:not(.wide-page) .daytitle b{font-size:34px;letter-spacing:-.02em}
 .app.wide .day:not(.wide-page) .dayhead .nav{border:1.5px solid var(--line-2);background:var(--card)}
 .app.wide .day:not(.wide-page) .dayhead .nav:hover{background:var(--track)}
+
+/* выбор темы */
+.seg3{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;padding:4px;border-radius:var(--r2);background:var(--field);border:1.5px solid var(--line)}
+.seg3 button{display:flex;flex-direction:column;align-items:center;gap:8px;padding:12px 6px 10px;border-radius:11px;font-size:13px;font-weight:600;color:var(--text-2);transition:background .25s var(--ease),color .2s,transform .2s var(--spring)}
+.seg3 button:active{transform:scale(.95)}
+.seg3 button.on{background:var(--card);color:var(--text);box-shadow:var(--sh2)}
+.th-sw{width:44px;height:30px;border-radius:9px;border:1.5px solid var(--line-2);position:relative;overflow:hidden}
+.th-sun{background:#EFE3CE}
+.th-moon{background:#1B1915}
+.th-auto{background:linear-gradient(135deg,#EFE3CE 0 50%,#1B1915 50% 100%)}
+.th-sw::after{content:"";position:absolute;left:6px;top:6px;width:14px;height:6px;border-radius:3px;background:#D9622B}
+.seg3 button.on .th-sw{border-color:var(--orange)}
+:root[data-theme="dark"] .s-sage,:root[data-theme="dark"] .s-peach{--btn:rgba(255,255,255,.08)}
+.links{display:flex;flex-direction:column;gap:6px}
+.links div{display:flex;flex-direction:column;gap:2px;padding:10px 12px;border-radius:var(--r2);background:var(--card);border:1px solid var(--line)}
+.links b{font-size:12px;color:var(--text-2)}
+.links code{font:600 13px var(--sans);color:var(--text);word-break:break-all;user-select:all}

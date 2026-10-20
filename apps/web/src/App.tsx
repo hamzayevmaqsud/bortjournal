@@ -23,6 +23,7 @@ import { Plans } from './screens/Plans';
 import { Today } from './screens/Today';
 import { TodayWide } from './screens/TodayWide';
 import { useWide } from './lib/wide';
+import { applyTheme, type Theme } from './lib/theme';
 
 const TABS: Array<[string, string, string]> = [['today', 'today', 'Сегодня'], ['plans', 'plans', 'Планы'], ['add', 'plus', 'Записать'], ['food', 'food', 'Еда'], ['more', 'more', 'Ещё']];
 const ORDER = ['today', 'plans', 'food', 'more'];
@@ -65,6 +66,9 @@ export function App() {
   const loadFood = useCallback(async (d: string) => { try { setFood(await api<FoodDay>(`/api/food/day?day=${d}`)); } catch (e) { fail(e); } }, [fail]);
 
   useEffect(() => { loadMe(); }, [loadMe]);
+  // тема из профиля — одна на телефоне и компьютере
+  const theme = me?.profile?.settings?.theme as Theme | undefined;
+  useEffect(() => { if (theme) applyTheme(theme); }, [theme]);
   useEffect(() => { if (me) loadDay(); }, [me?.username]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (me && day && !days[day]) loadDay(day); }, [me, day, days, loadDay]);
   useEffect(() => { if (tab === 'food' && today) loadFood(today); }, [tab, today, loadFood, version]);
@@ -74,6 +78,17 @@ export function App() {
   // после любой записи: перечитать день, еду и списки; подписку — тоже (её мог изменить экран Pro)
   const refresh = useCallback(() => { setStill(true); if (day) loadDay(day); if (today && day !== today) loadDay(today); if (today) loadFood(today); setVersion(v => v + 1); }, [day, today, loadDay, loadFood]);
   const done = () => { close(); refresh(); };
+
+  // записал на телефоне — видно на компьютере: перечитываем, когда окно снова на виду, и раз в 15 секунд.
+  // Пока висит отложенное удаление, не трогаем — иначе удалённое вернётся на экран до отправки.
+  const sync = useRef(refresh); sync.current = refresh;
+  useEffect(() => {
+    if (!me) return;
+    const tick = () => { if (document.visibilityState === 'visible' && !pending.current.size) { sync.current(); loadMe(); } };
+    const id = setInterval(tick, 15000);
+    document.addEventListener('visibilitychange', tick); addEventListener('focus', tick);
+    return () => { clearInterval(id); document.removeEventListener('visibilitychange', tick); removeEventListener('focus', tick); };
+  }, [me?.username]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const goDay = useCallback((dir: number) => {
     setStill(false);
@@ -144,7 +159,7 @@ export function App() {
           onAddMeal={() => open({ kind: 'meal' })} onMeal={meal => open({ kind: 'meal', meal })} onDrink={drink => open({ kind: 'drink', drink })} onPro={pro} sub={sub} /> : null}
       </section>
       <section className="screen" data-pos={pos('more')} aria-hidden={tab !== 'more'}>
-        <More me={me} onPaywall={focus => open({ kind: 'paywall', focus })} onSettings={() => open({ kind: 'settings' })} onInstall={() => open({ kind: 'install' })}
+        <More me={me} onSaved={st => setMe(m => m && m.profile ? { ...m, profile: { ...m.profile, settings: st } } : m)} onPaywall={focus => open({ kind: 'paywall', focus })} onSettings={() => open({ kind: 'settings' })} onInstall={() => open({ kind: 'install' })}
           onLogout={async () => { await api('/api/auth/logout', { method: 'POST' }).catch(() => {}); setMe(null); setDays({}); setDay(null); setToday(null); setTab('today'); }} />
       </section>
     </div>
