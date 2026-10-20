@@ -25,20 +25,21 @@ import { Plans } from './screens/Plans';
 import { Goal } from './screens/Goal';
 import { Gym } from './screens/Gym';
 import { Budget } from './screens/Budget';
+import { Books } from './screens/Books';
 import { Stats, type StatsTab } from './screens/Stats';
 import { TodayWide } from './screens/TodayWide';
 import { useWide } from './lib/wide';
 import { applyTheme, type Theme } from './lib/theme';
 
 const TABS: Array<[string, string, string]> = [['today', 'today', 'Сегодня'], ['plans', 'plans', 'Планы'], ['add', 'plus', 'Записать'], ['food', 'food', 'Еда'], ['more', 'more', 'Ещё']];
-const ORDER = ['today', 'plans', 'food', 'gym', 'budget', 'goal', 'stats', 'more'];
+const ORDER = ['today', 'plans', 'food', 'gym', 'budget', 'books', 'goal', 'stats', 'more'];
 // разделы, открываемые поверх вкладок (на телефоне — с кнопкой «назад»); платные — с ключом своего набора
-const SECTIONS: Record<string, string | null> = { goal: null, stats: null, gym: 'gym', budget: 'budget' };
-const SECTION_NAME: Record<string, string> = { gym: 'Зал', budget: 'Бюджет' };
+const SECTIONS: Record<string, string | null> = { goal: null, stats: null, gym: 'gym', budget: 'budget', books: 'books' };
+const SECTION_NAME: Record<string, string> = { gym: 'Зал', budget: 'Бюджет', books: 'Книги' };
 // на компьютере в панели — и переехавшие разделы Pro
-const WIDE_TABS: Array<[string, string, string]> = [['today', 'today', 'Сегодня'], ['plans', 'plans', 'Планы'], ['food', 'food', 'Еда'], ['gym', 'gym', 'Зал'], ['budget', 'money', 'Бюджет'], ['goal', 'target', 'Цель'], ['stats', 'stats', 'Статистика'], ['more', 'more', 'Ещё']];
+const WIDE_TABS: Array<[string, string, string]> = [['today', 'today', 'Сегодня'], ['plans', 'plans', 'Планы'], ['food', 'food', 'Еда'], ['gym', 'gym', 'Зал'], ['budget', 'money', 'Бюджет'], ['books', 'books', 'Книги'], ['goal', 'target', 'Цель'], ['stats', 'stats', 'Статистика'], ['more', 'more', 'Ещё']];
 // разделы Pro, у которых уже есть свой экран
-const PRO_TABS: Record<string, string> = { 'Зал': 'gym', 'Тренировка': 'gym', 'Бюджет': 'budget', 'Трата': 'budget', 'Цель и прогноз': 'goal', 'Цель и план': 'goal', 'Статистика': 'stats', 'Статистика и итог недели': 'stats', 'Достижения': 'stats:awards', 'Итог недели': 'stats:week' };
+const PRO_TABS: Record<string, string> = { 'Зал': 'gym', 'Тренировка': 'gym', 'Бюджет': 'budget', 'Трата': 'budget', 'Книги': 'books', 'Чтение': 'books', 'Цель и прогноз': 'goal', 'Цель и план': 'goal', 'Статистика': 'stats', 'Статистика и итог недели': 'stats', 'Достижения': 'stats:awards', 'Итог недели': 'stats:week' };
 // пояс телефона — серверу, чтобы «сегодня» и «сейчас» совпадали с часами человека
 const ME = () => `/api/me?tz=${-new Date().getTimezoneOffset()}`;
 
@@ -195,6 +196,9 @@ export function App() {
       </section>
       <section className="screen" data-pos={pos('budget')} aria-hidden={tab !== 'budget'}>
         {tab === 'budget' && <Budget wide={wide} version={version} onBack={() => setTab(back)} onChanged={() => { setStill(true); if (day) loadDay(day); }} />}
+      </section>
+      <section className="screen" data-pos={pos('books')} aria-hidden={tab !== 'books'}>
+        {tab === 'books' && <Books wide={wide} version={version} onBack={() => setTab(back)} onChanged={() => { setStill(true); if (day) loadDay(day); setTimeout(checkAwards, 600); }} />}
       </section>
       <section className="screen" data-pos={pos('goal')} aria-hidden={tab !== 'goal'}>
         {tab === 'goal' && <Goal wide={wide} onBack={() => setTab(back)} onWeigh={() => open({ kind: 'weight' })} onRedo={() => setRedo(true)} onChanged={() => { setDays({}); if (day) loadDay(day); }} />}
