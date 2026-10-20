@@ -277,7 +277,7 @@ export function App() {
       {sheet.kind === 'drink' && day && <DrinkForm key={sheet.drink?.id ?? 'new'} day={sheet.drink?.day ?? sheet.day ?? day} time={sheet.at} drink={sheet.drink} onDone={done} />}
       {sheet.kind === 'steps' && day && <NumberForm kind="steps" day={day} value={body?.steps || null} onDone={done} />}
       {sheet.kind === 'weight' && day && <NumberForm kind="weight" day={day} value={body?.weight?.today ? body.weight.kg : null} onDone={done} />}
-      {sheet.kind === 'task' && <TaskForm key={sheet.task?.id ?? `new-${sheet.day}`} day={sheet.day} task={sheet.task} onDone={done} />}
+      {sheet.kind === 'task' && <TaskForm key={sheet.task?.id ?? `new-${sheet.day}`} day={sheet.day} task={sheet.task} plans={can(sub, 'plans')} onDone={done} />}
       {sheet.kind === 'paywall' && <Paywall sub={sub} focus={sheet.focus} onChange={setSub} onClose={close} />}
       {sheet.kind === 'settings' && <SettingsForm me={me} onDone={s => { setMe(m => m && m.profile ? { ...m, profile: { ...m.profile, settings: s } } : m); done(); setDays({}); }} onRedo={() => { close(); setRedo(true); }} />}
       {sheet.kind === 'install' && <InstallHelp />}
