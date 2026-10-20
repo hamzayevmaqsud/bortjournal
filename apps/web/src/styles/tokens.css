@@ -1,0 +1,37 @@
+/* Система Бортжурнала: ретро-палитра, 4px-сетка, 4 радиуса, 3 уровня тени. Тёмная тема — по настройке телефона */
+:root{
+  --bg:#EFE3CE; --card:#FBF4E6; --field:#FFFAF1; --track:#E6D8C0;
+  --line:rgba(46,58,78,.10); --line-2:rgba(46,58,78,.18);
+  --text:#2B3445; --text-2:#6E6758; --text-3:#A19682;
+  --navy:#2F3B4F; --on-navy:#FBF4E6;
+  --orange:#D9622B; --orange-soft:#F4D4BE;
+  --food:#D9622B; --water:#2F86C8; --steps:#4D7B78; --study:#2F3B4F; --gym:#3C5B38; --money:#2E6B57; --books:#7A4B2A; --quiz:#B5891E;
+  --good:#3C5B38; --bad:#B8432E; --bad-soft:#F3C8BB;
+  --display:'Rubik',system-ui,sans-serif; --sans:'Onest',system-ui,-apple-system,'Segoe UI',sans-serif;
+  --r1:10px; --r2:14px; --r3:20px; --r4:28px;
+  --sh1:0 1px 0 rgba(46,58,78,.05); --sh2:0 6px 18px rgba(46,58,78,.10); --sh3:0 -12px 40px rgba(35,42,56,.22);
+  --spring:cubic-bezier(.22,1.2,.36,1); --ease:cubic-bezier(.2,.7,.2,1);
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  color-scheme:dark;
+  --bg:#1B1915; --card:#25221D; --field:#2D2924; --track:#3A352E;
+  --line:rgba(251,244,230,.08); --line-2:rgba(251,244,230,.15);
+  --text:#F3EADA; --text-2:#B8AD9A; --text-3:#82786A;
+  --navy:#2C3546; --on-navy:#F3EADA;
+  --orange:#E5733C; --orange-soft:#4A2E20;
+  --food:#E5733C; --water:#5AA6E0; --steps:#6FA9A4; --study:#9AAACB; --gym:#7FA877; --money:#5DAA8A; --books:#C08A5E; --quiz:#D9B04A;
+  --good:#7FA877; --bad:#E07A62; --bad-soft:#4A2620;
+  --sh1:0 1px 0 rgba(0,0,0,.2); --sh2:0 8px 22px rgba(0,0,0,.35); --sh3:0 -12px 40px rgba(0,0,0,.5);
+}}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --bg:#1B1915; --card:#25221D; --field:#2D2924; --track:#3A352E;
+  --line:rgba(251,244,230,.08); --line-2:rgba(251,244,230,.15);
+  --text:#F3EADA; --text-2:#B8AD9A; --text-3:#82786A;
+  --navy:#2C3546; --on-navy:#F3EADA;
+  --orange:#E5733C; --orange-soft:#4A2E20;
+  --food:#E5733C; --water:#5AA6E0; --steps:#6FA9A4; --study:#9AAACB; --gym:#7FA877; --money:#5DAA8A; --books:#C08A5E; --quiz:#D9B04A;
+  --good:#7FA877; --bad:#E07A62; --bad-soft:#4A2620;
+  --sh1:0 1px 0 rgba(0,0,0,.2); --sh2:0 8px 22px rgba(0,0,0,.35); --sh3:0 -12px 40px rgba(0,0,0,.5);
+}

@@ -18,3 +18,7 @@ export type EntitlementSource = (typeof ENTITLEMENT_SOURCES)[number];
 export const FREE_MODULES: readonly ModuleName[] = MODULES;
 
 export const isModule = (x: unknown): x is ModuleName => typeof x === 'string' && (MODULES as readonly string[]).includes(x);
+
+export * from './dates.js';
+export * from './drinks.js';
+export * from './budget.js';
