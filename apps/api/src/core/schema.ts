@@ -75,6 +75,9 @@ export const entitlements = pgTable('entitlements', {
   expiresAt: timestamp('expires_at', { withTimezone: true }),
   /** id подписки во внешней платёжке, когда она появится */
   externalRef: text('external_ref'),
+  /** month | year — для покупок */
+  plan: text('plan'),
+  autoRenew: boolean('auto_renew').notNull().default(false),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow()
 }, t => [
   uniqueIndex('entitlements_user_module_source_uq').on(t.userId, t.module, t.source),

@@ -92,7 +92,7 @@ describe('перенос из старого журнала', () => {
     for (const c of r!.checks) expect({ name: c.name, db: c.db }).toEqual({ name: c.name, db: c.source });
     expect(r!.ok).toBe(true);
     first = await tableCounts();
-    expect(first).toMatchObject({ meals: 2, drinks: 2, sets: 5, exercises: 4, quotes: 1, entitlements: 7, tasks: 3, journal: 1, body: 1, ach: 2, push: 1 });
+    expect(first).toMatchObject({ meals: 2, drinks: 2, sets: 5, exercises: 4, quotes: 1, entitlements: 8, tasks: 3, journal: 1, body: 1, ach: 2, push: 1 });
   });
   it('берёт последнюю версию дубля и сохраняет null там, где данных нет', async () => {
     const [plov] = await conn.db.select().from(s.meals).where(eq(s.meals.legacyId, 'm2'));
@@ -120,6 +120,7 @@ describe('перенос из старого журнала', () => {
     expect(u?.passwordHash).toBe(`scrypt$16384$8$1$${'a'.repeat(32)}$${'b'.repeat(128)}`);
     expect(u?.tzOffset).toBe(240);
     expect(await hasModule(conn.db, u!.id, 'books')).toBe(true);
+    expect(await hasModule(conn.db, u!.id, 'pro')).toBe(true); // владелец из старого журнала — Pro навсегда
   });
   it('повторный перенос ничего не задваивает', async () => {
     const [r] = await importLegacy(conn.db, dir);

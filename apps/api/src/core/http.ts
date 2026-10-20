@@ -1,12 +1,12 @@
 /** Общие мелочи для маршрутов модулей: проверка входа и доступа, разбор дня и id */
 import type { FastifyReply, FastifyRequest } from 'fastify';
-import { isDay, type ModuleName } from '@bortjournal/core';
+import { isDay } from '@bortjournal/core';
 import type { DB } from '../db/index.js';
 import { requireUser } from './auth.js';
-import { requireModule } from './entitlements.js';
+import { requirePro } from './billing.js';
 
-/** preHandler'ы маршрута модуля: войти + иметь доступ к модулю */
-export const guard = (db: DB, module: ModuleName) => [requireUser, requireModule(db, module)];
+/** preHandler'ы маршрута: base — достаточно войти (бесплатный тариф), pro — нужен Pro */
+export const guard = (db: DB, tier: 'base' | 'pro') => tier === 'pro' ? [requireUser, requirePro(db)] : [requireUser];
 
 export class HttpError extends Error { constructor(public status: number, message: string) { super(message); } }
 export const bad = (msg: string) => new HttpError(400, msg);

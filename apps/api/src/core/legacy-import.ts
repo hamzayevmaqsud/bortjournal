@@ -9,7 +9,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { DB } from '../db/index.js';
 import { MODULES_LIST } from '../modules/index.js';
-import { grantFree } from './entitlements.js';
+import { grant, grantFree } from './entitlements.js';
 import { dict, inRange, isDay, list, num, optNum, optStr, str } from './legacy.js';
 import type { ImportCheck, LegacyState } from './module.js';
 import { achievements, activityWeeks, dayJournal, profiles, pushSubscriptions, users } from './schema.js';
@@ -51,6 +51,7 @@ export async function importLegacy(db: DB, dataDir: string, opts: { only?: strin
         for (const [weekStart, level] of Object.entries(dict(st.activity))) if (isDay(weekStart) && typeof level === 'string')
           await tx.insert(activityWeeks).values({ userId, weekStart, level }).onConflictDoUpdate({ target: [activityWeeks.userId, activityWeeks.weekStart], set: { level } });
         await grantFree(tx, userId);
+        await grant(tx, userId, 'pro', 'free'); // пользователи старого журнала — Pro навсегда
         for (const [day, r] of Object.entries(dict(st.days))) {
           if (!isDay(day)) continue;
           const v = { note: optStr(r?.note, 5000), mood: inRange(r?.mood == null ? null : Math.round(num(r.mood)), 1, 5) };
