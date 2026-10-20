@@ -28,9 +28,9 @@ export function marksOf(events: DayEvent[], tasks: Task[]): Mark[] {
   return out;
 }
 
-export function Timeline({ marks, now, still, onAdd, onDelete, onToggleTask }: {
-  marks: Mark[]; now: string | null; still: boolean;
-  onAdd: (time: string) => void; onDelete: (m: Mark) => void; onToggleTask: (id: string) => void;
+export function Timeline({ marks, now, still, pro = true, onAdd, onDelete, onEdit, onToggleTask }: {
+  marks: Mark[]; now: string | null; still: boolean; pro?: boolean;
+  onAdd: (time: string) => void; onDelete: (m: Mark) => void; onEdit?: (m: Mark) => void; onToggleTask: (id: string) => void;
 }) {
   const [sel, setSel] = useState<{ m: Mark; left: number; top: number; ox: number } | null>(null);
   const box = useRef<HTMLDivElement>(null);
@@ -49,7 +49,7 @@ export function Timeline({ marks, now, still, onAdd, onDelete, onToggleTask }: {
       <div className="tl-axis">{['06', '09', '12', '15', '18', '21', '24'].map((h, i) => <span key={h} style={{ left: `${i / 6 * 100}%` }}>{h}</span>)}</div>
       <div className="tl-body">
         {now && <div className="tl-now" style={{ left: `calc(32px + (100% - 32px) * ${pct(now) / 100})` }}><b>сейчас {now}</b></div>}
-        {LANES.map(([lane, icon, color, name]) => (
+        {LANES.filter(([lane]) => pro || (lane !== 'study' && lane !== 'gym') || marks.some(m => m.lane === lane)).map(([lane, icon, color, name]) => (
           <div className="lane" key={lane}>
             <span className="lane-ic" style={{ ['--c' as string]: color }} title={name}><Icon name={icon} /></span>
             <div className="track" aria-label={`${name}: нажми, чтобы добавить`} onClick={e => {
@@ -76,6 +76,7 @@ export function Timeline({ marks, now, still, onAdd, onDelete, onToggleTask }: {
         <span className="mid"><b>{sel.m.title}</b><small>{sel.m.time}{sel.m.sub ? ` · ${sel.m.sub}` : ''}</small></span>{sel.m.value && <span className="pop-v">{sel.m.value}</span>}</div>
       <div className="pop-act">
         {sel.m.task ? <button onClick={() => { setSel(null); onToggleTask(sel.m.id); }}>{sel.m.open ? 'Сделано' : 'Вернуть'}</button> : null}
+        {sel.m.deletable && onEdit && !sel.m.id.startsWith('tmp-') ? <button onClick={() => { const m = sel.m; setSel(null); onEdit(m); }}>Изменить</button> : null}
         {sel.m.deletable ? <button className="del" onClick={() => { const m = sel.m; setSel(null); onDelete(m); }}>Удалить</button> : null}
         {!sel.m.task && !sel.m.deletable ? <button onClick={() => setSel(null)}>Закрыть</button> : null}
       </div>

@@ -11,7 +11,7 @@ import { requireUser } from './auth.js';
 import { bad } from './http.js';
 import { activityWeeks, profiles, users } from './schema.js';
 
-const num = (v: unknown, lo: number, hi: number, name: string) => { const n = Number(v); if (!Number.isFinite(n) || n < lo || n > hi) throw bad(`${name}: от ${lo} до ${hi}.`); return n; };
+const num = (v: unknown, lo: number, hi: number, name: string) => { const n = Number(String(v ?? '').replace(',', '.')); if (!Number.isFinite(n) || n < lo || n > hi) throw bad(`${name}: от ${lo} до ${hi}.`); return n; };
 const mondayOf = (day: string) => { const d = new Date(day + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7)); return d.toISOString().slice(0, 10); };
 
 export async function profileRoutes(app: FastifyInstance, { db }: { db: DB }) {

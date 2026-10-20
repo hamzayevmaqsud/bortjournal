@@ -93,7 +93,7 @@ describe('регистрация, пробная неделя и подписк�
     expect(b.prices.year.price).toBe(39.99);
   });
   it('анкета считает план (31 год, 180 см, 107 кг, худеть умеренно)', async () => {
-    const r = await r2('POST', '/api/profile/onboarding', { sex: 'm', age: 31, height: 180, weight: 107, activity: 'sed', goal: 'lose', pace: 'mid', target: 90, steps: 6000 });
+    const r = await r2('POST', '/api/profile/onboarding', { sex: 'm', age: 31, height: 180, weight: '107,0', activity: 'sed', goal: 'lose', pace: 'mid', target: 90, steps: 6000 });
     expect(r.statusCode).toBe(200);
     const p = r.json().plan;
     expect(p.kcal).toBeGreaterThan(1900); expect(p.kcal).toBeLessThan(2300);
@@ -102,9 +102,10 @@ describe('регистрация, пробная неделя и подписк�
     expect(t.plan.kcal).toBe(p.kcal);
   });
   it('без Pro платные разделы не попадают в «Сегодня»; покупка возвращает', async () => {
-    await conn.db.delete(s.entitlements).where(eq(s.entitlements.source, 'trial'));
+    // пробный период кончился: Pro нет, но видно, что он был
+    await conn.db.update(s.entitlements).set({ expiresAt: new Date(Date.now() - 60_000) }).where(eq(s.entitlements.source, 'trial'));
     let t = (await r2('GET', '/api/today?day=2026-10-20')).json();
-    expect(t.subscription.pro).toBe(false);
+    expect(t.subscription).toMatchObject({ pro: false, ended: true });
     expect(t.parts.gym).toBeUndefined(); expect(t.parts.food).toBeDefined();
     const buy = (await r2('POST', '/api/billing/purchase', { plan: 'year' })).json();
     expect(buy.subscription).toMatchObject({ pro: true, source: 'web', plan: 'year', autoRenew: true });

@@ -49,6 +49,7 @@ export async function buildApp({ db, serveWeb = fs.existsSync(WEB_DIST) }: { db:
   if (serveWeb) {
     await app.register(fastifyStatic, { root: WEB_DIST, setHeaders: (res, file) => {
       if (file.endsWith('.html')) { res.header('Content-Security-Policy', CSP); res.header('Cache-Control', 'no-cache'); }
+      else if (file.endsWith('sw.js') || file.endsWith('.webmanifest')) res.header('Cache-Control', 'no-cache');
       else if (file.includes('/assets/')) res.header('Cache-Control', 'public, max-age=31536000, immutable');
     } });
     // приложение одностраничное: неизвестный путь вне /api — это экран фронта

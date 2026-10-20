@@ -16,7 +16,11 @@ export async function subscription(db: Tx, userId: string): Promise<Subscription
   const rows = await db.select().from(entitlements).where(activePro(userId)).orderBy(desc(entitlements.expiresAt));
   // платная или бесплатная навсегда важнее пробной
   const best = rows.find(r => r.source !== 'trial') ?? rows[0];
-  if (!best) return { pro: false, source: null, expiresAt: null, daysLeft: null, plan: null, autoRenew: false };
+  if (!best) {
+    // была ли подписка раньше — чтобы показать «Pro закончился», а не «попробуй»
+    const [old] = await db.select({ id: entitlements.id }).from(entitlements).where(and(eq(entitlements.userId, userId), eq(entitlements.module, 'pro'))).limit(1);
+    return { pro: false, source: null, expiresAt: null, daysLeft: null, plan: null, autoRenew: false, ended: !!old };
+  }
   const left = best.expiresAt ? Math.max(0, Math.ceil((best.expiresAt.getTime() - Date.now()) / 864e5)) : null;
   return { pro: true, source: best.source, expiresAt: best.expiresAt?.toISOString() ?? null, daysLeft: left, plan: (best.plan as PriceId | null) ?? null, autoRenew: best.autoRenew };
 }

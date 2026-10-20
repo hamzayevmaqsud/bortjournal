@@ -4,7 +4,7 @@
  */
 import { useEffect, useRef } from 'react';
 import { parseDay } from '@bortjournal/core';
-import type { Today as TodayData } from '../lib/api';
+import type { Subscription, Today as TodayData } from '../lib/api';
 import { fmt, fmt1, fmt2, MONG, plural, WDF } from '../lib/format';
 import { buzz, spring } from '../lib/motion';
 import { Icon } from '../components/Icon';
@@ -12,10 +12,11 @@ import { Ring } from '../components/Ring';
 import { Tasks } from '../components/Tasks';
 import { marksOf, Timeline, TimelineSum, type Mark } from '../components/Timeline';
 
-export function Today({ data, day, today, onDay, onAdd, onDelete, onToggleTask, onGo, onSoon, still }: {
-  data: TodayData | null; day: string; today: string; still: boolean;
-  onDay: (dir: number) => void; onAdd: (time?: string) => void; onDelete: (m: Mark) => void; onToggleTask: (id: string) => void;
-  onGo: (tab: string) => void; onSoon: (what: string) => void;
+export function Today({ data, day, today, sub, still, onDay, onAdd, onDelete, onEdit, onToggleTask, onGo, onPro, onPaywall, onSteps, onWeight, onWater, onTask }: {
+  data: TodayData | null; day: string; today: string; sub: Subscription; still: boolean;
+  onDay: (dir: number) => void; onAdd: (time?: string) => void; onDelete: (m: Mark) => void; onEdit: (m: Mark) => void; onToggleTask: (id: string) => void;
+  onGo: (tab: string) => void; onPro: (what: string) => void; onPaywall: () => void;
+  onSteps: () => void; onWeight: () => void; onWater: () => void; onTask: () => void;
 }) {
   const box = useRef<HTMLDivElement>(null), dt = parseDay(day), off = Math.round((parseDay(day).getTime() - parseDay(today).getTime()) / 864e5);
   const rel = off === 0 ? 'сегодня' : off === -1 ? 'вчера' : off === 1 ? 'завтра' : '';
@@ -44,11 +45,11 @@ export function Today({ data, day, today, onDay, onAdd, onDelete, onToggleTask, 
 
   const P = data?.parts ?? {}, food = P.food, body = P.body, study = P.study, tasks = P.plans?.tasks ?? [];
   const marks = data ? marksOf(data.events, tasks) : [];
-  const rows: Array<{ key: string; icon: string; c: string; title: string; sub: string; go?: string }> = [];
-  if (data?.isToday && study?.quiz.left) rows.push({ key: 'quiz', icon: 'quiz', c: 'var(--quiz)', title: 'Вопросы дня', sub: `${study.quiz.left} ${plural(study.quiz.left, 'ждёт', 'ждут', 'ждут')} ответа · пара минут` });
-  if (P.budget?.configured && P.budget.leftToday !== undefined) rows.push({ key: 'budget', icon: 'money', c: 'var(--money)', title: P.budget.leftToday >= 0 ? `Можно потратить ${fmt2(P.budget.leftToday)} ${P.budget.currency}` : `Перерасход ${fmt2(-P.budget.leftToday)} ${P.budget.currency}`, sub: `лимит дня ${fmt2(P.budget.allow ?? 0)} ${P.budget.currency}` });
-  if (P.books?.reading) { const b = P.books.reading; rows.push({ key: 'books', icon: 'books', c: 'var(--books)', title: b.title, sub: `${b.pct}% · стр. ${b.page}${b.pages ? ` из ${b.pages}` : ''}${b.todayPages ? ` · сегодня +${b.todayPages}` : ''}` }); }
-  if (P.gym?.plan && !P.gym.workouts.length && data?.isToday) rows.push({ key: 'gym', icon: 'gym', c: 'var(--gym)', title: `Сегодня тренировка: ${P.gym.plan.name}`, sub: `по плану${P.gym.plan.time ? ` в ${P.gym.plan.time}` : ''} · ${P.gym.plan.exercises} упр.` });
+  const rows: Array<{ key: string; icon: string; c: string; title: string; sub: string; pro: string }> = [];
+  if (data?.isToday && study?.quiz.left) rows.push({ key: 'quiz', icon: 'quiz', c: 'var(--quiz)', title: 'Вопросы дня', sub: `${study.quiz.left} ${plural(study.quiz.left, 'ждёт', 'ждут', 'ждут')} ответа · пара минут`, pro: 'Учёба' });
+  if (P.budget?.configured && P.budget.leftToday !== undefined) rows.push({ key: 'budget', icon: 'money', c: 'var(--money)', title: P.budget.leftToday >= 0 ? `Можно потратить ${fmt2(P.budget.leftToday)} ${P.budget.currency}` : `Перерасход ${fmt2(-P.budget.leftToday)} ${P.budget.currency}`, sub: `лимит дня ${fmt2(P.budget.allow ?? 0)} ${P.budget.currency}`, pro: 'Бюджет' });
+  if (P.books?.reading) { const b = P.books.reading; rows.push({ key: 'books', icon: 'books', c: 'var(--books)', title: b.title, sub: `${b.pct}% · стр. ${b.page}${b.pages ? ` из ${b.pages}` : ''}${b.todayPages ? ` · сегодня +${b.todayPages}` : ''}`, pro: 'Книги' }); }
+  if (P.gym?.plan && !P.gym.workouts.length && data?.isToday) rows.push({ key: 'gym', icon: 'gym', c: 'var(--gym)', title: `Сегодня тренировка: ${P.gym.plan.name}`, sub: `по плану${P.gym.plan.time ? ` в ${P.gym.plan.time}` : ''} · ${P.gym.plan.exercises} упр.`, pro: 'Зал' });
 
   return <div className="day" ref={box}>
     <header className="dayhead" ref={head}>
@@ -59,35 +60,38 @@ export function Today({ data, day, today, onDay, onAdd, onDelete, onToggleTask, 
       <button className="nav" onClick={() => onDay(1)} aria-label="Следующий день"><Icon name="chev" /></button>
     </header>
 
+    {sub.source === 'trial' && <button className="trial-bar" onClick={onPaywall}><Icon name="flame" /><span>Пробный Pro: <b>ещё {sub.daysLeft} {plural(sub.daysLeft ?? 0, 'день', 'дня', 'дней')}</b></span><em>Тарифы</em></button>}
+    {!sub.pro && sub.ended && <button className="trial-bar" onClick={onPaywall}><Icon name="flame" /><span>Pro закончился — еда, вода, шаги и задачи остаются</span><em>Продлить</em></button>}
+
     {!data ? <><div className="skel" style={{ height: 66 }} /><div className="skel" style={{ height: 120 }} /><div className="skel" style={{ height: 220 }} /></> : <>
       <div className="stats">
-        <button className="stat" onClick={() => onSoon('Цель и план')}><i>План</i><b>{fmt(data.plan.kcal)}</b><small>ккал</small></button>
-        <button className="stat" onClick={() => onSoon('Запись веса')}><i>Вес</i><b>{body?.weight ? fmt1(body.weight.kg) : '—'}</b><small>{body?.weight?.today ? (data.isToday ? 'кг сегодня' : 'кг в этот день') : data.isToday ? 'взвеситься' : 'кг, последний'}</small></button>
-        <button className={`stat ${data.streak ? 'hot' : ''}`} onClick={() => onSoon('Статистика')}><i><Icon name="flame" />Серия</i><b>{data.streak}</b><small>{plural(data.streak, 'день', 'дня', 'дней')}</small></button>
+        <button className="stat" onClick={() => onPro('Цель и прогноз')}><i>План</i><b>{fmt(data.plan.kcal)}</b><small>ккал</small></button>
+        <button className="stat" onClick={onWeight}><i>Вес</i><b>{body?.weight ? fmt1(body.weight.kg) : '—'}</b><small>{body?.weight?.today ? (data.isToday ? 'кг сегодня' : 'кг в этот день') : data.isToday ? 'взвеситься' : 'кг, последний'}</small></button>
+        <button className={`stat ${data.streak ? 'hot' : ''}`} onClick={() => onPro('Статистика')}><i><Icon name="flame" />Серия</i><b>{data.streak}</b><small>{plural(data.streak, 'день', 'дня', 'дней')}</small></button>
       </div>
 
       <section className="panel"><div className="rings">
         {food && <Ring value={food.kcal} max={food.norm.kcal} color="var(--food)" shown={food.kcal} label={`Еда · из ${fmt(food.norm.kcal)}`} onClick={() => onGo('food')} />}
-        {food && <Ring value={food.waterMl} max={food.norm.water} color="var(--water)" shown={food.waterMl / 1000} decimals={1} label={`Вода · из ${fmt1(food.norm.water / 1000)} л`} onClick={() => onAdd()} />}
-        {body && <Ring value={body.steps} max={body.stepsGoal} color="var(--steps)" shown={body.steps / 1000} decimals={1} label={`Шаги · из ${fmt1(body.stepsGoal / 1000)}к`} onClick={() => onSoon('Запись шагов')} />}
-        {study && <Ring value={study.minutes} max={study.goal} color="var(--study)" shown={study.minutes} label={`Учёба · из ${study.goal} мин`} onClick={() => onSoon('Учёба')} />}
+        {food && <Ring value={food.waterMl} max={food.norm.water} color="var(--water)" shown={food.waterMl / 1000} decimals={1} label={`Вода · из ${fmt1(food.norm.water / 1000)} л`} onClick={onWater} />}
+        {body && <Ring value={body.steps} max={body.stepsGoal} color="var(--steps)" shown={body.steps / 1000} decimals={1} label={`Шаги · из ${fmt1(body.stepsGoal / 1000)}к`} onClick={onSteps} />}
+        {study && <Ring value={study.minutes} max={study.goal} color="var(--study)" shown={study.minutes} label={`Учёба · из ${study.goal} мин`} onClick={() => onPro('Учёба')} />}
       </div></section>
 
-      {rows.length > 0 && <div className="rows">{rows.map(r => <button key={r.key} className="row" onClick={() => onSoon(r.title)}>
+      {rows.length > 0 && <div className="rows">{rows.map(r => <button key={r.key} className="row" onClick={() => onPro(r.pro)}>
         <span className="chip-ic" style={{ ['--c' as string]: r.c }}><Icon name={r.icon} /></span><span className="mid"><b>{r.title}</b><small>{r.sub}</small></span><Icon name="chev" className="ic chev" />
       </button>)}</div>}
 
       <section className="panel">
         <div className="panel-h"><h2>Лента дня</h2><small>нажми отметку или пустое место</small></div>
-        <Timeline marks={marks} now={data.isToday ? data.now.hm : null} still={still} onAdd={t => onAdd(t)} onDelete={onDelete} onToggleTask={onToggleTask} />
+        <Timeline marks={marks} pro={sub.pro} now={data.isToday ? data.now.hm : null} still={still} onAdd={t => onAdd(t)} onDelete={onDelete} onEdit={onEdit} onToggleTask={onToggleTask} />
         <TimelineSum kcal={food?.kcal ?? 0} ml={food?.waterMl ?? 0} done={tasks.filter(t => t.done).length} total={tasks.length} />
       </section>
 
       <section className="panel">
         <div className="panel-h"><h2>{data.isToday ? 'Задачи на сегодня' : 'Задачи'}</h2><small>{tasks.filter(t => t.done).length} из {tasks.length}</small></div>
-        <Tasks tasks={tasks} onToggle={onToggleTask} />
+        <Tasks tasks={tasks} onToggle={onToggleTask} onOpen={() => onGo('plans')} empty="Задач на этот день нет." />
+        <button className="add-row" onClick={onTask}><Icon name="plus" />Задача на этот день</button>
       </section>
-      <p className="hint">Новая версия Бортжурнала</p>
     </>}
   </div>;
 }

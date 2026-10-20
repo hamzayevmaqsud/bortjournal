@@ -11,14 +11,20 @@ export async function api<T>(path: string, opts: { method?: string; body?: unkno
   return data as T;
 }
 
-export interface Me { username: string; tzOffset: number; modules: string[]; profile: { settings?: Record<string, unknown> } | null }
+export interface Subscription { pro: boolean; source: 'trial' | 'web' | 'apple' | 'google' | 'free' | null; expiresAt: string | null; daysLeft: number | null; plan: 'month' | 'year' | null; autoRenew: boolean; ended?: boolean }
+export interface Profile { sex: string | null; age: number | null; heightCm: number | null; goal: string | null; targetKg: number | null; startWeightKg: number | null; settings: Record<string, any> }
+export interface Me { username: string; tzOffset: number; modules: string[]; subscription: Subscription; profile: Profile | null }
+export interface PlanResult { kcal: number; protein: number; fat: number; carbs: number; weeklyKg: number; tdee: number; bmi: number; notes: string[]; weeks: number | null; water: number; steps: number }
+export interface TaskFull { id: string; title: string; day: string | null; time: string | null; done: boolean; prio: boolean; note: string | null; repeat: boolean }
+export interface Meal { id: string; day: string; time: string | null; slot: string | null; name: string; kcal: number; protein: number; fat: number; carbs: number }
+export interface Drink { id: string; day: string; time: string | null; type: string; ml: number; title: string; kcal: number; name: string | null; kcalPer100: number | null; sugarPer100: number | null }
 export interface DayEvent { id: string | null; module: string; kind: string; time: string | null; title: string; value: number | null; unit: string | null; data: Record<string, unknown> | null }
 export interface Task { id: string; title: string; time: string | null; done: boolean; prio: boolean; repeat: boolean }
 export interface Today {
   day: string; now: { day: string; hm: string; minutes: number }; isToday: boolean; name: string | null;
-  plan: { kcal: number; protein: number }; streak: number; modules: string[]; events: DayEvent[];
+  plan: { kcal: number; protein: number }; streak: number; modules: string[]; events: DayEvent[]; subscription: Subscription;
   parts: {
-    food?: { kcal: number; protein: number; fat: number; carbs: number; waterMl: number; norm: { kcal: number; protein: number; water: number } };
+    food?: { kcal: number; protein: number; fat: number; carbs: number; waterMl: number; norm: { kcal: number; protein: number; fat: number; carbs: number; water: number } };
     body?: { steps: number; stepsGoal: number; weight: { kg: number; day: string | null; today: boolean } | null };
     study?: { minutes: number; goal: number; quiz: { left: number; total: number } };
     budget?: { configured: boolean; currency?: string; leftToday?: number; allow?: number };
@@ -28,7 +34,7 @@ export interface Today {
   };
 }
 export interface FoodDay {
-  meals: Array<{ id: string; time: string | null; slot: string | null; name: string; kcal: number; protein: number; fat: number; carbs: number }>;
-  drinks: Array<{ id: string; time: string | null; title: string; ml: number; kcal: number }>;
+  meals: Meal[];
+  drinks: Drink[];
   totals: { kcal: number; protein: number; fat: number; carbs: number; waterMl: number };
 }

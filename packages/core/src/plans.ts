@@ -41,4 +41,6 @@ export interface Subscription {
   daysLeft: number | null;
   plan: PriceId | null;
   autoRenew: boolean;
+  /** подписка была, но кончилась */
+  ended?: boolean;
 }
