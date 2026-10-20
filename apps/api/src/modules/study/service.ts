@@ -1,10 +1,12 @@
-import { and, count, eq, gte, lte, sql } from 'drizzle-orm';
+import { and, eq, gte, lte, sql } from 'drizzle-orm';
+import { users } from '../../core/schema.js';
+import { allCards, dueCards, type SrsState } from './cards.js';
+import { obsFor } from './obsidian.js';
 import type { DayContext } from '../../core/module.js';
 import type { Tx } from '../../db/index.js';
 import { quizzes, srsCards, studySessions, studyTime } from './schema.js';
 
-/** порция вопросов в день — как в старом журнале */
-const QUIZ_SIZE = 6;
+import { QUIZ_SIZE } from './cards.js';
 
 export async function studyToday({ db, userId, day, settings }: DayContext) {
   const [s] = await db.select({ min: sql<number>`coalesce(sum(${studySessions.minutes}), 0)::int` }).from(studySessions).where(and(eq(studySessions.userId, userId), eq(studySessions.day, day)));
@@ -12,7 +14,14 @@ export async function studyToday({ db, userId, day, settings }: DayContext) {
   const [q] = await db.select().from(quizzes).where(and(eq(quizzes.userId, userId), eq(quizzes.day, day)));
   let quiz: { left: number; total: number };
   if (q) { const items = (q.items as Array<{ result?: string | null }>) ?? []; quiz = { left: items.filter(i => !i.result).length, total: items.length }; }
-  else { const [d] = await db.select({ n: count() }).from(srsCards).where(and(eq(srsCards.userId, userId), lte(srsCards.dueOn, day))); quiz = { left: Math.min(QUIZ_SIZE, d!.n), total: Math.min(QUIZ_SIZE, d!.n) }; }
+  else {
+    // порции ещё нет — сколько карточек ждёт: те же карточки, что соберутся в вопросы дня (с конспектами Obsidian)
+    const ss = await db.select().from(studySessions).where(eq(studySessions.userId, userId));
+    const [u] = await db.select({ n: users.username }).from(users).where(eq(users.id, userId));
+    const obs = obsFor(u?.n ?? ''), cards = allCards(ss.map(s => ({ id: s.legacyId ?? s.id, day: s.day, topic: s.topic, category: s.category, theses: s.theses, qa: s.qa })), obs ? obs.publicState().notes : []);
+    const srs = new Map<string, SrsState>((await db.select().from(srsCards).where(eq(srsCards.userId, userId))).map(r => [r.cardKey, { interval: r.intervalDays, ease: r.ease, reps: r.reps, due: r.dueOn }]));
+    const n = dueCards(cards, srs, day).length; quiz = { left: Math.min(QUIZ_SIZE, n), total: Math.min(QUIZ_SIZE, n) };
+  }
   return { minutes: (s?.min ?? 0) + (t?.min ?? 0), goal: Number(settings.study) || 60, quiz };
 }
 

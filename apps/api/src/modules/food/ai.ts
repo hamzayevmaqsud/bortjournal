@@ -3,7 +3,8 @@
  * Ключ и адрес читаются при каждом вызове (GEMINI_API_KEY, GEMINI_BASE_URL, GEMINI_MODEL) — тесты подставляют свой сервер.
  * Мягкий дневной лимит на человека, чтобы один не выел общую квоту.
  */
-import { HttpError } from '../../core/http.js';
+import { gemini } from '../../core/gemini.js';
+export { aiEnabled } from '../../core/gemini.js';
 
 const SCALES: Record<string, string> = {
   card: 'Рядом с едой лежит банковская или ID-карта: 85,6 × 54 мм. Используй её как эталон размера.',
@@ -48,7 +49,6 @@ export interface AiResult { isFood: boolean; items: AiItem[]; questions: Array<{
 export interface AiInput { image: string | null; mime: string; note: string; scale: string; answers: string[] }
 
 const clamp = (v: unknown, max: number) => Math.max(0, Math.min(max, Math.round((Number(v) || 0) * 2) / 2));
-export const aiEnabled = () => !!process.env.GEMINI_API_KEY;
 
 // счётчик на человека за сутки (в памяти процесса — для мягкого лимита этого достаточно)
 const used = new Map<string, number>();
@@ -58,34 +58,11 @@ export function takeQuota(userId: string, day: string) {
   return n <= Number(process.env.PHOTO_DAILY_LIMIT ?? 60);
 }
 
-async function gemini(parts: unknown[]) {
-  const base = process.env.GEMINI_BASE_URL || 'https://generativelanguage.googleapis.com';
-  const models = (process.env.GEMINI_MODEL || 'gemini-3.8-flash,gemini-3.5-flash-lite').split(',').map(s => s.trim()).filter(Boolean);
-  const body = JSON.stringify({ contents: [{ role: 'user', parts }], generationConfig: { responseMimeType: 'application/json', responseSchema: SCHEMA } });
-  let last: { status: number; message: string } | undefined;
-  for (const model of models) {
-    let r: Response;
-    try {
-      r = await fetch(`${base}/v1beta/models/${encodeURIComponent(model)}:generateContent`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': process.env.GEMINI_API_KEY! }, body, signal: AbortSignal.timeout(60e3) });
-    } catch (e) { last = { status: 502, message: (e as Error).name === 'TimeoutError' ? 'ИИ не ответил вовремя.' : 'Нет связи с ИИ.' }; continue; }
-    const data = await r.json().catch(() => ({})) as any;
-    if (!r.ok) {
-      last = { status: r.status, message: data?.error?.message || `HTTP ${r.status}` };
-      if ([404, 429, 500, 503].includes(r.status)) continue; // лимит или модель недоступна — следующая
-      break;
-    }
-    const part = data?.candidates?.[0]?.content?.parts?.find((p: any) => typeof p.text === 'string' && !p.thought);
-    try { return JSON.parse(part?.text || ''); } catch { last = { status: 502, message: 'ИИ вернул непонятный ответ.' }; }
-  }
-  throw new HttpError(last?.status === 429 ? 429 : 502,
-    last?.status === 429 ? 'Лимит распознавания на сейчас исчерпан. Попробуй через минуту.' : last?.status === 400 || last?.status === 403 ? `ИИ отклонил запрос: ${last.message}` : last?.message || 'ИИ недоступен.');
-}
-
 export async function recognizeFood({ image, mime, note, scale, answers }: AiInput): Promise<AiResult> {
   const text = [PROMPT, SCALES[scale] ?? 'Эталона размера в кадре нет.', image ? '' : 'Фото нет — только текстовое описание.',
     note ? `${image ? 'Подпись пользователя' : 'Описание еды от пользователя'}: ${note}` : '',
     answers.length ? `Ответы пользователя на уточнения:\n${answers.map(a => `- ${a}`).join('\n')}` : ''].filter(Boolean).join('\n\n');
-  const out = await gemini(image ? [{ inline_data: { mime_type: mime, data: image } }, { text }] : [{ text }]);
+  const out = await gemini(image ? [{ inline_data: { mime_type: mime, data: image } }, { text }] : [{ text }], SCHEMA);
   const items: AiItem[] = (Array.isArray(out?.items) ? out.items : []).slice(0, 20).map((it: any) => ({
     name: String(it.name || 'Без названия').slice(0, 80), grams: clamp(it.grams, 3000), kcal: Math.round(clamp(it.kcal, 6000)),
     protein: clamp(it.protein, 500), fat: clamp(it.fat, 500), carbs: clamp(it.carbs, 1000), fiber: clamp(it.fiber, 200), sugar: clamp(it.sugar, 500), salt: clamp(it.salt, 50),

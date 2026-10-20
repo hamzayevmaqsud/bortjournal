@@ -26,20 +26,21 @@ import { Goal } from './screens/Goal';
 import { Gym } from './screens/Gym';
 import { Budget } from './screens/Budget';
 import { Books } from './screens/Books';
+import { Study } from './screens/Study';
 import { Stats, type StatsTab } from './screens/Stats';
 import { TodayWide } from './screens/TodayWide';
 import { useWide } from './lib/wide';
 import { applyTheme, type Theme } from './lib/theme';
 
 const TABS: Array<[string, string, string]> = [['today', 'today', 'Сегодня'], ['plans', 'plans', 'Планы'], ['add', 'plus', 'Записать'], ['food', 'food', 'Еда'], ['more', 'more', 'Ещё']];
-const ORDER = ['today', 'plans', 'food', 'gym', 'budget', 'books', 'goal', 'stats', 'more'];
+const ORDER = ['today', 'plans', 'food', 'study', 'gym', 'budget', 'books', 'goal', 'stats', 'more'];
 // разделы, открываемые поверх вкладок (на телефоне — с кнопкой «назад»); платные — с ключом своего набора
-const SECTIONS: Record<string, string | null> = { goal: null, stats: null, gym: 'gym', budget: 'budget', books: 'books' };
-const SECTION_NAME: Record<string, string> = { gym: 'Зал', budget: 'Бюджет', books: 'Книги' };
+const SECTIONS: Record<string, string | null> = { goal: null, stats: null, study: 'study', gym: 'gym', budget: 'budget', books: 'books' };
+const SECTION_NAME: Record<string, string> = { study: 'Учёба', gym: 'Зал', budget: 'Бюджет', books: 'Книги' };
 // на компьютере в панели — и переехавшие разделы Pro
-const WIDE_TABS: Array<[string, string, string]> = [['today', 'today', 'Сегодня'], ['plans', 'plans', 'Планы'], ['food', 'food', 'Еда'], ['gym', 'gym', 'Зал'], ['budget', 'money', 'Бюджет'], ['books', 'books', 'Книги'], ['goal', 'target', 'Цель'], ['stats', 'stats', 'Статистика'], ['more', 'more', 'Ещё']];
+const WIDE_TABS: Array<[string, string, string]> = [['today', 'today', 'Сегодня'], ['plans', 'plans', 'Планы'], ['food', 'food', 'Еда'], ['study', 'study', 'Учёба'], ['gym', 'gym', 'Зал'], ['budget', 'money', 'Бюджет'], ['books', 'books', 'Книги'], ['goal', 'target', 'Цель'], ['stats', 'stats', 'Статистика'], ['more', 'more', 'Ещё']];
 // разделы Pro, у которых уже есть свой экран
-const PRO_TABS: Record<string, string> = { 'Зал': 'gym', 'Тренировка': 'gym', 'Бюджет': 'budget', 'Трата': 'budget', 'Книги': 'books', 'Чтение': 'books', 'Цель и прогноз': 'goal', 'Цель и план': 'goal', 'Статистика': 'stats', 'Статистика и итог недели': 'stats', 'Достижения': 'stats:awards', 'Итог недели': 'stats:week' };
+const PRO_TABS: Record<string, string> = { 'Учёба': 'study:study', 'Учёба и вопросы': 'study:study', 'Вопросы дня': 'study:quiz', 'Вопросы': 'study:quiz', 'Зал': 'gym', 'Тренировка': 'gym', 'Бюджет': 'budget', 'Трата': 'budget', 'Книги': 'books', 'Чтение': 'books', 'Цель и прогноз': 'goal', 'Цель и план': 'goal', 'Статистика': 'stats', 'Статистика и итог недели': 'stats', 'Достижения': 'stats:awards', 'Итог недели': 'stats:week' };
 // пояс телефона — серверу, чтобы «сегодня» и «сейчас» совпадали с часами человека
 const ME = () => `/api/me?tz=${-new Date().getTimezoneOffset()}`;
 
@@ -157,9 +158,9 @@ export function App() {
     'Фото и описание еды': (at, d) => ({ kind: 'ai', at, mode: 'photo', day: d }), 'Описание еды': (at, d) => ({ kind: 'ai', at, mode: 'text', day: d }),
     'Поиск еды': (at, d) => ({ kind: 'search', at, day: d }), 'Поиск по базе продуктов': (at, d) => ({ kind: 'search', at, day: d }),
   };
-  const pro = (what: string, at?: string, inDay?: string) => { if (!can(sub, what)) { open({ kind: 'paywall', focus: what }); return; } if (PRO_OPEN[what]) { open(PRO_OPEN[what]!(at, inDay)); return; } if (PRO_TABS[what]) { close(); const [t, st] = PRO_TABS[what]!.split(':'); setStatsTab(st as StatsTab | undefined); go(t!); return; } close(); toast(sub.source === 'free' ? `«${what}» переезжает в новую версию — пока он в старой` : `«${what}» появится в ближайшем обновлении — Pro уже включает его`); };
+  const pro = (what: string, at?: string, inDay?: string) => { if (!can(sub, what)) { open({ kind: 'paywall', focus: what }); return; } if (PRO_OPEN[what]) { open(PRO_OPEN[what]!(at, inDay)); return; } if (PRO_TABS[what]) { close(); const [t, st] = PRO_TABS[what]!.split(':'); if (t === 'study') setStudyTab(st as 'study' | 'quiz'); else setStatsTab(st as StatsTab | undefined); go(t!); return; } close(); toast(sub.source === 'free' ? `«${what}» переезжает в новую версию — пока он в старой` : `«${what}» появится в ближайшем обновлении — Pro уже включает его`); };
   const setSub = (s: Subscription) => { setMe(m => m ? { ...m, subscription: s } : m); setDays({}); if (day) loadDay(day); };
-  const [back, setBack] = useState('today'), [statsTab, setStatsTab] = useState<StatsTab | undefined>();
+  const [back, setBack] = useState('today'), [statsTab, setStatsTab] = useState<StatsTab | undefined>(), [studyTab, setStudyTab] = useState<'study' | 'quiz' | undefined>();
   const go = (name: string) => {
     if (name === 'add') { open({ kind: 'add' }); return; }
     if (SECTIONS[name] && !can(sub, SECTIONS[name]!)) { open({ kind: 'paywall', focus: SECTION_NAME[name] }); return; }
@@ -190,6 +191,9 @@ export function App() {
       <section className="screen" data-pos={pos('food')} aria-hidden={tab !== 'food'}>
         {today && tab === 'food' && <Food today={today} sub={sub} version={version} wide={wide} onChanged={() => { setStill(true); if (day) loadDay(day); }}
           onAddMeal={d => open({ kind: 'meal', day: d })} onAddDrink={d => open({ kind: 'drink', day: d })} onMeal={meal => open({ kind: 'meal', meal })} onDrink={drink => open({ kind: 'drink', drink })} onPro={(w, d) => pro(w, undefined, d)} />}
+      </section>
+      <section className="screen" data-pos={pos('study')} aria-hidden={tab !== 'study'}>
+        {tab === 'study' && <Study wide={wide} version={version} tab={studyTab} onBack={() => setTab(back)} onChanged={() => { setStill(true); if (day) loadDay(day); setTimeout(checkAwards, 600); }} />}
       </section>
       <section className="screen" data-pos={pos('gym')} aria-hidden={tab !== 'gym'}>
         {tab === 'gym' && <Gym wide={wide} version={version} onBack={() => setTab(back)} onChanged={() => { setStill(true); if (day) loadDay(day); setTimeout(checkAwards, 600); }} />}
