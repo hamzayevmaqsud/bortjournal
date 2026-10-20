@@ -2044,3 +2044,6 @@ div.feed-i{cursor:default}
   .rv-days{gap:3px}
   .rv-day svg,.rv-day i{width:28px;height:28px}
 }
+
+/* iPhone: поля от 16px — иначе Safari увеличивает страницу при вводе */
+@media (max-width:860px){ input,textarea,select{font-size:16px} }
