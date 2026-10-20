@@ -53,20 +53,26 @@ const TITLES: Record<string, string> = { add: 'Записать', meal: 'При�
 
 export function App() {
   const toast = useToast(), wide = useWide();
-  // телефон: панель разделов уезжает, когда листаешь вниз, и возвращается, когда листаешь вверх или дошёл до конца
-  const [away, setAway] = useState(false);
+  // телефон: панель разделов уезжает вниз вместе с прокруткой (на столько же пикселей), листаешь вверх — так же выезжает;
+  // когда прокрутка остановилась, панель плавно доезжает до ближайшего положения. Стиль пишем прямо в элемент — без перерисовки React
+  const tabsRef = useRef<HTMLElement>(null), shift = useRef(0);
+  const showTabs = useCallback(() => { const n = tabsRef.current; shift.current = 0; if (n) { n.style.transition = ''; n.style.transform = ''; } }, []);
   useEffect(() => {
-    if (wide) { setAway(false); return; }
-    const last = new WeakMap<EventTarget, number>();
+    if (wide) { showTabs(); return; }
+    const last = new WeakMap<EventTarget, number>(); let idle = 0;
+    const set = (v: number, smooth: boolean) => { const n = tabsRef.current; if (!n) return; shift.current = v; n.style.transition = smooth ? 'transform .25s var(--ease)' : 'none'; n.style.transform = v ? `translateY(${v}px)` : ''; };
     const on = (e: Event) => {
-      const el = e.target as HTMLElement; if (!el.classList?.contains('screen')) return;
-      const y = el.scrollTop, d = y - (last.get(el) ?? y); last.set(el, y);
-      if (y < 40 || y + el.clientHeight > el.scrollHeight - 24) setAway(false);
-      else if (d > 8) setAway(true); else if (d < -8) setAway(false);
+      const el = e.target as HTMLElement, n = tabsRef.current; if (!n || !el.classList?.contains('screen')) return;
+      const y = el.scrollTop, d = y - (last.get(el) ?? y), h = n.offsetHeight; last.set(el, y);
+      const edge = y <= 0 || y + el.clientHeight >= el.scrollHeight - 2;
+      if (edge) { if (shift.current) set(0, true); return; }
+      set(Math.max(0, Math.min(h, shift.current + d)), false);
+      clearTimeout(idle);
+      idle = window.setTimeout(() => { const v = shift.current; if (v > 0 && v < h) set(v > h / 2 ? h : 0, true); }, 140);
     };
     document.addEventListener('scroll', on, { capture: true, passive: true });
-    return () => document.removeEventListener('scroll', on, { capture: true });
-  }, [wide]);
+    return () => { clearTimeout(idle); document.removeEventListener('scroll', on, { capture: true }); };
+  }, [wide, showTabs]);
   const [me, setMe] = useState<Me | null | undefined>(undefined), [redo, setRedo] = useState(false);
   const [tab, setTab] = useState('today');
   const [day, setDay] = useState<string | null>(null), [today, setToday] = useState<string | null>(null);
@@ -180,7 +186,7 @@ export function App() {
     if (SECTIONS[name] && !can(sub, SECTIONS[name]!)) { open({ kind: 'paywall', focus: SECTION_NAME[name] }); return; }
     if ((name === 'goal' || name === 'stats') && !can(sub, name)) { open({ kind: 'paywall', focus: name === 'goal' ? 'Цель и прогноз' : 'Статистика' }); return; }
     if (name in SECTIONS) setBack(tab in SECTIONS ? back : tab);
-    setTab(name); setAway(false); buzz(6);
+    setTab(name); showTabs(); buzz(6);
   };
 
   if (me === undefined) return <div className="app" />;
@@ -229,7 +235,7 @@ export function App() {
           onLogout={async () => { await api('/api/auth/logout', { method: 'POST' }).catch(() => {}); setMe(null); setDays({}); setDay(null); setToday(null); setTab('today'); }} />
       </section>
     </div>
-    <nav className={`tabs ${away && !wide ? 'away' : ''}`} aria-label="Разделы">
+    <nav ref={tabsRef} className="tabs" aria-label="Разделы">
       {(wide ? WIDE_TABS : TABS).map(([name, icon, label]) => <button key={name} className={`tab ${name === 'add' ? 'add' : ''}`} aria-current={tab === name ? 'page' : undefined} onClick={() => go(name)} aria-label={label}>
         <span className="pill"><Icon name={icon} /></span>{label}{SECTIONS[name] && !can(sub, SECTIONS[name]!) && <span className="lock dock-lock">PRO</span>}</button>)}
     </nav>

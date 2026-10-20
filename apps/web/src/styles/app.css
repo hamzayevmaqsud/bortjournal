@@ -840,12 +840,10 @@ button.meal:active{transform:scale(.98)}
 .narrow .task-add .primary{padding:10px 12px}
 .narrow .task-add .more-btn{display:none}
 /* панель разделов на телефоне — обычная полоса снизу: ничего не перекрывает, при прокрутке вниз уезжает, при прокрутке вверх возвращается */
-.app:not(.wide) .tabs{padding:6px 4px calc(6px + env(safe-area-inset-bottom,0px));background:var(--card);backdrop-filter:none;-webkit-backdrop-filter:none;border-top:1px solid var(--line);align-items:center;transition:transform .32s var(--ease)}
-.app:not(.wide) .tabs.away{transform:translateY(100%)}
+.app:not(.wide) .tabs{padding:6px 4px calc(6px + env(safe-area-inset-bottom,0px));background:var(--card);backdrop-filter:none;-webkit-backdrop-filter:none;border-top:1px solid var(--line);align-items:center;will-change:transform}
 .app:not(.wide) .tab.add .pill{width:52px;height:30px;margin-top:0;border-radius:15px;box-shadow:none}
 .app:not(.wide) .screen{padding-bottom:calc(84px + env(safe-area-inset-bottom,0px))}
-.app:not(.wide) .gym-pill,.app:not(.wide) .rest-bar{bottom:calc(76px + env(safe-area-inset-bottom,0px));transition:bottom .32s var(--ease)}
-.app:not(.wide):has(.tabs.away) .gym-pill,.app:not(.wide):has(.tabs.away) .rest-bar{bottom:calc(14px + env(safe-area-inset-bottom,0px))}
+.app:not(.wide) .gym-pill,.app:not(.wide) .rest-bar{bottom:calc(76px + env(safe-area-inset-bottom,0px))}
 .narrow .datenav .cur.not-today{display:grid;min-width:0;padding:0 10px;font-size:12px}
 
 /* ============ еда: день и анализ ============ */
