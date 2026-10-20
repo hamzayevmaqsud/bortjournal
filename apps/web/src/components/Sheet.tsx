@@ -2,14 +2,25 @@
  * Лист снизу: выезжает пружиной, тянется пальцем, закрывается смахиванием вниз
  * (по расстоянию или по скорости), отпущенный раньше — возвращается на место.
  * Длинное содержимое прокручивается внутри; тянуть лист можно, когда прокрутка в начале.
+ * На широком экране — окно по центру: проявляется с лёгким подъёмом, без перетаскивания.
  */
 import { useEffect, useRef, type ReactNode } from 'react';
 import { buzz, spring } from '../lib/motion';
+import { useWide } from '../lib/wide';
 
 export function Sheet({ open, onClose, title, children, tall = false }: { open: boolean; onClose: () => void; title: string; children: ReactNode; tall?: boolean }) {
   const sheet = useRef<HTMLDivElement>(null), scrim = useRef<HTMLDivElement>(null), body = useRef<HTMLDivElement>(null);
-  const y = useRef(1), stop = useRef<() => void>(() => {});
-  const place = (v: number) => { y.current = v; if (sheet.current) sheet.current.style.transform = `translateY(${v * 105}%)`; if (scrim.current) scrim.current.style.opacity = String(Math.max(0, 1 - v)); };
+  const y = useRef(1), stop = useRef<() => void>(() => {}), wide = useWide(), modal = useRef(wide);
+  modal.current = wide;
+  const place = (v: number) => {
+    y.current = v; const el = sheet.current;
+    if (el) {
+      if (modal.current) { el.style.transform = `translate(-50%, calc(-50% + ${v * 28}px)) scale(${1 - v * 0.04})`; el.style.opacity = String(Math.max(0, 1 - v * 1.4)); }
+      else { el.style.transform = `translateY(${v * 105}%)`; el.style.opacity = ''; }
+    }
+    if (scrim.current) scrim.current.style.opacity = String(Math.max(0, 1 - v));
+  };
+  useEffect(() => { place(y.current); }, [wide]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     stop.current();
@@ -20,6 +31,7 @@ export function Sheet({ open, onClose, title, children, tall = false }: { open: 
   useEffect(() => {
     const el = sheet.current!; let y0: number | null = null, t0 = 0, h = 1, last = 0, armed = false;
     const down = (e: PointerEvent) => {
+      if (modal.current) return;
       const t = e.target as HTMLElement;
       if (t.closest('button,input,textarea,select,label,a,[data-nodrag]')) return;
       // внутри прокрутки тянем лист, только если она в самом начале
@@ -44,8 +56,8 @@ export function Sheet({ open, onClose, title, children, tall = false }: { open: 
 
   return <>
     <div ref={scrim} className={`scrim ${open ? 'on' : ''}`} onClick={onClose} />
-    <div ref={sheet} className={`sheet ${tall ? 'tall' : ''}`} role="dialog" aria-modal="true" aria-label={title} aria-hidden={!open} inert={!open || undefined}>
-      <div className="grab" />
+    <div ref={sheet} className={`sheet ${tall ? 'tall' : ''} ${wide ? 'modal' : ''}`} role="dialog" aria-modal="true" aria-label={title} aria-hidden={!open} inert={!open || undefined}>
+      {wide ? <button className="x" onClick={onClose} aria-label="Закрыть">×</button> : <div className="grab" />}
       {title && <h2>{title}</h2>}
       <div className="sheet-body" ref={body}>{open ? children : null}</div>
     </div>

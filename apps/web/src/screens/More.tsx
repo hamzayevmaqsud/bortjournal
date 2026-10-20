@@ -14,7 +14,7 @@ const PRO_SECTIONS: Array<[string, string, string, string]> = [
 
 export function More({ me, onPaywall, onSettings, onInstall, onLogout }: { me: Me; onPaywall: (focus?: string) => void; onSettings: () => void; onInstall: () => void; onLogout: () => void }) {
   const s = me.profile?.settings ?? {}, sub = me.subscription;
-  return <div className="day">
+  return <div className="day more-page">
     <header className="dayhead"><div className="daytitle"><span>ещё</span><b>{s.name || me.username}</b></div></header>
     <button className="profile-card" onClick={onSettings}>
       <span className="avatar">{(s.name || me.username).slice(0, 1).toUpperCase()}</span>

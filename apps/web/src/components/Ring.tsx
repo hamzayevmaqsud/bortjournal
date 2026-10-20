@@ -2,7 +2,7 @@
 import { useCountUp, useNextFrame } from '../lib/motion';
 import { fmt, fmt1 } from '../lib/format';
 
-function Arc({ size, sw, color, p }: { size: number; sw: number; color: string; p: number }) {
+export function Arc({ size, sw, color, p }: { size: number; sw: number; color: string; p: number }) {
   const r = (size - sw) / 2, C = 2 * Math.PI * r, shown = useNextFrame(Math.min(1, Math.max(0, p)), 0);
   return <svg viewBox={`0 0 ${size} ${size}`}>
     <circle className="bg" cx={size / 2} cy={size / 2} r={r} fill="none" strokeWidth={sw} />

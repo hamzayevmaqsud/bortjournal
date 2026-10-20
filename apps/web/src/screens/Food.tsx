@@ -26,7 +26,7 @@ export function Food({ data, norm, sub, onAddMeal, onMeal, onDrink, onPro }: {
   const t = data.totals, k = norm.kcal, p = norm.protein || Math.round(k * 0.25 / 4);
   const f = norm.fat || Math.round(k * 0.28 / 9), c = norm.carbs || Math.max(0, Math.round((k - p * 4 - f * 9) / 4));
   const left = k - t.kcal, groups = SLOTS.map(([s, n]) => [n, data.meals.filter(m => slotOf(m) === s)] as const).filter(([, ms]) => ms.length);
-  return <div className="day">
+  return <div className="day food-page">
     <header className="dayhead"><div className="daytitle"><span>сегодня · еда</span><b>{fmt(t.kcal)} из {fmt(k)} ккал</b></div></header>
     <section className="panel hero-food">
       <BigRing value={t.kcal} max={k} color="var(--food)" />

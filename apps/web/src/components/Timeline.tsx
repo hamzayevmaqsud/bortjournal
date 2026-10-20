@@ -28,8 +28,9 @@ export function marksOf(events: DayEvent[], tasks: Task[]): Mark[] {
   return out;
 }
 
-export function Timeline({ marks, now, still, pro = true, onAdd, onDelete, onEdit, onToggleTask }: {
+export function Timeline({ marks, now, still, pro = true, sums, onAdd, onDelete, onEdit, onToggleTask }: {
   marks: Mark[]; now: string | null; still: boolean; pro?: boolean;
+  /** итог по дорожке справа — только на широком экране */ sums?: Record<string, string>;
   onAdd: (time: string) => void; onDelete: (m: Mark) => void; onEdit?: (m: Mark) => void; onToggleTask: (id: string) => void;
 }) {
   const [sel, setSel] = useState<{ m: Mark; left: number; top: number; ox: number } | null>(null);
@@ -45,13 +46,13 @@ export function Timeline({ marks, now, still, pro = true, onAdd, onDelete, onEdi
   let n = 0;
 
   return <div ref={box} className={`tl-wrap ${still ? 'still' : ''}`} style={{ position: 'relative' }}>
-    <div className="tl">
+    <div className={`tl ${sums ? 'wide' : ''}`}>
       <div className="tl-axis">{['06', '09', '12', '15', '18', '21', '24'].map((h, i) => <span key={h} style={{ left: `${i / 6 * 100}%` }}>{h}</span>)}</div>
       <div className="tl-body">
-        {now && <div className="tl-now" style={{ left: `calc(32px + (100% - 32px) * ${pct(now) / 100})` }}><b>сейчас {now}</b></div>}
+        {now && <div className="tl-now" style={{ left: `calc(var(--lw) + (100% - var(--lw) - var(--sw)) * ${pct(now) / 100})` }}><b>сейчас {now}</b></div>}
         {LANES.filter(([lane]) => pro || (lane !== 'study' && lane !== 'gym') || marks.some(m => m.lane === lane)).map(([lane, icon, color, name]) => (
           <div className="lane" key={lane}>
-            <span className="lane-ic" style={{ ['--c' as string]: color }} title={name}><Icon name={icon} /></span>
+            <span className="lane-ic" style={{ ['--c' as string]: color }} title={name}><Icon name={icon} /><span className="lane-name">{name}</span></span>
             <div className="track" aria-label={`${name}: нажми, чтобы добавить`} onClick={e => {
               if ((e.target as HTMLElement).closest('.mk')) return;
               const r = e.currentTarget.getBoundingClientRect();
@@ -67,6 +68,7 @@ export function Timeline({ marks, now, still, pro = true, onAdd, onDelete, onEdi
                 return <button key={m.id} className={`mk ${m.min ? 'bar' : ''} ${m.open ? 'open' : ''} ${sel?.m.id === m.id ? 'sel' : ''}`} style={style} aria-label={`${m.time} ${m.title}`} onClick={e => { e.stopPropagation(); openPop(m, e.currentTarget); }} />;
               })}
             </div>
+            {sums && <span className="lane-sum">{sums[lane] ?? '—'}</span>}
           </div>
         ))}
       </div>

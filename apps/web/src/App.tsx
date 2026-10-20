@@ -21,6 +21,8 @@ import { InstallHelp, More, SettingsForm } from './screens/More';
 import { Onboarding } from './screens/Onboarding';
 import { Plans } from './screens/Plans';
 import { Today } from './screens/Today';
+import { TodayWide } from './screens/TodayWide';
+import { useWide } from './lib/wide';
 
 const TABS: Array<[string, string, string]> = [['today', 'today', 'Сегодня'], ['plans', 'plans', 'Планы'], ['add', 'plus', 'Записать'], ['food', 'food', 'Еда'], ['more', 'more', 'Ещё']];
 const ORDER = ['today', 'plans', 'food', 'more'];
@@ -34,7 +36,7 @@ type SheetState =
 const TITLES: Record<string, string> = { add: 'Записать', meal: 'Приём пищи', drink: 'Напиток', steps: 'Шаги за день', weight: 'Вес', task: 'Задача', paywall: '', settings: 'Профиль и нормы', install: 'На экран «Домой»' };
 
 export function App() {
-  const toast = useToast();
+  const toast = useToast(), wide = useWide();
   const [me, setMe] = useState<Me | null | undefined>(undefined), [redo, setRedo] = useState(false);
   const [tab, setTab] = useState('today');
   const [day, setDay] = useState<string | null>(null), [today, setToday] = useState<string | null>(null);
@@ -124,10 +126,14 @@ export function App() {
   const foodPart = data?.parts.food, body = data?.parts.body;
   const lockTile = (name: string, ic: string, c: string) => <button key={name} className="tile" onClick={() => pro(name)}><span className="chip-ic" style={{ ['--c' as string]: c }}><Icon name={ic} /></span>{name}{!sub.pro && <span className="lock">PRO</span>}</button>;
 
-  return <div className="app">
+  return <div className={`app ${wide ? 'wide' : ''}`}>
+    {wide && <div className="brand"><i>✦</i>Бортжурнал</div>}
     <div className="screens">
       <section className="screen" data-pos={pos('today')} aria-hidden={tab !== 'today'}>
-        {day && today && <Today data={data} day={day} today={today} still={still} sub={sub} onDay={goDay} onAdd={at => open({ kind: 'add', at })} onDelete={deleteMark} onEdit={editMark} onToggleTask={toggleTask} onGo={go}
+        {day && today && wide && <TodayWide data={data} day={day} today={today} still={still} sub={sub} onDay={goDay} onAdd={at => open({ kind: 'add', at })} onDelete={deleteMark} onEdit={editMark} onToggleTask={toggleTask} onGo={go}
+          onPro={pro} onPaywall={() => open({ kind: 'paywall' })} onSteps={() => open({ kind: 'steps' })} onWeight={() => open({ kind: 'weight' })} onWater={() => open({ kind: 'drink' })}
+          onMeal={() => open({ kind: 'meal' })} onAddWater={ml => addWater(ml)} onTaskAdded={() => { toast('Задача добавлена'); refresh(); }} onTaskOpen={() => open({ kind: 'task', day })} />}
+        {day && today && !wide && <Today data={data} day={day} today={today} still={still} sub={sub} onDay={goDay} onAdd={at => open({ kind: 'add', at })} onDelete={deleteMark} onEdit={editMark} onToggleTask={toggleTask} onGo={go}
           onPro={pro} onPaywall={() => open({ kind: 'paywall' })} onSteps={() => open({ kind: 'steps' })} onWeight={() => open({ kind: 'weight' })} onWater={() => open({ kind: 'drink' })} onTask={() => open({ kind: 'task', day })} />}
       </section>
       <section className="screen" data-pos={pos('plans')} aria-hidden={tab !== 'plans'}>
@@ -143,7 +149,7 @@ export function App() {
       </section>
     </div>
     <nav className="tabs" aria-label="Разделы">
-      {TABS.map(([name, icon, label]) => <button key={name} className={`tab ${name === 'add' ? 'add' : ''}`} aria-current={tab === name ? 'page' : undefined} onClick={() => go(name)} aria-label={label}>
+      {TABS.filter(([name]) => !wide || name !== 'add').map(([name, icon, label]) => <button key={name} className={`tab ${name === 'add' ? 'add' : ''}`} aria-current={tab === name ? 'page' : undefined} onClick={() => go(name)} aria-label={label}>
         <span className="pill"><Icon name={icon} /></span>{label}</button>)}
     </nav>
 

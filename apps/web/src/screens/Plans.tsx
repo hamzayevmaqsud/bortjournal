@@ -20,7 +20,7 @@ export function Plans({ today, sub, version, onAdd, onOpen, onPro, onChanged }: 
   const ofDay = (d: string | null) => (items ?? []).filter(t => t.day === d);
   const toggle = async (id: string) => { setItems(xs => xs?.map(t => t.id === id ? { ...t, done: !t.done } : t) ?? xs); await api(`/api/plans/tasks/${id}/toggle`, { method: 'POST' }).catch(() => load()); onChanged(); };
   const dd = parseDay(day), list = ofDay(day), undated = ofDay(null);
-  return <div className="day">
+  return <div className="day plans-page">
     <header className="dayhead">
       <button className="nav" onClick={() => { setMon(addDays(mon, -7)); setDay(addDays(day, -7)); }} aria-label="Прошлая неделя"><Icon name="chevL" /></button>
       <div className="daytitle"><span>планы · неделя</span><b>{parseDay(mon).getUTCDate()}–{parseDay(addDays(mon, 6)).getUTCDate()} {MONG[parseDay(addDays(mon, 6)).getUTCMonth()]}</b></div>
