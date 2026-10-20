@@ -86,7 +86,7 @@ function ExerciseInfo({ k, onAdd }: { k: string; onAdd?: (ex: Exercise) => void 
 }
 
 /* ---------------- идущая тренировка ---------------- */
-function LiveView({ live, setLive, custom, onFinish, onCancel, onInfo }: { live: Live; setLive: (l: Live | null, save?: boolean) => void; custom: Exercise[]; onFinish: () => void; onCancel: () => void; onInfo: (k: string) => void }) {
+function LiveView({ live, setLive, custom, onFinish, onCancel, onInfo, restSec = 90 }: { restSec?: number; live: Live; setLive: (l: Live | null, save?: boolean) => void; custom: Exercise[]; onFinish: () => void; onCancel: () => void; onInfo: (k: string) => void }) {
   const [hint, setHint] = useState<Record<string, any>>({}), [, tick] = useState(0), [rest, setRest] = useState<number | null>(null), [pick, setPick] = useState(false), [busy, setBusy] = useState(false);
   const keys = live.ex.map(x => x.key).join(',');
   useEffect(() => { if (keys) api<any>(`/api/gym/hints?keys=${encodeURIComponent(keys)}${live.editing ? `&skip=${live.editing}` : ''}`).then(setHint, () => {}); }, [keys, live.editing]);
@@ -126,7 +126,7 @@ function LiveView({ live, setLive, custom, onFinish, onCancel, onInfo }: { live:
             const set = l.ex[i]!.sets[j]!; set.done = !set.done;
             // пустой подход по отметке берёт подсказку: прошлый раз или предыдущий подход
             if (set.done) for (const [f] of cols) if (!set[f] && ((hp as any)?.[f] || (own && own[f]))) (set as any)[f] = String((hp as any)?.[f] ?? own![f]);
-            if (set.done && !live.past) { setRest(Date.now() + 90_000); buzz([10, 30, 10]); }
+            if (set.done && !live.past) { setRest(Date.now() + restSec * 1000); buzz([10, 30, 10]); }
           })}><Icon name="check" /></button>,
           <button key={`x${j}`} className="gs-x" aria-label="Убрать подход" onClick={() => upd(l => { l.ex[i]!.sets.splice(j, 1); })}>×</button>
         ]; })}
@@ -163,7 +163,7 @@ function PlanForm({ plan, from, onDone }: { plan?: any; from?: { title: string; 
 }
 
 /* ---------------- экран ---------------- */
-export function Gym({ wide, version, onBack, onChanged }: { wide: boolean; version: number; onBack: () => void; onChanged: () => void }) {
+export function Gym({ wide, version, onBack, onChanged, restSec }: { wide: boolean; version: number; onBack: () => void; onChanged: () => void; restSec?: number }) {
   const [shown, setShown] = useState(8);
   const toast = useToast(), [o, setO] = useState<any>(null), [live, setLiveState] = useState<Live | null>(null), [sheet, setSheet] = useState<null | { kind: 'info'; key: string } | { kind: 'plan'; plan?: any; from?: any } | { kind: 'start' }>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout>>(undefined), loaded = useRef(false);
@@ -208,7 +208,7 @@ export function Gym({ wide, version, onBack, onChanged }: { wide: boolean; versi
     {sheet?.kind === 'start' && o && <Picker custom={o.custom} onCustom={() => {}} onAdd={list => begin({ ex: list.map(ex => toLiveEx(ex)) })} />}
   </Sheet>;
   if (!o) return <div className="day gym-page">{head}<div className="skel" style={{ height: 140 }} /><div className="skel" style={{ height: 300 }} /></div>;
-  if (live) return <div className="day gym-page">{head}<LiveView live={live} setLive={setLive} custom={o.custom} onFinish={finish} onCancel={cancel} onInfo={k => setSheet({ kind: 'info', key: k })} />{sheets}</div>;
+  if (live) return <div className="day gym-page">{head}<LiveView restSec={restSec} live={live} setLive={setLive} custom={o.custom} onFinish={finish} onCancel={cancel} onInfo={k => setSheet({ kind: 'info', key: k })} />{sheets}</div>;
 
   const todayPlan = !o.trainedToday ? o.plans.find((p: any) => p.today) : null;
   return <div className="day gym-page">

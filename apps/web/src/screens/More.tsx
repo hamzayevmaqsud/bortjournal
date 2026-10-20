@@ -20,7 +20,7 @@ const PRO_SECTIONS: Array<[string, string, string, string]> = [
 const THEMES: Array<[Theme, string, string]> = [['system', 'Как в системе', 'auto'], ['light', 'Светлая', 'sun'], ['dark', 'Тёмная', 'moon']];
 
 /** Оформление: применяется сразу, сохраняется в профиль — телефон и компьютер подхватят */
-function ThemePick({ me, onSaved }: { me: Me; onSaved: (s: Record<string, unknown>) => void }) {
+export function ThemePick({ me, onSaved }: { me: Me; onSaved: (s: Record<string, unknown>) => void }) {
   const toast = useToast(), [cur, setCur] = useState<Theme>((me.profile?.settings?.theme as Theme) ?? savedTheme());
   const pick = async (t: Theme) => {
     if (t === cur) return; const was = cur;
@@ -103,7 +103,7 @@ export function InstallHelp() {
   </div>;
 }
 
-function PasswordForm({ onDone }: { onDone: () => void }) {
+export function PasswordForm({ onDone }: { onDone: () => void }) {
   const toast = useToast(), [v, setV] = useState({ current: '', next: '', again: '' }), [err, setErr] = useState(''), [busy, setBusy] = useState(false);
   return <form className="form" onSubmit={async e => {
     e.preventDefault(); setErr('');

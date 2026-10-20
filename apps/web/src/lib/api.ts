@@ -76,7 +76,7 @@ export async function flushOutbox(): Promise<{ sent: number; dropped: number }> 
 if (typeof window !== 'undefined') { addEventListener('online', () => { void flushOutbox(); }); setInterval(() => { if (pendingCount()) void flushOutbox(); }, 20000); }
 
 export interface Subscription { pro: boolean; source: 'trial' | 'web' | 'apple' | 'google' | 'free' | null; expiresAt: string | null; daysLeft: number | null; plan: 'month' | 'year' | null; autoRenew: boolean; ended?: boolean; features?: import('@bortjournal/core').PackKey[] | null }
-export interface Profile { sex: string | null; age: number | null; heightCm: number | null; goal: string | null; targetKg: number | null; startWeightKg: number | null; settings: Record<string, any> }
+export interface Profile { sex: string | null; age: number | null; heightCm: number | null; goal: string | null; pace?: string | null; targetKg: number | null; startWeightKg: number | null; settings: Record<string, any> }
 export interface Me { username: string; tzOffset: number; modules: string[]; subscription: Subscription; profile: Profile | null }
 export interface PlanResult { kcal: number; protein: number; fat: number; carbs: number; weeklyKg: number; tdee: number; bmi: number; notes: string[]; weeks: number | null; water: number; steps: number }
 export interface TaskFull { id: string; title: string; day: string | null; time: string | null; done: boolean; prio: boolean; note: string | null; repeat: boolean; seriesId?: string | null; goalId?: string | null }

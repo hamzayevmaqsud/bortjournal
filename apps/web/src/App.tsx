@@ -27,6 +27,7 @@ import { Gym } from './screens/Gym';
 import { Budget } from './screens/Budget';
 import { Books } from './screens/Books';
 import { Study } from './screens/Study';
+import { Profile } from './screens/Profile';
 import { Reminders } from './components/Reminders';
 import { Stats, type StatsTab } from './screens/Stats';
 import { TodayWide } from './screens/TodayWide';
@@ -34,7 +35,7 @@ import { useWide } from './lib/wide';
 import { applyTheme, type Theme } from './lib/theme';
 
 const TABS: Array<[string, string, string]> = [['today', 'today', 'Сегодня'], ['plans', 'plans', 'Планы'], ['add', 'plus', 'Записать'], ['food', 'food', 'Еда'], ['more', 'more', 'Ещё']];
-const ORDER = ['today', 'plans', 'food', 'study', 'gym', 'budget', 'books', 'goal', 'stats', 'more'];
+const ORDER = ['today', 'plans', 'food', 'study', 'gym', 'budget', 'books', 'goal', 'stats', 'more', 'profile'];
 // разделы, открываемые поверх вкладок (на телефоне — с кнопкой «назад»); платные — с ключом своего набора
 const SECTIONS: Record<string, string | null> = { goal: null, stats: null, study: 'study', gym: 'gym', budget: 'budget', books: 'books' };
 const SECTION_NAME: Record<string, string> = { study: 'Учёба', gym: 'Зал', budget: 'Бюджет', books: 'Книги' };
@@ -211,14 +212,20 @@ export function App() {
     if (SECTIONS[name] && !can(sub, SECTIONS[name]!)) { open({ kind: 'paywall', focus: SECTION_NAME[name] }); return; }
     if ((name === 'goal' || name === 'stats') && !can(sub, name)) { open({ kind: 'paywall', focus: name === 'goal' ? 'Цель и прогноз' : 'Статистика' }); return; }
     if (name in SECTIONS) setBack(tab in SECTIONS ? back : tab);
+    if (name === 'profile') setBack(tab === 'profile' ? back : tab);
     setTab(name); showTabs(); buzz(6);
   };
   goRef.current = go;
 
   if (me === undefined) return <div className="app" />;
   if (me === null) return <Login onDone={loadMe} />;
-  if (!me.profile?.heightCm || redo) return <Onboarding onDone={async () => { setRedo(false); await loadMe(); setDays({}); loadDay(); }} />;
+  if (!me.profile?.heightCm || redo) {
+    const p = me.profile, w = data?.parts.body?.weight?.kg ?? p?.startWeightKg;
+    const initial = p?.heightCm ? { name: String(p.settings?.name ?? ''), sex: (p.sex === 'f' ? 'f' : 'm') as 'm' | 'f', age: p.age ? String(p.age) : '', height: String(p.heightCm), weight: w ? String(w).replace('.', ',') : '', goal: (p.goal ?? 'maintain') as 'lose' | 'maintain' | 'gain', pace: (p.pace ?? 'mid') as 'soft' | 'mid' | 'hard', target: p.targetKg ? String(p.targetKg).replace('.', ',') : '' } : undefined;
+    return <Onboarding initial={initial} onCancel={p?.heightCm ? () => setRedo(false) : undefined} onDone={async () => { setRedo(false); await loadMe(); setDays({}); loadDay(); }} />;
+  }
 
+  const logout = async () => { await api('/api/auth/logout', { method: 'POST' }).catch(() => {}); forgetLocal(); setMe(null); setDays({}); setDay(null); setToday(null); setTab('today'); };
   const pos = (name: string) => name === tab ? 'center' : ORDER.indexOf(name) < ORDER.indexOf(tab) ? 'left' : 'right';
   const foodPart = data?.parts.food, body = data?.parts.body;
   const lockTile = (name: string, ic: string, c: string) => <button key={name} className="tile" onClick={() => pro(name, sheet.kind === 'add' ? sheet.at : undefined)}><span className="chip-ic" style={{ ['--c' as string]: c }}><Icon name={ic} /></span>{name}{!can(sub, name) && <span className="lock">PRO</span>}</button>;
@@ -243,7 +250,7 @@ export function App() {
         {tab === 'study' && <Study wide={wide} version={version} tab={studyTab} onBack={() => setTab(back)} onChanged={() => { setStill(true); if (day) loadDay(day); setTimeout(checkAwards, 600); }} />}
       </section>
       <section className="screen" data-pos={pos('gym')} aria-hidden={tab !== 'gym'}>
-        {tab === 'gym' && <Gym wide={wide} version={version} onBack={() => setTab(back)} onChanged={() => { setStill(true); if (day) loadDay(day); setTimeout(checkAwards, 600); }} />}
+        {tab === 'gym' && <Gym wide={wide} version={version} restSec={Number(me.profile?.settings?.rest) || 90} onBack={() => setTab(back)} onChanged={() => { setStill(true); if (day) loadDay(day); setTimeout(checkAwards, 600); }} />}
       </section>
       <section className="screen" data-pos={pos('budget')} aria-hidden={tab !== 'budget'}>
         {tab === 'budget' && <Budget wide={wide} version={version} onBack={() => setTab(back)} onChanged={() => { setStill(true); if (day) loadDay(day); }} />}
@@ -257,9 +264,14 @@ export function App() {
       <section className="screen" data-pos={pos('stats')} aria-hidden={tab !== 'stats'}>
         {tab === 'stats' && <Stats wide={wide} tab={statsTab} onBack={() => setTab(back)} />}
       </section>
+      <section className="screen" data-pos={pos('profile')} aria-hidden={tab !== 'profile'}>
+        {tab === 'profile' && <Profile me={me} wide={wide} onBack={() => setTab(back)} onSaved={st => { setMe(m => m && m.profile ? { ...m, profile: { ...m.profile, settings: st } } : m); setDays({}); if (day) loadDay(day); }}
+          onRedo={() => setRedo(true)} onReminders={() => open({ kind: 'reminders' })} onPaywall={() => open({ kind: 'paywall' })} onLogout={logout}
+          onDeleted={() => { toast('Аккаунт удалён'); setMe(null); setDays({}); setDay(null); setToday(null); setTab('today'); }} />}
+      </section>
       <section className="screen" data-pos={pos('more')} aria-hidden={tab !== 'more'}>
-        <More me={me} onPro={pro} onSaved={st => setMe(m => m && m.profile ? { ...m, profile: { ...m.profile, settings: st } } : m)} onPaywall={focus => open({ kind: 'paywall', focus })} onSettings={() => open({ kind: 'settings' })} onInstall={() => open({ kind: 'install' })}
-          onLogout={async () => { await api('/api/auth/logout', { method: 'POST' }).catch(() => {}); forgetLocal(); setMe(null); setDays({}); setDay(null); setToday(null); setTab('today'); }} />
+        <More me={me} onPro={pro} onSaved={st => setMe(m => m && m.profile ? { ...m, profile: { ...m.profile, settings: st } } : m)} onPaywall={focus => open({ kind: 'paywall', focus })} onSettings={() => go('profile')} onInstall={() => open({ kind: 'install' })}
+          onLogout={logout} />
       </section>
     </div>
     <nav ref={tabsRef} className="tabs" aria-label="Разделы">

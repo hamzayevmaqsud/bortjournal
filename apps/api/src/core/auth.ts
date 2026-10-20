@@ -120,6 +120,58 @@ export async function authRoutes(app: FastifyInstance, { db }: { db: DB }) {
     return { ok: true, signedOut: out.length };
   });
 
+  /* ---------- аккаунт: почта, устройства, удаление ---------- */
+  const need = (req: FastifyRequest, reply: FastifyReply) => { if (!req.userId) { reply.code(401).send({ error: 'Нужно войти.' }); return false; } return true; };
+  app.get('/api/account', async (req, reply) => {
+    if (!need(req, reply)) return;
+    const [u] = await db.select({ username: users.username, email: users.email, createdAt: users.createdAt, tzOffset: users.tzOffset }).from(users).where(eq(users.id, req.userId!));
+    return u;
+  });
+  app.put('/api/account', async (req, reply) => {
+    if (!need(req, reply)) return;
+    const email = String((req.body as { email?: unknown } | undefined)?.email ?? '').trim().toLowerCase().slice(0, 200);
+    if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return reply.code(400).send({ error: 'Почта выглядит неверно.' });
+    if (email) {
+      const [t] = await db.select({ id: users.id }).from(users).where(and(sql`lower(${users.email}) = ${email}`, sql`${users.id} <> ${req.userId}`)).limit(1);
+      if (t) return reply.code(409).send({ error: 'Эта почта уже у другого аккаунта.' });
+    }
+    await db.update(users).set({ email: email || null }).where(eq(users.id, req.userId!));
+    return { email: email || null };
+  });
+  // устройства: id — начало хеша сессии (сам токен не раскрываем)
+  app.get('/api/account/sessions', async (req, reply) => {
+    if (!need(req, reply)) return;
+    const cur = tokenOf(req), mine = cur ? sha(cur) : '';
+    const rows = await db.select().from(sessions).where(and(eq(sessions.userId, req.userId!), sql`${sessions.expiresAt} > now()`)).orderBy(sql`${sessions.createdAt} desc`);
+    return { items: rows.map(r => ({ id: r.tokenHash.slice(0, 16), current: r.tokenHash === mine, userAgent: r.userAgent, createdAt: r.createdAt })) };
+  });
+  app.delete('/api/account/sessions/:id', async (req, reply) => {
+    if (!need(req, reply)) return;
+    const id = String((req.params as { id?: string }).id ?? '');
+    if (!/^[0-9a-f]{16}$/.test(id)) return reply.code(400).send({ error: 'Неверное устройство.' });
+    const cur = tokenOf(req), mine = cur ? sha(cur) : '';
+    if (mine.startsWith(id)) return reply.code(400).send({ error: 'Это устройство — для выхода нажми «Выйти».' });
+    const out = await db.delete(sessions).where(and(eq(sessions.userId, req.userId!), sql`left(${sessions.tokenHash}, 16) = ${id}`)).returning({ h: sessions.tokenHash });
+    return out.length ? { ok: true } : reply.code(404).send({ error: 'Устройство уже вышло.' });
+  });
+  app.post('/api/account/sessions/others', async (req, reply) => {
+    if (!need(req, reply)) return;
+    const cur = tokenOf(req);
+    const out = await db.delete(sessions).where(and(eq(sessions.userId, req.userId!), cur ? sql`${sessions.tokenHash} <> ${sha(cur)}` : sql`true`)).returning({ h: sessions.tokenHash });
+    return { signedOut: out.length };
+  });
+  // удалить аккаунт: нужен пароль; все записи удаляются вместе с ним (каскадом) и без возврата
+  app.post('/api/account/delete', async (req, reply) => {
+    if (!need(req, reply)) return;
+    const password = String((req.body as { password?: unknown } | undefined)?.password ?? '').slice(0, 512);
+    if (tooMany(`del:${req.userId}`)) return reply.code(429).send({ error: 'Слишком много попыток. Подожди 15 минут.' });
+    const [u] = await db.select({ hash: users.passwordHash }).from(users).where(eq(users.id, req.userId!));
+    if (!(await verifyPassword(password, u?.hash))) { fail(`del:${req.userId}`); return reply.code(400).send({ error: 'Пароль неверный.' }); }
+    await db.delete(users).where(eq(users.id, req.userId!));
+    setCookie(req, reply, '', 0);
+    return { ok: true };
+  });
+
   app.get('/api/me', async (req, reply) => {
     if (!req.userId) return reply.code(401).send({ error: 'Нужно войти.' });
     // часовой пояс приходит с устройства: по нему считаются «сегодня», «сейчас» и напоминания

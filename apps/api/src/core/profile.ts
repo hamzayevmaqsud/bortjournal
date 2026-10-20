@@ -54,6 +54,11 @@ export async function profileRoutes(app: FastifyInstance, { db }: { db: DB }) {
     if (b.protein !== undefined) s.protein = Math.round(num(b.protein, 0, 400, 'Белок'));
     if (b.steps !== undefined) s.steps = Math.round(num(b.steps, 1000, 50000, 'Шаги'));
     if (b.water !== undefined) s.water = Math.round(num(b.water, 500, 6000, 'Вода'));
+    if (b.fat !== undefined) s.fat = Math.round(num(b.fat, 0, 300, 'Жиры'));
+    if (b.carbs !== undefined) s.carbs = Math.round(num(b.carbs, 0, 800, 'Углеводы'));
+    if (b.study !== undefined) s.study = Math.round(num(b.study, 0, 600, 'Учёба в день'));
+    if (b.rest !== undefined) s.rest = Math.round(num(b.rest, 15, 600, 'Отдых между подходами'));
+    if (b.booksGoal !== undefined) s.booksGoal = Math.round(num(b.booksGoal, 1, 365, 'Книг в год'));
     // оформление общее для всех устройств: system — как в настройках телефона или компьютера
     if (b.theme !== undefined) { if (!['system', 'light', 'dark'].includes(String(b.theme))) throw bad('Тема: system, light или dark.'); s.theme = b.theme; }
     await db.insert(profiles).values({ userId: req.userId!, settings: s }).onConflictDoUpdate({ target: profiles.userId, set: { settings: s, updatedAt: new Date() } });

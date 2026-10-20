@@ -9,10 +9,13 @@ import { fmt, fmt1 } from '../lib/format';
 import { buzz } from '../lib/motion';
 import { useToast } from '../components/Toasts';
 
-export function Onboarding({ onDone }: { onDone: () => void }) {
+export interface OnboardingValues { name: string; sex: '' | 'm' | 'f'; age: string; height: string; weight: string; activity: ActivityLevel; steps: string; goal: Goal; pace: Pace; target: string }
+
+/** initial — ответы прошлой анкеты (пересчёт из профиля); onCancel — вернуться, ничего не меняя */
+export function Onboarding({ onDone, initial, onCancel }: { onDone: () => void; initial?: Partial<OnboardingValues>; onCancel?: () => void }) {
   const toast = useToast();
   const [step, setStep] = useState(0), [busy, setBusy] = useState(false), [res, setRes] = useState<PlanResult | null>(null);
-  const [v, setV] = useState({ name: '', sex: '' as '' | 'm' | 'f', age: '', height: '', weight: '', activity: 'sed' as ActivityLevel, steps: '6000', goal: 'lose' as Goal, pace: 'mid' as Pace, target: '' });
+  const [v, setV] = useState<OnboardingValues>({ name: '', sex: '', age: '', height: '', weight: '', activity: 'sed', steps: '6000', goal: 'lose', pace: 'mid', target: '', ...initial });
   const set = (k: keyof typeof v) => (x: string) => setV(s => ({ ...s, [k]: x }));
   // телефон в русской раскладке ставит запятую: «85,5»
   const num = (x: string) => Number(x.replace(',', '.').trim()) || 0, W = num(v.weight);
@@ -74,6 +77,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
     </div>
     <div className="ob-nav">
       {step > 0 && step < 4 && <button className="ghost" onClick={() => setStep(step - 1)}>Назад</button>}
+      {step === 0 && onCancel && <button className="ghost" onClick={onCancel}>Отмена</button>}
       {step < 4 ? <button className="primary" disabled={!ok || busy} onClick={next}>{step === 3 ? (busy ? 'Считаю…' : 'Посчитать план') : 'Дальше'}</button>
         : <button className="primary" onClick={onDone}>Начать</button>}
     </div>
