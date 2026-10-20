@@ -22,44 +22,45 @@ beforeAll(async () => {
 afterAll(async () => { await app?.close(); await conn?.pool.end(); });
 
 describe('цена своего набора', () => {
-  it('складывается из разделов', () => {
-    expect(customPrice(['gym'], 'month')).toMatchObject({ price: 1.49, capped: false });
-    expect(customPrice(['gym', 'budget'], 'month').price).toBe(2.48);
-    expect(customPrice(['gym'], 'year').price).toBe(11.99); // 1,49 × 8 ≈ 12 → цена «.99»
+  it('один раздел — по своей цене, два — скидка 15%, три и больше — 25%', () => {
+    expect(customPrice(['gym'], 'month')).toMatchObject({ price: 1.29, discount: 0 });
+    expect(customPrice(['gym', 'budget'], 'month')).toMatchObject({ price: 1.94, list: 2.28, discount: 0.15 }); // 2,28 × 0,85
+    expect(customPrice(['gym', 'budget', 'books'], 'month')).toMatchObject({ price: 2.45, discount: 0.25 }); // 3,27 × 0,75
+    expect(customPrice(['gym'], 'year').price).toBe(9.99); // 1,29 × 8 ≈ 10 → «.99»
   });
-  it('никогда не дороже Pro', () => {
+  it('любой неполный набор дешевле Pro, экономия показывается; все разделы — это Pro', () => {
     for (const plan of ['month', 'year'] as const) {
-      const all = customPrice(PACK_KEYS, plan);
-      expect(all.capped).toBe(true);
-      expect(all.price).toBeLessThan(PRICES[plan].price);
-      // и любой набор — тоже
-      for (let mask = 1; mask < 1 << PACK_KEYS.length; mask += 37) expect(customPrice(PACK_KEYS.filter((_, i) => mask & (1 << i)), plan).price).toBeLessThan(PRICES[plan].price);
+      for (let mask = 1; mask < (1 << PACK_KEYS.length) - 1; mask++) {
+        const q = customPrice(PACK_KEYS.filter((_, i) => mask & (1 << i)), plan);
+        expect(q.price).toBeLessThan(PRICES[plan].price);
+        expect(q.save).toBeGreaterThan(0);
+      }
+      expect(customPrice(PACK_KEYS, plan)).toMatchObject({ all: true, price: PRICES[plan].price });
     }
   });
 });
 
 describe('покупка своего набора', () => {
-  it('без подписки — разделы закрыты', async () => {
-    expect((await req('GET', '/api/goal')).statusCode).toBe(402);
-    expect((await req('GET', '/api/stats/overview')).statusCode).toBe(402);
+  it('цель и статистика бесплатны, еда Pro закрыта', async () => {
+    expect((await req('GET', '/api/goal')).statusCode).toBe(200);
+    expect((await req('GET', '/api/stats/overview')).statusCode).toBe(200);
+    expect((await req('GET', '/api/awards')).statusCode).toBe(200);
+    expect((await req('GET', '/api/food/search?q=гречка')).statusCode).toBe(402);
   });
   it('цену считает сервер', async () => {
-    const q = (await req('GET', '/api/billing/quote?plan=month&features=goal,stats,nope')).json();
-    expect(q).toMatchObject({ features: ['goal', 'stats'], price: 1.98, pro: 4.99 });
+    const q = (await req('GET', '/api/billing/quote?plan=month&features=gym,budget,goal')).json();
+    expect(q).toMatchObject({ features: ['gym', 'budget'], price: 1.94, discount: 0.15, pro: 4.99 });
   });
   it('открывает только выбранное', async () => {
-    const r = (await req('POST', '/api/billing/purchase', { plan: 'month', features: ['goal'] })).json();
-    expect(r.price).toBe(0.99);
-    expect(r.subscription).toMatchObject({ pro: false, features: ['goal'], plan: 'month', source: 'web' });
-    expect((await req('GET', '/api/goal')).statusCode).toBe(200);
-    expect((await req('GET', '/api/stats/overview')).statusCode).toBe(402);
-    expect((await req('GET', '/api/food/search?q=гречка')).statusCode).toBe(402);
-    expect((await req('POST', '/api/billing/purchase', { plan: 'month', features: ['goal', 'wat'] })).statusCode).toBe(400);
+    const r = (await req('POST', '/api/billing/purchase', { plan: 'month', features: ['food'] })).json();
+    expect(r.price).toBe(1.49);
+    expect(r.subscription).toMatchObject({ pro: false, features: ['food'], plan: 'month', source: 'web' });
+    expect((await req('GET', '/api/food/search?q=гречка')).statusCode).toBe(200);
+    expect((await req('POST', '/api/billing/purchase', { plan: 'month', features: ['food', 'goal'] })).statusCode).toBe(400);
   });
-  it('все разделы — это Pro; переход на Pro открывает всё', async () => {
+  it('все разделы — это Pro', async () => {
     const r = (await req('POST', '/api/billing/purchase', { plan: 'year', features: PACK_KEYS })).json();
     expect(r.subscription).toMatchObject({ pro: true, features: null, plan: 'year' });
     expect(r.price).toBe(PRICES.year.price);
-    expect((await req('GET', '/api/stats/overview')).statusCode).toBe(200);
   });
 });

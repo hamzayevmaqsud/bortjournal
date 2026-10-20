@@ -10,7 +10,7 @@ export function Login({ onDone }: { onDone: () => void }) {
   return <main className="login">
     <div className="brand"><i>✦</i>Бортжурнал</div>
     <h1>{up ? 'Новый журнал' : 'С возвращением'}</h1>
-    <p>{up ? `Еда, вода, шаги и задачи — бесплатно навсегда. Всё остальное — ${TRIAL_DAYS} дней бесплатно.` : 'Войди, чтобы продолжить свой день.'}</p>
+    <p>{up ? `Еда, вода, шаги, задачи, цель и статистика — бесплатно навсегда. Всё остальное — ${TRIAL_DAYS} дней бесплатно.` : 'Войди, чтобы продолжить свой день.'}</p>
     <div className="seg2" role="tablist">
       <button role="tab" aria-selected={!up} className={!up ? 'on' : ''} onClick={() => { setMode('in'); setErr(''); }}>Войти</button>
       <button role="tab" aria-selected={up} className={up ? 'on' : ''} onClick={() => { setMode('up'); setErr(''); }}>Создать аккаунт</button>

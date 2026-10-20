@@ -4,7 +4,7 @@
  * Оплату потом заменит настоящая платёжка, экран останется тем же. Цену своего набора пересчитывает сервер.
  */
 import { useMemo, useState } from 'react';
-import { customPrice, FEATURES, PACKS, PRICES, type PackKey, type PriceId } from '@bortjournal/core';
+import { BUNDLE_DISCOUNT, customPrice, FEATURES, PACKS, packPrice, PRICES, type PackKey, type PriceId } from '@bortjournal/core';
 import { api, ApiError, type Subscription } from '../lib/api';
 import { featureOf } from '../lib/features';
 import { buzz } from '../lib/motion';
@@ -64,7 +64,7 @@ export function Paywall({ sub, focus, onChange, onClose }: { sub: Subscription; 
     <div className="pw-hero">
       <span className="pw-badge">{mode === 'pro' ? 'PRO' : 'СВОЙ НАБОР'}</span>
       <h3>{mode === 'pro' ? 'Весь Бортжурнал' : 'Только то, что нужно'}</h3>
-      <p>{mode === 'pro' ? (focus ? `«${focus}» — часть Pro. Или возьми только его в своём наборе.` : 'Фото еды, зал, учёба, бюджет, книги, статистика и напоминания.') : 'Отметь разделы — цена сложится из них и всегда будет ниже Pro.'} {sub.source === 'trial' ? `Пробный период: ещё ${sub.daysLeft} дн.` : ''}</p>
+      <p>{mode === 'pro' ? (focus ? `«${focus}» — часть Pro. Или возьми только его в своём наборе — так дешевле.` : 'Фото и описание еды с ИИ, зал, учёба, бюджет, книги, цели и повторы.') : 'Плати только за нужное. Два раздела — скидка 15%, три и больше — 25%.'} {sub.source === 'trial' ? `Пробный период: ещё ${sub.daysLeft} дн.` : ''}</p>
     </div>
 
     <div className="seg2 pw-mode" role="tablist">
@@ -87,14 +87,15 @@ export function Paywall({ sub, focus, onChange, onClose }: { sub: Subscription; 
         <span className="pw-box">{on && <Icon name="check" />}</span>
         <span className="chip-ic" style={{ ['--c' as string]: on ? 'var(--orange)' : 'var(--text-3)' }}><Icon name={p.icon} /></span>
         <span className="mid"><b>{p.name}</b><small>{p.hint}</small></span>
-        <em>{usd(plan === 'month' ? p.month : Math.round(p.month * 8) - 0.01)}<small>{plan === 'month' ? '/мес' : '/год'}</small></em>
+        <em>{usd(packPrice(p.month, plan))}<small>{plan === 'month' ? '/мес' : '/год'}</small></em>
       </button>; })}</div>}
 
-    {mode === 'custom' && pick.length > 0 && <div className={`pw-sum ${q.capped ? 'capped' : ''}`}>
-      <div><span>{pick.length} {word(pick.length)}</span><b>{usd(q.price)}<small> {PRICES[plan].per}</small></b>{q.capped && <s>{usd(q.sum)}</s>}</div>
-      <p>{q.capped ? `Набор упёрся в потолок — дороже ${usd(q.price)} не бывает.` : `Дешевле Pro на ${usd(q.toPro)}.`}{q.toPro <= 1.5 || q.capped ? <> Весь Pro — всего на <b>{usd(q.toPro)}</b> больше.</> : null}</p>
-      {(q.toPro <= 1.5 || q.capped) && <button className="btn-accent" onClick={() => { setMode('pro'); buzz(6); }}>Взять весь Pro за {usd(PRICES[plan].price)}</button>}
-    </div>}
+    {mode === 'custom' && pick.length > 0 && (() => { const qm = customPrice(pick, 'month'), qy = customPrice(pick, 'year'), next = BUNDLE_DISCOUNT(pick.length + 1); return <div className={`pw-sum ${q.all ? 'all' : ''}`}>
+      <div><span>{pick.length} {word(pick.length)}{q.discount ? ` · скидка ${Math.round(q.discount * 100)}%` : ''}</span>{q.list > q.price && <s>{usd(q.list)}</s>}<b>{usd(q.price)}<small> {PRICES[plan].per}</small></b></div>
+      {q.all ? <p>Все разделы — это и есть Pro.</p> : <p className="pw-save">Экономия против Pro: <b>{usd(qm.save)}</b> в месяц · <b>{usd(qy.save)}</b> в год</p>}
+      {!q.all && next > q.discount && <p>Ещё один раздел — и скидка станет {Math.round(next * 100)}%.</p>}
+      {!q.all && q.save <= 1 && <button className="btn-accent" onClick={() => { setMode('pro'); buzz(6); }}>Весь Pro — всего на {usd(q.save)} больше</button>}
+    </div>; })()}
 
     {!paid || !sub.autoRenew || changed ? <>
       <div className="pw-plans" role="radiogroup" aria-label="Период">

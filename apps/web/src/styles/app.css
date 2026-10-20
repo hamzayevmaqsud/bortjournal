@@ -1030,7 +1030,9 @@ button.meal:active{transform:scale(.98)}
 .pw-sum p{margin:0;font-size:13px;opacity:.85}
 .pw-sum p b{font-size:13px}
 .pw-sum .btn-accent{align-self:flex-start;--btn:rgba(251,244,230,.14);--btn-line:rgba(251,244,230,.3);--btn-fg:#FBF4E6}
-.pw-sum.capped{background:var(--orange)}
+.pw-sum.all{background:var(--orange)}
+.pw-save{font-size:14px!important;opacity:1!important}
+.pw-save b{color:var(--mustard);font-size:15px!important}
 .pw-picked{display:flex;flex-wrap:wrap;gap:6px;justify-content:center}
 .pw-manage .pw-picked{justify-content:flex-start}
 .pw-picked span{padding:4px 10px;border-radius:999px;background:var(--orange-soft);color:var(--orange);font-size:12.5px;font-weight:700}

@@ -98,8 +98,8 @@ export function TodayWide({ wide = true, data, day, today, sub, still, onDay, on
       </div>
     </header>
 
-    {sub.source === 'trial' && <button className="trial-bar" onClick={onPaywall}><Icon name="flame" /><span>Пробный Pro: <b>ещё {sub.daysLeft} {plural(sub.daysLeft ?? 0, 'день', 'дня', 'дней')}</b> — потом еда, вода, шаги и задачи остаются бесплатными</span><em>Тарифы</em></button>}
-    {!sub.pro && sub.ended && <button className="trial-bar" onClick={onPaywall}><Icon name="flame" /><span>Pro закончился — еда, вода, шаги и задачи остаются</span><em>Продлить</em></button>}
+    {sub.source === 'trial' && <button className="trial-bar" onClick={onPaywall}><Icon name="flame" /><span>Пробный Pro: <b>ещё {sub.daysLeft} {plural(sub.daysLeft ?? 0, 'день', 'дня', 'дней')}</b> — потом еда, вода, шаги, задачи, цель и статистика остаются бесплатными</span><em>Тарифы</em></button>}
+    {!sub.pro && sub.ended && <button className="trial-bar" onClick={onPaywall}><Icon name="flame" /><span>Pro закончился — еда, вода, шаги, задачи, цель и статистика остаются</span><em>Продлить</em></button>}
 
     {!data ? <div className="wgrid"><div className="skel" style={{ gridColumn: 'span 12', height: 260 }} /><div className="skel" style={{ gridColumn: 'span 4', height: 230 }} /><div className="skel" style={{ gridColumn: 'span 4', height: 230 }} /><div className="skel" style={{ gridColumn: 'span 4', height: 230 }} /></div> : <>
       <section className="panel tl-panel">
@@ -156,7 +156,7 @@ export function TodayWide({ wide = true, data, day, today, sub, still, onDay, on
             <p className="card-note">{P.books.reading.pct}% · стр. {P.books.reading.page}{P.books.reading.pages ? ` из ${P.books.reading.pages}` : ''}{P.books.reading.todayPages ? ` · сегодня +${P.books.reading.todayPages}` : ''}</p>
           </section>}
         </> : sub.pro ? null : <section className="wc solid s-navy span12 pro-teaser c-teaser" style={{ ['--i' as string]: 3 }}>
-          <div><span className="lock">PRO</span><h3>Зал, учёба, бюджет, книги и статистика</h3><p className="card-note">Фото еды с подсчётом ИИ, цели на год, напоминания и итог недели.</p></div>
+          <div><span className="lock">PRO</span><h3>Зал, учёба, бюджет, книги</h3><p className="card-note">Фото еды с подсчётом ИИ, цели на год и повторы. Бери весь Pro или только нужные разделы — со скидкой за набор.</p></div>
           <button className="btn-accent" onClick={onPaywall}>Посмотреть тарифы<Icon name="chev" /></button>
         </section>}
 

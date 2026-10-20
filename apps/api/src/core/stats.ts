@@ -1,5 +1,5 @@
 /**
- * Статистика, итог недели и достижения (Pro). Всё считается из фактов по дням, которые отдают модули (AppModule.daily),
+ * Статистика, итог недели и достижения (бесплатно). Всё считается из фактов по дням, которые отдают модули (AppModule.daily),
  * по правилам старого журнала: оценка дня — из того, что человек реально ведёт (направление считается, если за 30 дней
  * в нём были записи); зал и чтение — бонус. Достижения — 4 ступени; открытые ступени сохраняются с датой.
  */
@@ -9,7 +9,6 @@ import { addDays, parseDay } from '@bortjournal/core';
 import type { DB, Tx } from '../db/index.js';
 import { topMeals } from '../modules/food/index.js';
 import { MODULES_LIST } from '../modules/index.js';
-import { requirePro } from './billing.js';
 import { requireUser } from './auth.js';
 import { bad } from './http.js';
 import type { DayFacts, Totals } from './module.js';
@@ -271,7 +270,8 @@ async function review(db: Tx, userId: string, monArg?: string) {
 }
 
 export async function statsRoutes(app: FastifyInstance, { db }: { db: DB }) {
-  const pre = [requireUser, requirePro(db, 'stats')];
+  // статистика, итог недели и достижения — бесплатно для всех
+  const pre = [requireUser];
   const n = (v: unknown) => { const x = Number(v ?? 30); if (![7, 30, 90, 365].includes(x)) throw bad('Период: 7, 30, 90 или 365 дней.'); return x; };
   app.get('/api/stats/overview', { preHandler: pre }, async req => overview(db, req.userId!, (req.query as any).month));
   app.get('/api/stats/food', { preHandler: pre }, async req => foodStats(db, req.userId!, n((req.query as any).days)));

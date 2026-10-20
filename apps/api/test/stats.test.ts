@@ -38,8 +38,8 @@ beforeAll(async () => {
 afterAll(async () => { await app?.close(); await conn?.pool.end(); });
 
 describe('статистика', () => {
-  it('без Pro — 402', async () => {
-    for (const u of ['/api/stats/overview', '/api/stats/food', '/api/stats/week', '/api/awards']) expect((await as('free', 'GET', u)).statusCode).toBe(402);
+  it('статистика бесплатна — открыта и без Pro', async () => {
+    for (const u of ['/api/stats/overview', '/api/stats/food', '/api/stats/week', '/api/awards']) expect((await as('free', 'GET', u)).statusCode).toBe(200);
   });
   it('оценка дня: ведомые направления, сегодня — частично', async () => {
     const o = (await as('pro', 'GET', '/api/stats/overview')).json();

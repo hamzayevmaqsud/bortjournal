@@ -31,8 +31,8 @@ beforeAll(async () => {
 afterAll(async () => { await app?.close(); await conn?.pool.end(); });
 
 describe('цель', () => {
-  it('без Pro — 402, без анкеты — 409', async () => {
-    expect((await as('free', 'GET', '/api/goal')).statusCode).toBe(402);
+  it('цель бесплатна: без Pro открыта (без анкеты — 409)', async () => {
+    expect((await as('free', 'GET', '/api/goal')).statusCode).toBe(409);
     expect((await as('blank', 'GET', '/api/goal')).statusCode).toBe(409);
   });
   it('путь, вехи, факт и реальный расход', async () => {

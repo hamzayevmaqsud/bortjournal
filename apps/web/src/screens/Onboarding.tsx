@@ -69,7 +69,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
         </div>
         <p>{res.weeklyKg < -0.01 ? `Так уходит ≈ ${fmt1(-res.weeklyKg)} кг в неделю` : res.weeklyKg > 0.01 ? `Так набирается ≈ ${fmt1(res.weeklyKg)} кг в неделю` : 'Вес держится на месте'}{res.weeks ? ` — до цели примерно ${Math.ceil(res.weeks)} нед.` : '.'}</p>
         {res.notes.map(n => <p key={n} className="hint" style={{ textAlign: 'left' }}>{n}</p>)}
-        <div className="ob-trial"><b>{TRIAL_DAYS} дней Pro бесплатно</b><span>Фото еды, зал, учёба, бюджет, книги и статистика открыты. Потом — по подписке, а еда, вода, шаги и задачи остаются бесплатными.</span></div>
+        <div className="ob-trial"><b>{TRIAL_DAYS} дней Pro бесплатно</b><span>Фото еды с ИИ, зал, учёба, бюджет и книги открыты. Потом — по подписке или своим набором, а еда, вода, шаги, задачи, цель и статистика остаются бесплатными.</span></div>
       </>}
     </div>
     <div className="ob-nav">

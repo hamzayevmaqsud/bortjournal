@@ -1,5 +1,5 @@
 /**
- * «Цель и прогноз» (Pro): путь к желаемому весу, вехи, срок по реальному темпу, факт против плана, график, активность недели.
+ * «Цель и прогноз» (бесплатно): путь к желаемому весу, вехи, срок по реальному темпу, факт против плана, график, активность недели.
  * Те же формулы, что в старом журнале: план — из анкеты и текущего веса, факт — тренд веса за 4 недели и средняя еда.
  * Нормы дня пересчитываются под текущий вес, активность и средние шаги — и об этом говорится, чтобы цифры не «прыгали» молча.
  */
@@ -9,7 +9,6 @@ import { ACTIVITY, addDays, computePlan, diffDays, factTdee, GOALS, localNow, PA
 import type { DB, Tx } from '../db/index.js';
 import { bodySeries } from '../modules/body/index.js';
 import { foodSeries } from '../modules/food/index.js';
-import { requirePro } from './billing.js';
 import { requireUser } from './auth.js';
 import { bad } from './http.js';
 import { activityWeeks, profiles, users } from './schema.js';
@@ -100,12 +99,12 @@ export async function goalState(db: Tx, userId: string) {
 }
 
 export async function goalRoutes(app: FastifyInstance, { db }: { db: DB }) {
-  app.get('/api/goal', { preHandler: [requireUser, requirePro(db, 'goal')] }, async (req, reply) => {
+  app.get('/api/goal', { preHandler: requireUser }, async (req, reply) => {
     const g = await goalState(db, req.userId!);
     return g.ready ? g : reply.code(409).send({ error: 'Сначала пройди анкету — по ней считается план.' });
   });
   // активность этой недели: калории пересчитываются сразу
-  app.put('/api/goal/activity', { preHandler: [requireUser, requirePro(db, 'goal')] }, async req => {
+  app.put('/api/goal/activity', { preHandler: requireUser }, async req => {
     const level = String((req.body as { level?: string } | undefined)?.level ?? '');
     if (!(level in ACTIVITY)) throw bad('Неизвестный уровень активности.');
     const [u] = await db.select({ tz: users.tzOffset }).from(users).where(eq(users.id, req.userId!));
