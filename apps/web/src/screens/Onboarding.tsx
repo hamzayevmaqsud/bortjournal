@@ -12,8 +12,13 @@ import { useToast } from '../components/Toasts';
 export interface OnboardingValues { name: string; sex: '' | 'm' | 'f'; age: string; height: string; weight: string; activity: ActivityLevel; steps: string; goal: Goal; pace: Pace; target: string }
 
 /** initial — ответы прошлой анкеты (пересчёт из профиля); onCancel — вернуться, ничего не меняя */
+/** что можно вести: от выбора зависят «Сегодня», нижняя панель и нужна ли анкета тела */
+export const TRACK: Array<[string, string, string]> = [['food', 'Еда и вес', 'калории, БЖУ, цель по весу'], ['water', 'Вода', 'норма и напитки'], ['steps', 'Шаги', 'цель на день'], ['tasks', 'Задачи и планы', 'день, неделя, повторы'],
+  ['gym', 'Зал', 'подходы и рекорды'], ['study', 'Учёба', 'конспекты и вопросы'], ['budget', 'Бюджет', 'сколько можно тратить'], ['books', 'Книги', 'чтение и цель года']];
 export function Onboarding({ onDone, initial, onCancel }: { onDone: () => void; initial?: Partial<OnboardingValues>; onCancel?: () => void }) {
   const toast = useToast();
+  // сначала — что вести; анкета тела нужна, только если выбрана еда и вес (пересчёт из профиля начинается сразу с анкеты)
+  const [what, setWhat] = useState<string[] | null>(initial ? ['food'] : null), [pick, setPick] = useState<string[]>(['food', 'water', 'steps', 'tasks']);
   const [step, setStep] = useState(0), [busy, setBusy] = useState(false), [res, setRes] = useState<PlanResult | null>(null);
   const [v, setV] = useState<OnboardingValues>({ name: '', sex: '', age: '', height: '', weight: '', activity: 'sed', steps: '6000', goal: 'lose', pace: 'mid', target: '', ...initial });
   const set = (k: keyof typeof v) => (x: string) => setV(s => ({ ...s, [k]: x }));
@@ -26,11 +31,29 @@ export function Onboarding({ onDone, initial, onCancel }: { onDone: () => void; 
     buzz(6);
     if (step < 3) { setStep(step + 1); return; }
     setBusy(true);
-    try { const r = await api<{ plan: PlanResult }>('/api/profile/onboarding', { method: 'POST', body: { ...v, weight: String(W), target: v.goal === 'maintain' ? null : v.target ? String(num(v.target)) : null } }); setRes(r.plan); setStep(4); buzz([10, 40, 10]); }
+    try { const r = await api<{ plan: PlanResult }>('/api/profile/onboarding', { method: 'POST', body: { ...v, ...(initial ? {} : { sections: what }), weight: String(W), target: v.goal === 'maintain' ? null : v.target ? String(num(v.target)) : null } }); setRes(r.plan); setStep(4); buzz([10, 40, 10]); }
     catch (e) { toast(e instanceof ApiError ? e.message : 'Не получилось посчитать', { err: true }); }
     finally { setBusy(false); }
   };
   const Opt = ({ on, onClick, title, sub }: { on: boolean; onClick: () => void; title: string; sub?: string }) => <button type="button" className={`ob-opt ${on ? 'on' : ''}`} onClick={() => { onClick(); buzz(6); }}><b>{title}</b>{sub && <small>{sub}</small>}</button>;
+
+  const finishWithout = async () => {
+    setBusy(true);
+    try { await api('/api/profile/settings', { method: 'PUT', body: { sections: pick, onboarded: true, name: v.name } }); buzz([10, 40, 10]); onDone(); }
+    catch (e) { toast(e instanceof ApiError ? e.message : 'Не получилось сохранить', { err: true }); } finally { setBusy(false); }
+  };
+  if (!what) return <main className="ob">
+    <div className="ob-step">
+      <h1>Что хочешь вести?</h1><p>Выбери разделы — на главном экране будет только нужное. Поменять можно в любой момент в профиле.</p>
+      <input className="in" placeholder="Как тебя зовут (по желанию)" value={v.name} onChange={e => set('name')(e.target.value)} />
+      <div className="ob-track">{TRACK.map(([k, n, h]) => { const on = pick.includes(k); return <button type="button" key={k} className={`ob-opt ${on ? 'on' : ''}`} aria-pressed={on} onClick={() => { setPick(p => on ? p.filter(x => x !== k) : [...p, k]); buzz(6); }}><b>{n}</b><small>{h}</small></button>; })}</div>
+      {!pick.includes('food') && pick.length > 0 && <p className="hint" style={{ textAlign: 'left' }}>Без еды анкета про рост и вес не нужна — сразу к журналу.</p>}
+    </div>
+    <div className="ob-nav">
+      {onCancel && <button className="ghost" onClick={onCancel}>Отмена</button>}
+      <button className="primary" disabled={!pick.length || busy} onClick={() => { if (pick.includes('food')) setWhat(pick); else finishWithout(); }}>{pick.includes('food') ? 'Дальше' : busy ? 'Сохраняю…' : 'Начать'}</button>
+    </div>
+  </main>;
 
   return <main className="ob">
     <div className="ob-dots" aria-hidden="true">{[0, 1, 2, 3, 4].map(i => <i key={i} className={i <= step ? 'on' : ''} />)}</div>
@@ -72,12 +95,13 @@ export function Onboarding({ onDone, initial, onCancel }: { onDone: () => void; 
         </div>
         <p>{res.weeklyKg < -0.01 ? `Так уходит ≈ ${fmt1(-res.weeklyKg)} кг в неделю` : res.weeklyKg > 0.01 ? `Так набирается ≈ ${fmt1(res.weeklyKg)} кг в неделю` : 'Вес держится на месте'}{res.weeks ? ` — до цели примерно ${Math.ceil(res.weeks)} нед.` : '.'}</p>
         {res.notes.map(n => <p key={n} className="hint" style={{ textAlign: 'left' }}>{n}</p>)}
+        <p className="hint ob-disclaimer">Это ориентир по общепринятым формулам, а не медицинская рекомендация. Если есть заболевания, беременность или нужна быстрая смена веса — сначала посоветуйся с врачом.</p>
         <div className="ob-trial"><b>{TRIAL_DAYS} дней Pro бесплатно</b><span>Фото еды с ИИ, зал, учёба, бюджет и книги открыты. Потом — по подписке или своим набором, а еда, вода, шаги, задачи, цель и статистика остаются бесплатными.</span></div>
       </>}
     </div>
     <div className="ob-nav">
       {step > 0 && step < 4 && <button className="ghost" onClick={() => setStep(step - 1)}>Назад</button>}
-      {step === 0 && onCancel && <button className="ghost" onClick={onCancel}>Отмена</button>}
+      {step === 0 && (initial ? onCancel && <button className="ghost" onClick={onCancel}>Отмена</button> : <button className="ghost" onClick={() => setWhat(null)}>Назад</button>)}
       {step < 4 ? <button className="primary" disabled={!ok || busy} onClick={next}>{step === 3 ? (busy ? 'Считаю…' : 'Посчитать план') : 'Дальше'}</button>
         : <button className="primary" onClick={onDone}>Начать</button>}
     </div>

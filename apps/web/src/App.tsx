@@ -224,7 +224,7 @@ export function App() {
 
   if (me === undefined) return <div className="app" />;
   if (me === null) return <Login onDone={loadMe} />;
-  if (!me.profile?.heightCm || redo) {
+  if ((!me.profile?.heightCm && me.profile?.settings?.onboarded !== true) || redo) {
     const p = me.profile, w = data?.parts.body?.weight?.kg ?? p?.startWeightKg;
     const initial = p?.heightCm ? { name: String(p.settings?.name ?? ''), sex: (p.sex === 'f' ? 'f' : 'm') as 'm' | 'f', age: p.age ? String(p.age) : '', height: String(p.heightCm), weight: w ? String(w).replace('.', ',') : '', goal: (p.goal ?? 'maintain') as 'lose' | 'maintain' | 'gain', pace: (p.pace ?? 'mid') as 'soft' | 'mid' | 'hard', target: p.targetKg ? String(p.targetKg).replace('.', ',') : '' } : undefined;
     return <Onboarding initial={initial} onCancel={p?.heightCm ? () => setRedo(false) : undefined} onDone={async () => { setRedo(false); await loadMe(); setDays({}); loadDay(); }} />;
@@ -242,6 +242,11 @@ export function App() {
     moreSummary.awards = 'награды за серии и рекорды';
   }
   moreSummary.reminders = me.profile?.settings?.remind?.off ? 'выключены' : 'вода, еда, задачи, тренировки';
+  // телефон: четвёртая вкладка — первый выбранный раздел (еда, учёба, зал, бюджет, книги)
+  const chosen = me.profile?.settings?.sections as string[] | undefined;
+  const fourth = (chosen ? (['food', 'study', 'gym', 'budget', 'books'] as const).find(k => chosen.includes(k)) : 'food') ?? 'food';
+  const FOURTH: Record<string, [string, string, string]> = { food: ['food', 'food', 'Еда'], study: ['study', 'study', 'Учёба'], gym: ['gym', 'gym', 'Зал'], budget: ['budget', 'money', 'Бюджет'], books: ['books', 'books', 'Книги'] };
+  const phoneTabs = TABS.map(t => t[0] === 'food' ? FOURTH[fourth]! : t);
   const logout = async () => { await api('/api/auth/logout', { method: 'POST' }).catch(() => {}); forgetLocal(); setMe(null); setDays({}); setDay(null); setToday(null); setTab('today'); };
   const pos = (name: string) => name === tab ? 'center' : ORDER.indexOf(name) < ORDER.indexOf(tab) ? 'left' : 'right';
   const foodPart = data?.parts.food, body = data?.parts.body;
@@ -252,7 +257,7 @@ export function App() {
     {queued > 0 && <button className="outbox-bar" onClick={() => void flushOutbox()}><Icon name="repeat" />Без сети: {queued} {queued % 10 === 1 && queued % 100 !== 11 ? 'запись ждёт' : 'записей ждут'} отправки — нажми, чтобы отправить сейчас</button>}
     <div className="screens">
       <section className="screen" data-pos={pos('today')} aria-hidden={tab !== 'today'}>
-        {day && today && <TodayWide wide={wide} data={data} day={day} today={today} still={still} sub={sub} onDay={goDay} onAdd={at => open({ kind: 'add', at })} onDelete={deleteMark} onEdit={editMark} onToggleTask={toggleTask} onGo={go}
+        {day && today && <TodayWide wide={wide} data={data} day={day} today={today} still={still} sub={sub} settings={me.profile?.settings ?? {}} onReminders={() => open({ kind: 'reminders' })} onSettingsSaved={st => setMe(m => m && m.profile ? { ...m, profile: { ...m.profile, settings: st } } : m)} onDay={goDay} onAdd={at => open({ kind: 'add', at })} onDelete={deleteMark} onEdit={editMark} onToggleTask={toggleTask} onGo={go}
           onPro={pro} onPaywall={() => open({ kind: 'paywall' })} onSteps={() => open({ kind: 'steps' })} onWeight={() => open({ kind: 'weight' })} onWater={() => open({ kind: 'drink' })}
           onMeal={() => open({ kind: 'meal' })} onAddWater={ml => addWater(ml)} onTaskAdded={() => { toast('Задача добавлена'); refresh(); }} onTaskOpen={() => open({ kind: 'task', day })} />}
       </section>
@@ -292,7 +297,7 @@ export function App() {
       </section>
     </div>
     <nav ref={tabsRef} className="tabs" aria-label="Разделы">
-      {(wide ? WIDE_TABS : TABS).map(([name, icon, label]) => <button key={name} className={`tab ${name === 'add' ? 'add' : ''}`} aria-current={tab === name ? 'page' : undefined} onClick={() => go(name)} aria-label={label}>
+      {(wide ? WIDE_TABS : phoneTabs).map(([name, icon, label]) => <button key={name} className={`tab ${name === 'add' ? 'add' : ''}`} aria-current={tab === name ? 'page' : undefined} onClick={() => go(name)} aria-label={label}>
         <span className="pill"><Icon name={icon} /></span>{label}{SECTIONS[name] && !can(sub, SECTIONS[name]!) && <span className="lock dock-lock">PRO</span>}</button>)}
     </nav>
 

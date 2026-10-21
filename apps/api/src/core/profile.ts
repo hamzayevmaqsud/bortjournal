@@ -11,6 +11,9 @@ import { requireUser } from './auth.js';
 import { bad } from './http.js';
 import { activityWeeks, profiles, users } from './schema.js';
 
+/** что человек ведёт: от этого зависят «Сегодня», нижняя панель и нужна ли анкета тела */
+export const SECTION_KEYS = ['food', 'water', 'steps', 'tasks', 'gym', 'study', 'budget', 'books'] as const;
+const sectionsOf = (v: unknown) => { if (!Array.isArray(v)) throw bad('Разделы — списком.'); const out = SECTION_KEYS.filter(k => v.includes(k)); if (!out.length) throw bad('Выбери хотя бы один раздел.'); return out; };
 const num = (v: unknown, lo: number, hi: number, name: string) => { const n = Number(String(v ?? '').replace(',', '.')); if (!Number.isFinite(n) || n < lo || n > hi) throw bad(`${name}: от ${lo} до ${hi}.`); return n; };
 const mondayOf = (day: string) => { const d = new Date(day + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7)); return d.toISOString().slice(0, 10); };
 
@@ -34,7 +37,7 @@ export async function profileRoutes(app: FastifyInstance, { db }: { db: DB }) {
     const [u] = await db.select({ tz: users.tzOffset }).from(users).where(eq(users.id, req.userId!));
     const today = localNow(u!.tz).day;
     const [cur] = await db.select().from(profiles).where(eq(profiles.userId, req.userId!));
-    const settings = { ...(cur?.settings ?? {}), kcal: plan.kcal, protein: plan.protein, fat: plan.fat, carbs: plan.carbs, steps: Math.max(6000, Math.round(steps / 1000) * 1000 + 2000), water: waterGoal(sex, level), name: String(b.name ?? '').trim().slice(0, 40) || (cur?.settings as any)?.name || null, onboarded: true };
+    const settings = { ...(cur?.settings ?? {}), ...(b.sections !== undefined ? { sections: sectionsOf(b.sections) } : {}), kcal: plan.kcal, protein: plan.protein, fat: plan.fat, carbs: plan.carbs, steps: Math.max(6000, Math.round(steps / 1000) * 1000 + 2000), water: waterGoal(sex, level), name: String(b.name ?? '').trim().slice(0, 40) || (cur?.settings as any)?.name || null, onboarded: true };
     const v = { sex, age, ageMeasuredOn: today, heightCm: height, goal, pace, targetKg: target, startWeightKg: weight, startedOn: today, plannedSteps: steps, settings, updatedAt: new Date() };
     await db.transaction(async tx => {
       await tx.insert(profiles).values({ userId: req.userId!, ...v }).onConflictDoUpdate({ target: profiles.userId, set: v });
@@ -54,6 +57,10 @@ export async function profileRoutes(app: FastifyInstance, { db }: { db: DB }) {
     if (b.protein !== undefined) s.protein = Math.round(num(b.protein, 0, 400, 'Белок'));
     if (b.steps !== undefined) s.steps = Math.round(num(b.steps, 1000, 50000, 'Шаги'));
     if (b.water !== undefined) s.water = Math.round(num(b.water, 500, 6000, 'Вода'));
+    if (b.sections !== undefined) s.sections = sectionsOf(b.sections);
+    if (typeof b.onboarded === 'boolean') s.onboarded = b.onboarded;
+    if (typeof b.checklistDone === 'boolean') s.checklistDone = b.checklistDone;
+    if (typeof b.remindSeen === 'boolean') s.remindSeen = b.remindSeen;
     if (b.fat !== undefined) s.fat = Math.round(num(b.fat, 0, 300, 'Жиры'));
     if (b.carbs !== undefined) s.carbs = Math.round(num(b.carbs, 0, 800, 'Углеводы'));
     if (b.study !== undefined) s.study = Math.round(num(b.study, 0, 600, 'Учёба в день'));

@@ -1858,3 +1858,18 @@ a.btn-accent{text-decoration:none}
 .today-row .chev{width:18px;height:18px;color:var(--text-3)}
 /* телефон: задачи сразу после еды и воды — это то, что открывают каждый день */
 .narrow .c-food{order:1}.narrow .c-water{order:2}.narrow .c-tasks{order:3}.narrow .c-steps{order:4}.narrow .c-study{order:5}.narrow .c-more{order:6}.narrow .c-teaser{order:7}
+.ob-track{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.ob-track .ob-opt{padding:12px 14px}
+.ob-disclaimer{text-align:left;font-size:12.5px;padding:10px 12px;border-radius:var(--r2);background:var(--field);border:1px solid var(--line)}
+/* первые шаги */
+.first-day{display:flex;flex-direction:column;gap:10px;margin-bottom:12px}
+.first-day .panel-h{margin-bottom:0}
+.fd-list{display:flex;flex-direction:column;gap:6px}
+.fd-i{display:flex;align-items:center;gap:12px;padding:10px 12px;min-height:48px;border-radius:var(--r2);background:var(--field);border:1px solid var(--line);text-align:left;color:inherit}
+.fd-i span:nth-child(2){flex:1;font-weight:600}
+.fd-i.ok span:nth-child(2){color:var(--text-3);text-decoration:line-through}
+.fd-i .cbx.on{background:var(--good);border-color:var(--good)}
+.fd-i .cbx.on svg{stroke-dashoffset:0}
+.fd-i .chev{width:18px;height:18px;color:var(--text-3)}
+.first-day .wbar{height:6px}
+.pf-track{flex-direction:column;align-items:stretch}

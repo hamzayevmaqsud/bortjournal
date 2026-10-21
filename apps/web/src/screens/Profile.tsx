@@ -12,6 +12,7 @@ import { SubStatus } from '../components/Paywall';
 import { Sheet } from '../components/Sheet';
 import { useToast } from '../components/Toasts';
 import { PasswordForm, ThemePick } from './More';
+import { TRACK } from './Onboarding';
 import { VoiceSetup } from '../components/VoiceSetup';
 import { AppleMark, GoogleMark, PROVIDER_NAMES, startUrl, useProviders, type ProviderId } from '../lib/oauth';
 
@@ -50,7 +51,11 @@ function SectionsForm({ me, onSaved }: { me: Me; onSaved: (s: Record<string, unk
   const toast = useToast(), s = me.profile?.settings ?? {};
   const save = async (body: Record<string, unknown>) => { try { const r = await api<{ settings: Record<string, unknown> }>('/api/profile/settings', { method: 'PUT', body }); onSaved(r.settings); toast('Сохранено'); } catch (x) { toast(x instanceof ApiError ? x.message : 'Не получилось', { err: true }); } };
   const rest = Number(s.rest) || 90, books = Number(s.booksGoal) || 12;
+  const chosen = (s.sections as string[] | undefined) ?? TRACK.map(t => t[0]);
+  const toggle = (k: string) => { const next = chosen.includes(k) ? chosen.filter(x => x !== k) : [...chosen, k]; if (!next.length) { toast('Оставь хотя бы один раздел', { err: true }); return; } save({ sections: next }); };
   return <div className="pf-list">
+    <div className="pf-row pf-track"><span className="mid"><b>Что веду</b><small>главный экран и нижняя панель показывают только выбранное</small></span>
+      <div className="chips">{TRACK.map(([k, n]) => <button key={k} type="button" className={`chip ${chosen.includes(k) ? 'on' : ''}`} aria-pressed={chosen.includes(k)} onClick={() => toggle(k)}>{n}</button>)}</div></div>
     <div className="pf-row"><span className="mid"><b>Отдых между подходами</b><small>таймер в зале после каждого подхода</small></span>
       <div className="chips">{[60, 90, 120, 180].map(x => <button key={x} type="button" className={`chip ${rest === x ? 'on' : ''}`} onClick={() => save({ rest: x })}>{x < 120 ? `${x} с` : `${x / 60} мин`}</button>)}</div></div>
     <div className="pf-row"><span className="mid"><b>Книг за год</b><small>цель года в «Книгах»</small></span>
