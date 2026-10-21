@@ -7,28 +7,49 @@
 export class ApiError extends Error { constructor(public status: number, message: string) { super(message); } }
 
 const OFFLINE = 'Нет связи с сервером. Проверь интернет и Tailscale.';
-// какие записи можно отложить: всё, что не требует ответа сервера прямо сейчас (не ИИ, не поиск, не оплата)
-const QUEUEABLE = /^\/api\/(food\/(meals|drinks|entries)|body\/day|plans\/(tasks|goals)|budget\/entries|gym\/(live|workouts)|study\/(time|sessions|quiz\/grade)|books\/[^/]+\/(progress|quotes))/;
-const OUTBOX = 'bj-outbox', CACHE = 'bj-cache', CACHE_MAX = 40;
-interface Pending { path: string; method: string; body?: unknown; key: string; at: number }
+// какие записи можно отложить: всё, что не требует ответа сервера прямо сейчас (не ИИ, не поиск, не оплата, не ответы на вопросы)
+const QUEUEABLE = /^\/api\/(food\/(meals|drinks|entries)|body\/day|plans\/(tasks|goals|notes)|budget\/entries|gym\/(live|workouts)|study\/(time|sessions)|books\/[^/]+\/(progress|quotes))/;
+/*
+ * Очередь и копии ответов принадлежат человеку: owner — логин последнего вошедшего на этом устройстве.
+ * Запись уходит на сервер, только если сейчас вошёл тот же человек (проверяем /api/me перед отправкой);
+ * копии ответов читаются только для него. Так записи одного не попадут в аккаунт другого на общем телефоне.
+ */
+const OUTBOX = 'bj-outbox', CACHE = 'bj-cache', OWNER = 'bj-owner', CACHE_MAX = 40;
+interface Pending { path: string; method: string; body?: unknown; key: string; at: number; owner: string }
 const read = <T,>(k: string, d: T): T => { try { return JSON.parse(localStorage.getItem(k) ?? '') as T; } catch { return d; } };
 const write = (k: string, v: unknown) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* память переполнена — без кэша */ } };
 const uuid = () => (crypto as Crypto & { randomUUID?: () => string }).randomUUID?.() ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
 const notify = () => dispatchEvent(new Event('bj-outbox'));
+const owner = () => { try { return localStorage.getItem(OWNER) ?? ''; } catch { return ''; } };
+/** кто вошёл на этом устройстве — вызывается, когда пришёл /api/me */
+export function setOwner(username: string) {
+  const u = username.toLowerCase();
+  if (u === owner()) return;
+  try { localStorage.setItem(OWNER, u); } catch { /* без памяти */ }
+  notify();
+}
+const mine = () => read<Pending[]>(OUTBOX, []).filter(p => p.owner && p.owner === owner());
 
-/** сколько записей ждут отправки */
-export const pendingCount = () => read<Pending[]>(OUTBOX, []).length;
+/** сколько записей этого человека ждут отправки */
+export const pendingCount = () => owner() ? mine().length : 0;
+type Cache = Record<string, { at: number; data: unknown }>;
 function remember(path: string, data: unknown) {
-  if (!path.startsWith('/api/') || path.includes('search')) return;
-  const c = read<Record<string, { at: number; data: unknown }>>(CACHE, {});
-  c[path] = { at: Date.now(), data };
+  const o = owner(); if (!o || !path.startsWith('/api/') || path.includes('search')) return;
+  const c = read<Cache>(CACHE, {});
+  c[`${o}|${path}`] = { at: Date.now(), data };
   const keys = Object.keys(c).sort((a, b) => c[b]!.at - c[a]!.at);
   for (const k of keys.slice(CACHE_MAX)) delete c[k];
   write(CACHE, c);
 }
-const cached = (path: string) => read<Record<string, { at: number; data: unknown }>>(CACHE, {})[path]?.data;
-/** выйти из аккаунта — стереть копии ответов и очередь этого человека */
-export const forgetLocal = () => { try { localStorage.removeItem(CACHE); localStorage.removeItem(OUTBOX); } catch { /* нет доступа */ } notify(); };
+const cached = (path: string) => { const o = owner(); return o ? read<Cache>(CACHE, {})[`${o}|${path}`]?.data : undefined; };
+/** выйти из аккаунта — стереть копии ответов и очередь этого человека (чужие не трогаем) */
+export const forgetLocal = () => {
+  const o = owner();
+  write(OUTBOX, read<Pending[]>(OUTBOX, []).filter(p => p.owner !== o));
+  write(CACHE, Object.fromEntries(Object.entries(read<Cache>(CACHE, {})).filter(([k]) => !k.startsWith(`${o}|`))));
+  try { localStorage.removeItem(OWNER); } catch { /* нет доступа */ }
+  notify();
+};
 
 async function send(path: string, method: string, body: unknown, key?: string) {
   const headers: Record<string, string> = {};
@@ -43,26 +64,32 @@ export async function api<T>(path: string, opts: { method?: string; body?: unkno
   try { r = await send(path, method, opts.body, key); }
   catch {
     if (method === 'GET') { const c = cached(path); if (c !== undefined) return c as T; throw new ApiError(0, OFFLINE); }
-    if (QUEUEABLE.test(path)) {
-      write(OUTBOX, [...read<Pending[]>(OUTBOX, []), { path, method, body: opts.body, key: key!, at: Date.now() }]); notify();
+    const o = owner();
+    if (o && QUEUEABLE.test(path)) {
+      write(OUTBOX, [...read<Pending[]>(OUTBOX, []), { path, method, body: opts.body, key: key!, at: Date.now(), owner: o }]); notify();
       return { queued: true } as T;
     }
     throw new ApiError(0, OFFLINE);
   }
   const data = await r.json().catch(() => ({}));
   if (!r.ok) throw new ApiError(r.status, (data as { error?: string }).error ?? `Ошибка ${r.status}`);
-  if (method === 'GET') remember(path, data); else if (pendingCount()) void flushOutbox();
+  if (method === 'GET') remember(path, data); else if (!path.startsWith('/api/auth/') && pendingCount()) void flushOutbox();
   return data as T;
 }
 
 let flushing = false;
-/** отправить отложенное по порядку; ответ 4xx — запись не принята, убираем; нет сети или 5xx — попробуем позже */
+/**
+ * Отправить отложенное по порядку — только если сейчас вошёл владелец записей.
+ * Ответ 4xx — запись не принята, убираем; нет сети, 401 или 5xx — попробуем позже.
+ */
 export async function flushOutbox(): Promise<{ sent: number; dropped: number }> {
-  if (flushing) return { sent: 0, dropped: 0 };
+  if (flushing || !pendingCount()) return { sent: 0, dropped: 0 };
   flushing = true; let sent = 0, dropped = 0;
   try {
+    const who = await fetch('/api/me', { credentials: 'same-origin' }).then(r => r.ok ? r.json() : null).catch(() => null) as { username?: string } | null;
+    if (!who?.username || who.username.toLowerCase() !== owner()) return { sent, dropped };
     for (;;) {
-      const q = read<Pending[]>(OUTBOX, []), x = q[0]; if (!x) break;
+      const x = mine()[0]; if (!x) break;
       let r: Response;
       try { r = await send(x.path, x.method, x.body, x.key); } catch { break; }
       if (r.status >= 500 || r.status === 401) break;
@@ -73,7 +100,11 @@ export async function flushOutbox(): Promise<{ sent: number; dropped: number }> 
   if (sent || dropped) dispatchEvent(new CustomEvent('bj-synced', { detail: { sent, dropped } }));
   return { sent, dropped };
 }
-if (typeof window !== 'undefined') { addEventListener('online', () => { void flushOutbox(); }); setInterval(() => { if (pendingCount()) void flushOutbox(); }, 20000); }
+if (typeof window !== 'undefined') {
+  addEventListener('online', () => { void flushOutbox(); }); setInterval(() => { if (pendingCount()) void flushOutbox(); }, 20000);
+  // очередь от старой версии без владельца — не отправляем никуда
+  try { const q = read<Pending[]>(OUTBOX, []); if (q.some(p => !p.owner)) write(OUTBOX, q.filter(p => p.owner)); } catch { /* нет доступа */ }
+}
 
 export interface Subscription { pro: boolean; source: 'trial' | 'web' | 'apple' | 'google' | 'free' | null; expiresAt: string | null; daysLeft: number | null; plan: 'month' | 'year' | null; autoRenew: boolean; ended?: boolean; features?: import('@bortjournal/core').PackKey[] | null }
 export interface Profile { sex: string | null; age: number | null; heightCm: number | null; goal: string | null; pace?: string | null; targetKg: number | null; startWeightKg: number | null; settings: Record<string, any> }

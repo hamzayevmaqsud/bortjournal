@@ -78,11 +78,27 @@ const v4Private = (ip: string) => {
   const [a, b] = ip.split('.').map(Number) as [number, number];
   return a === 0 || a === 10 || a === 127 || (a === 100 && b >= 64 && b <= 127) || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 198 && (b === 18 || b === 19)) || a >= 224;
 };
+/** IPv6 → 16 байт (с «::» и IPv4 в конце: ::ffff:1.2.3.4) */
+function v6bytes(ip: string): number[] | null {
+  let x = ip.toLowerCase().replace(/%.*$/, '');
+  const v4 = /(\d+\.\d+\.\d+\.\d+)$/.exec(x)?.[1];
+  if (v4) { const p = v4.split('.').map(Number); x = x.slice(0, -v4.length) + `${((p[0]! << 8) | p[1]!).toString(16)}:${((p[2]! << 8) | p[3]!).toString(16)}`; }
+  const [a, b] = x.split('::');
+  const head = a ? a.split(':') : [], tail = b !== undefined ? (b ? b.split(':') : []) : [];
+  const groups = b !== undefined ? [...head, ...Array(8 - head.length - tail.length).fill('0'), ...tail] : head;
+  if (groups.length !== 8) return null;
+  return groups.flatMap(g => { const n = parseInt(g || '0', 16); return [n >> 8, n & 255]; });
+}
+/** адрес внутренней сети: localhost, частные сети, Tailscale (100.64/10), link-local, IPv4 внутри IPv6 (::ffff:7f00:1 и т. п.) */
 export function privateIp(ip: string) {
   if (net.isIPv4(ip)) return v4Private(ip);
-  const x = ip.toLowerCase();
-  const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/.exec(x)?.[1]; if (mapped) return v4Private(mapped);
-  return x === '::' || x === '::1' || x.startsWith('fc') || x.startsWith('fd') || x.startsWith('fe8') || x.startsWith('fe9') || x.startsWith('fea') || x.startsWith('feb') || x.startsWith('ff');
+  const b = v6bytes(ip);
+  if (!b) return true;
+  const zero = (n: number) => b.slice(0, n).every(v => v === 0), v4 = () => b.slice(12).join('.');
+  if (zero(10) && b[10] === 255 && b[11] === 255) return v4Private(v4()); // ::ffff:a.b.c.d
+  if (zero(12)) return true; // ::, ::1 и устаревшие ::a.b.c.d
+  if (b[0] === 0 && b[1] === 0x64 && b[2] === 0xff && b[3] === 0x9b && b.slice(4, 12).every(v => v === 0)) return v4Private(v4()); // NAT64
+  return (b[0]! & 0xfe) === 0xfc || (b[0] === 0xfe && (b[1]! & 0xc0) === 0x80) || b[0] === 0xff;
 }
 async function publicHost(u: URL) {
   if (!/^https?:$/.test(u.protocol)) throw bad('Подходят только ссылки http и https.');

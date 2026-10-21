@@ -4,6 +4,9 @@
  * одинаково и за одинаковое время. Подбор ограничен по IP и по логину.
  */
 import crypto from 'node:crypto';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { and, eq, gt, sql } from 'drizzle-orm';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
@@ -32,7 +35,8 @@ export async function verifyPassword(pw: string, stored: string | null | undefin
 
 /* подбор пароля: 10 неудач за 15 минут по IP и по логину */
 const fails = new Map<string, { n: number; until: number }>();
-const tooMany = (...keys: string[]) => keys.some(k => { const f = fails.get(k); return !!f && f.until > Date.now() && f.n >= 10; });
+// по логину отдельно от адреса — порог высокий: иначе любой мог бы закрыть вход в чужой аккаунт десятком неверных паролей
+const tooMany = (...keys: string[]) => keys.some(k => { const f = fails.get(k); return !!f && f.until > Date.now() && f.n >= (k.startsWith('u:') ? 100 : 10); });
 const fail = (...keys: string[]) => keys.forEach(k => { const f = fails.get(k); fails.set(k, f && f.until > Date.now() ? { n: f.n + 1, until: f.until } : { n: 1, until: Date.now() + 15 * 60e3 }); });
 
 const isHttps = (req: FastifyRequest) => req.headers['x-forwarded-proto'] === 'https' || /\.ts\.net(:\d+)?$/.test(req.headers.host ?? '');
@@ -69,7 +73,7 @@ export async function authRoutes(app: FastifyInstance, { db }: { db: DB }) {
   app.post('/api/auth/login', { config: { public: true } }, async (req, reply) => {
     const body = (req.body ?? {}) as { username?: unknown; password?: unknown };
     const username = String(body.username ?? '').trim().toLowerCase().slice(0, 64), password = String(body.password ?? '').slice(0, 512);
-    const keys = [`ip:${req.ip}`, `u:${username}`];
+    const keys = [`ip:${req.ip}`, `ui:${username}|${req.ip}`, `u:${username}`];
     if (tooMany(...keys)) return reply.code(429).send({ error: 'Слишком много попыток. Подожди 15 минут.' });
     const [u] = await db.select().from(users).where(and(sql`lower(${users.username}) = ${username}`, sql`${users.deletedAt} is null`)).limit(1);
     if (!(await verifyPassword(password, u?.passwordHash)) || !u) { fail(...keys); return reply.code(401).send({ error: 'Неверный логин или пароль.' }); }
@@ -177,6 +181,9 @@ export async function authRoutes(app: FastifyInstance, { db }: { db: DB }) {
     const ok = u?.hash ? await verifyPassword(password, u.hash) : String(b.confirm ?? '').trim().toLowerCase() === u?.username.toLowerCase();
     if (!ok) { fail(`del:${req.userId}`); return reply.code(400).send({ error: u?.hash ? 'Пароль неверный.' : 'Логин не совпадает.' }); }
     await db.delete(users).where(eq(users.id, req.userId!));
+    // загруженные файлы конспектов — тоже (записи в базе ушли каскадом)
+    const filesDir = process.env.STUDY_FILES_DIR || fileURLToPath(new URL('../../../../data/study-files', import.meta.url));
+    if (/^[0-9a-f-]{36}$/.test(req.userId!)) fs.rmSync(path.join(filesDir, req.userId!), { recursive: true, force: true });
     setCookie(req, reply, '', 0);
     return { ok: true };
   });

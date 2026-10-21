@@ -107,6 +107,9 @@ export async function answer(db: DB, userId: string, today: string, id: string, 
   const [q] = await db.select().from(questions).where(and(eq(questions.id, id), eq(questions.userId, userId)));
   if (!q) return null;
   const correct = choice === q.correct;
+  // на вопрос отвечают один раз в день: повтор (двойной тап, повторная отправка) не двигает интервал и не считается
+  const [already] = await db.select({ c: answers.correct }).from(answers).where(and(eq(answers.userId, userId), eq(answers.questionId, id), eq(answers.day, today)));
+  if (already) { const [st] = await db.select({ due: srsCards.dueOn }).from(srsCards).where(and(eq(srsCards.userId, userId), eq(srsCards.cardKey, keyOf(id)))); return { correct: already.c, correctIndex: q.correct, explain: q.explain, next: st?.due ?? today, repeat: true }; }
   const [r] = await db.select().from(srsCards).where(and(eq(srsCards.userId, userId), eq(srsCards.cardKey, keyOf(id))));
   const st = grade(r ? { interval: r.intervalDays, ease: r.ease, reps: r.reps, due: r.dueOn } : { interval: 0, ease: 2.5, reps: 0, due: today }, correct ? 'good' : 'again', today);
   await db.transaction(async tx => {

@@ -129,7 +129,9 @@ export async function studyRoutes(app: FastifyInstance, { db }: { db: DB }) {
   app.addContentTypeParser('application/octet-stream', { parseAs: 'buffer', bodyLimit: MAX_FILE + 1024 }, (_req, body, done) => done(null, body));
   app.post('/materials/upload', { preHandler, bodyLimit: MAX_FILE + 1024 }, async (req, reply) => {
     const buf = req.body as Buffer; if (!Buffer.isBuffer(buf)) throw bad('Отправь файл.');
-    const name = decodeURIComponent(String(req.headers['x-file-name'] ?? 'файл')).slice(0, 200);
+    const rawName = String(req.headers['x-file-name'] ?? 'файл');
+    let name = rawName; try { name = decodeURIComponent(rawName); } catch { /* имя без кодирования */ }
+    name = name.slice(0, 200);
     const x = await extractFile(name, buf);
     return reply.code(201).send(await create(uid(req), { kind: x.kind, title: x.title, source: name, text: x.text, bytes: buf.length }, { buf, ext: x.ext }));
   });

@@ -62,13 +62,15 @@ export async function billingRoutes(app: FastifyInstance, { db }: { db: DB }) {
       features = keys.length === PACK_KEYS.length ? null : PACK_KEYS.filter(k => keys.includes(k)); // все разделы — это и есть Pro
     }
     const price = features ? customPrice(features, plan).price : PRICES[plan].price;
-    const cur = await subscription(db, req.userId!);
-    // продление того же тарифа — от конца текущей оплаченной подписки; смена тарифа — с сегодня
-    const same = cur.source === 'web' && cur.expiresAt && cur.plan === plan && JSON.stringify(cur.features ?? null) === JSON.stringify(features);
-    const from = same ? new Date(cur.expiresAt!).getTime() : Date.now();
+    // продление того же тарифа — от конца текущей оплаченной подписки; смена тарифа — с сегодня (пробный период не мешает)
+    const [paid] = await db.select().from(entitlements).where(and(eq(entitlements.userId, req.userId!), eq(entitlements.module, 'pro'), eq(entitlements.source, 'web'), gt(entitlements.expiresAt, sql`now()`)));
+    const same = !!paid?.expiresAt && paid.plan === plan && JSON.stringify(paid.features ?? null) === JSON.stringify(features);
+    const from = same ? paid!.expiresAt!.getTime() : Date.now();
     const expiresAt = new Date(from + PRICES[plan].days * 864e5), ref = `demo-${Date.now()}-${price}`;
     await db.insert(entitlements).values({ userId: req.userId!, module: 'pro', source: 'web', expiresAt, plan, features, autoRenew: true, externalRef: ref })
       .onConflictDoUpdate({ target: [entitlements.userId, entitlements.module, entitlements.source], set: { expiresAt, plan, features, autoRenew: true, startsAt: sql`least(${entitlements.startsAt}, now())`, externalRef: ref } });
+    // купил — пробный период закончился: дальше действует покупка
+    await db.update(entitlements).set({ expiresAt: new Date() }).where(and(eq(entitlements.userId, req.userId!), eq(entitlements.module, 'pro'), eq(entitlements.source, 'trial'), gt(entitlements.expiresAt, sql`now()`)));
     return { subscription: await subscription(db, req.userId!), price };
   });
   // отмена: доступ остаётся до конца оплаченного периода, автопродление выключается

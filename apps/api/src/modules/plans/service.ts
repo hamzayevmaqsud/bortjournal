@@ -48,8 +48,15 @@ export async function plansRoutes(app: FastifyInstance, { db }: { db: DB }) {
     return reply.code(201).send(pub(t!));
   });
   app.put('/tasks/:id', { preHandler }, async (req, reply) => {
-    const v = taskBody((req.body ?? {}) as any), userId = uid(req), id = idParam((req.params as any).id), goalId = await goalOf(userId, (req.body as any)?.goalId);
-    const [t] = await db.update(tasks).set({ ...v, goalId }).where(and(eq(tasks.userId, userId), eq(tasks.id, id))).returning();
+    const b = (req.body ?? {}) as any, v = taskBody(b), userId = uid(req), id = idParam((req.params as any).id);
+    const [cur] = await db.select().from(tasks).where(and(eq(tasks.userId, userId), eq(tasks.id, id)));
+    if (!cur) return notFound(reply);
+    // цель меняем, только если её прислали; задача повтора, перенесённая на другой день, выходит из повтора,
+    // а её день запоминается как пропущенный — иначе повтор создал бы её снова (и столкнулся бы с другим днём серии)
+    const goalId = 'goalId' in b ? await goalOf(userId, b.goalId) : cur.goalId;
+    const leaves = !!cur.seriesId && cur.day !== v.day;
+    if (leaves && cur.day) await skipSeriesDay(db, cur.seriesId!, cur.day);
+    const [t] = await db.update(tasks).set({ ...v, goalId, ...(leaves ? { seriesId: null } : {}) }).where(and(eq(tasks.userId, userId), eq(tasks.id, id))).returning();
     if (!t) return notFound(reply);
     if (t.day) await recordEvent(db, taskEvent(userId, t)); else await removeEvents(db, userId, [t.id]);
     return pub(t);

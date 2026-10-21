@@ -25,7 +25,7 @@ function mealBody(b: Record<string, unknown>): MealInput {
 function drinkBody(b: Record<string, unknown>) {
   const ml = Math.round(Number(b.ml)), type = String(b.type ?? 'water');
   if (!(ml > 0 && ml <= 5000)) throw bad('Объём — от 1 до 5000 мл.');
-  if (!DRINKS[type]) throw bad('Неизвестный напиток.');
+  if (!Object.hasOwn(DRINKS, type)) throw bad('Неизвестный напиток.');
   const custom = type === 'custom';
   return { day: dayParam(b.day), time: hmParam(b.time), type, ml, name: custom ? String(b.name ?? '').trim().slice(0, 60) || 'Напиток' : null,
     kcalPer100: custom ? n(b.kcalPer100, 1000, 'Калории на 100 мл') : null, sugarPer100: custom ? n(b.sugarPer100, 100, 'Сахар на 100 мл') : null };

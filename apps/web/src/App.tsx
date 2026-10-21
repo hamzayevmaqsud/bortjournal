@@ -7,7 +7,7 @@
 import { can } from './lib/features';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { addDays } from '@bortjournal/core';
-import { api, ApiError, flushOutbox, forgetLocal, pendingCount, type Drink, type FoodDay, type Meal, type Me, type Subscription, type TaskFull, type Today as TodayData } from './lib/api';
+import { api, ApiError, flushOutbox, forgetLocal, pendingCount, setOwner, type Drink, type FoodDay, type Meal, type Me, type Subscription, type TaskFull, type Today as TodayData } from './lib/api';
 import { fmt1 } from './lib/format';
 import { buzz } from './lib/motion';
 import { DrinkForm, MealForm, NumberForm, TaskForm } from './components/Forms';
@@ -109,7 +109,7 @@ export function App() {
   }, [toast]);
 
   // без сети и без сохранённой копии — не выкидываем на вход, а пробуем ещё раз
-  const loadMe = useCallback(async () => { try { setMe(await api<Me>(ME())); } catch (e) { if (e instanceof ApiError && e.status === 0) setTimeout(() => loadMeRef.current(), 5000); else setMe(null); } }, []);
+  const loadMe = useCallback(async () => { try { const m = await api<Me>(ME()); setOwner(m.username); setMe(m); } catch (e) { if (e instanceof ApiError && e.status === 0) setTimeout(() => loadMeRef.current(), 5000); else setMe(null); } }, []);
   const loadMeRef = useRef(loadMe); loadMeRef.current = loadMe;
   const loadDay = useCallback(async (d?: string) => {
     try {
