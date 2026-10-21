@@ -9,6 +9,7 @@ import { api, ApiError } from '../lib/api';
 import { fmt, plural } from '../lib/format';
 import { headId, markTerms, mdToHtml } from '../lib/md';
 import { buzz } from '../lib/motion';
+import { g } from '../lib/gender';
 import { Bars, human } from '../components/Charts';
 import { Icon } from '../components/Icon';
 import { Sheet } from '../components/Sheet';
@@ -47,7 +48,7 @@ function Quiz({ onChanged, onMaterials }: { onChanged: () => void; onMaterials: 
   if (!d.current) return <div className="wgrid">
     <section className="wc span12 solid s-sage quiz-done"><div className="card-head"><h2>{d.answered ? 'На сегодня всё' : 'Повторять пока нечего'}</h2></div>
       {d.answered > 0 && <div className="wbig"><b>{d.good}</b><small>из {d.answered} верно</small></div>}
-      <p className="card-note">{d.freshLeft ? `Новых вопросов ещё ${d.freshLeft}.` : d.next ? `Следующие вопросы вернутся ${human(d.next)}.` : d.total ? 'Все вопросы пройдены.' : 'ИИ ещё составляет вопросы — загляни через минуту.'} Что ответил неверно — вернётся завтра.</p>
+      <p className="card-note">{d.freshLeft ? `Новых вопросов ещё ${d.freshLeft}.` : d.next ? `Следующие вопросы вернутся ${human(d.next)}.` : d.total ? 'Все вопросы пройдены.' : 'ИИ ещё составляет вопросы — загляни через минуту.'} {g('Что ответил', 'Что ответила')} неверно — вернётся завтра.</p>
       {d.freshLeft > 0 && <button className="btn-accent" onClick={() => setExtra(x => x + 10)}><Icon name="plus" />Ещё {Math.min(10, d.freshLeft)} {plural(Math.min(10, d.freshLeft), 'новый', 'новых', 'новых')}</button>}
     </section>{histCard}</div>;
 
@@ -212,6 +213,7 @@ function SessionForm({ s, today, cats, onDone }: { s?: any; today: string; cats:
 /* ---------------- конспекты и дневник ---------------- */
 type SheetState = null | { kind: 'read'; id: string } | { kind: 'obs'; rel: string; h?: string; q?: string } | { kind: 'cheat'; id: string } | { kind: 'session'; s?: any } | { kind: 'link' } | { kind: 'text' } | { kind: 'menu'; m: Material };
 function Overview({ o, open, onQuiz, onObsQuiz, onReload }: { o: any; open: (s: SheetState) => void; onQuiz: (m: Material, on: boolean) => void; onObsQuiz: (rel: string, on: boolean) => void; onReload: () => void }) {
+  const [openDays, setOpenDays] = useState<Record<string, boolean>>({});
   const toast = useToast(), file = useRef<HTMLInputElement>(null), [busy, setBusy] = useState(''), [q, setQ] = useState(''), [hits, setHits] = useState<any[] | null>(null), [lib, setLib] = useState<any[]>([]), [all, setAll] = useState(false), [min, setMin] = useState<Record<string, string>>({});
   useEffect(() => { if (o.obs.enabled) api<any>('/api/study/obsidian/library').then(r => setLib(r.notes), () => {}); }, [o.obs.enabled]);
   useEffect(() => { if (q.trim().length < 2) { setHits(null); return; } const t = setTimeout(() => api<any>(`/api/study/obsidian/search?q=${encodeURIComponent(q)}`).then(r => setHits(r.hits), () => setHits([])), 250); return () => clearTimeout(t); }, [q]);
@@ -264,11 +266,12 @@ function Overview({ o, open, onQuiz, onObsQuiz, onReload }: { o: any; open: (s: 
       {!days.length ? <p className="card-note">Записывай, что изучал, — журнал посчитает часы и покажет график.</p>
         : days.map(dd => { const arr = diary.filter((e: any) => e.day === dd), m = arr.reduce((a: number, e: any) => a + (e.minutes || 0), 0); return <div key={dd}>
           <div className="group-date"><span>{human(dd)}</span><span>{m ? fmtMin(m) : ''}</span></div>
-          <div className="list">{arr.map((e: any) => e.src === 'manual' ? <button key={e.id} className="item st-item" onClick={() => open({ kind: 'session', s: e })}>
+          <div className="list">{(arr.length > 4 && !openDays[dd] ? arr.slice(0, 3) : arr).map((e: any) => e.src === 'manual' ? <button key={e.id} className="item st-item" onClick={() => open({ kind: 'session', s: e })}>
               <span className="item-time">{e.time ?? '—'}</span><span className="item-main"><b>{e.title}{e.category && <span className="chip static sm">{e.category}</span>}</b><small>{e.theses.length ? `${e.theses.length} ${plural(e.theses.length, 'заметка', 'заметки', 'заметок')}` : ''}</small></span><span className="item-k"><b>{e.minutes ? fmtMin(e.minutes) : ''}</b></span></button>
             : <div key={e.id} className="item diary-item"><span className="diary-ic"><Icon name={e.kind === 'new' ? 'plus' : 'edit'} /></span>
               <span className="item-main"><b>{noteShort(e.title)}</b><small>{e.kind === 'new' ? `новый конспект: ${e.added.length} ${plural(e.added.length, 'раздел', 'раздела', 'разделов')}` : [e.added.length ? `дописал: ${e.added.join(', ')}` : '', e.changed.length ? `изменил: ${e.changed.join(', ')}` : ''].filter(Boolean).join(' · ')}</small></span>
-              <label className="diary-min" title="Сколько минут занимался"><input className="in" inputMode="numeric" placeholder="—" value={min[e.id] ?? (e.minutes ?? '')} onChange={x => setMin(s => ({ ...s, [e.id]: x.target.value }))} onBlur={() => min[e.id] !== undefined && saveMin(e)} /><span>мин</span></label></div>)}</div>
+              <label className="diary-min" title={g('Сколько минут занимался', 'Сколько минут занималась')}><input className="in" inputMode="numeric" placeholder="—" value={min[e.id] ?? (e.minutes ?? '')} onChange={x => setMin(s => ({ ...s, [e.id]: x.target.value }))} onBlur={() => min[e.id] !== undefined && saveMin(e)} /><span>мин</span></label></div>)}</div>
+          {arr.length > 4 && !openDays[dd] && <button className="link-btn day-more" onClick={() => setOpenDays(o => ({ ...o, [dd]: true }))}>Ещё {arr.length - 3} {plural(arr.length - 3, 'запись', 'записи', 'записей')} за этот день</button>}
         </div>; })}
       {o.diary.length > diary.length && <button className="link-btn" onClick={() => setAll(true)}>Показать ещё {o.diary.length - diary.length}</button>}
     </section>

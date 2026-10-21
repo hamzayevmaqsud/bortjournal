@@ -30,6 +30,17 @@ export const users = pgTable('users', {
   uniqueIndex('users_email_uq').on(sql`lower(${t.email})`).where(sql`${t.email} is not null`)
 ]);
 
+/**
+ * Повторы записей с одним Idempotency-Key (очередь телефона без сети): первый запрос занимает ключ (status 0),
+ * ответ сохраняется, повтор получает тот же ответ. Хранится сутки.
+ */
+export const idempotency = pgTable('idempotency_keys', {
+  key: text('key').primaryKey(),
+  status: integer('status').notNull().default(0),
+  body: text('body'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow()
+}, t => [index('idempotency_created_idx').on(t.createdAt)]);
+
 /** Ссылки для сброса пароля: в базе — sha256, ссылка живёт 30 минут и срабатывает один раз */
 export const passwordResets = pgTable('password_resets', {
   tokenHash: text('token_hash').primaryKey(),

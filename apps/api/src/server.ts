@@ -5,7 +5,7 @@
  */
 import Fastify from 'fastify';
 import fastifyStatic from '@fastify/static';
-import { sql } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { authRoutes, sessionHook } from './core/auth.js';
@@ -24,6 +24,7 @@ import { statsRoutes } from './core/stats.js';
 import { todayRoutes } from './core/today.js';
 import { connect, type DB } from './db/index.js';
 import { MODULES_LIST } from './modules/index.js';
+import { idempotency } from './core/schema.js';
 
 const WEB_DIST = fileURLToPath(new URL('../../web/dist', import.meta.url));
 const CSP = ["default-src 'self'", "script-src 'self'", "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com", "font-src 'self' https://fonts.gstatic.com",
@@ -52,21 +53,26 @@ export async function buildApp({ db, serveWeb = fs.existsSync(WEB_DIST) }: { db:
   });
 
   app.addHook('preHandler', sessionHook(db));
-  // повтор записи с тем же Idempotency-Key (телефон отправил из очереди, а первый ответ потерялся) — отдаём прежний ответ
-  const seen = new Map<string, { status: number; body: string; at: number }>(), DAY = 864e5;
+  // повтор записи с тем же Idempotency-Key (телефон отправил из очереди, а первый ответ потерялся) — отдаём прежний ответ.
+  // Ключ занимается в базе до выполнения: одновременный дубль не создаст вторую запись, перезапуск сервера ключи не теряет
   const idemKey = (req: { method: string; headers: Record<string, unknown>; userId?: string }) => {
     const k = req.headers['idempotency-key'];
     return req.method !== 'GET' && req.userId && typeof k === 'string' && k.length <= 100 ? `${req.userId}:${k}` : null;
   };
   app.addHook('preHandler', async (req, reply) => {
-    const k = idemKey(req as any), hit = k ? seen.get(k) : undefined;
-    if (hit && Date.now() - hit.at < DAY) return reply.code(hit.status).header('Content-Type', 'application/json; charset=utf-8').header('Idempotent-Replay', '1').send(hit.body);
+    const k = idemKey(req as any); if (!k) return;
+    const took = await db.insert(idempotency).values({ key: k }).onConflictDoNothing().returning({ key: idempotency.key });
+    if (took.length) { (req as any).idemOwner = true; if (Math.random() < 0.01) await db.delete(idempotency).where(sql`${idempotency.createdAt} < now() - interval '2 days'`); return; }
+    const [hit] = await db.select().from(idempotency).where(eq(idempotency.key, k));
+    if (hit && hit.status > 0) return reply.code(hit.status).header('Content-Type', 'application/json; charset=utf-8').header('Idempotent-Replay', '1').send(hit.body ?? '{}');
+    return reply.code(409).header('Idempotent-Replay', '1').send({ error: 'Эта запись уже отправляется.' });
   });
   app.addHook('onSend', async (req, reply, payload) => {
     const k = idemKey(req as any);
-    if (k && !reply.getHeader('Idempotent-Replay') && reply.statusCode < 500 && typeof payload === 'string') {
-      seen.set(k, { status: reply.statusCode, body: payload, at: Date.now() });
-      if (seen.size > 5000) for (const [key, v] of seen) { if (Date.now() - v.at > DAY || seen.size > 4000) seen.delete(key); else break; }
+    if (k && (req as any).idemOwner) {
+      // ошибка сервера — ключ освобождаем, чтобы повтор мог пройти; иначе запоминаем ответ
+      if (reply.statusCode >= 500) await db.delete(idempotency).where(eq(idempotency.key, k));
+      else await db.update(idempotency).set({ status: reply.statusCode, body: typeof payload === 'string' ? payload : null }).where(eq(idempotency.key, k));
     }
     return payload;
   });

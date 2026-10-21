@@ -7,6 +7,9 @@
 export class ApiError extends Error { constructor(public status: number, message: string) { super(message); } }
 
 const OFFLINE = 'Нет связи с сервером. Проверь интернет и Tailscale.';
+const OFFLINE_MARK = '__offline';
+/** ответ взят из копии на телефоне (нет сети) */
+export const fromCache = (x: unknown) => !!x && typeof x === 'object' && (x as Record<string, unknown>)[OFFLINE_MARK] === true;
 // какие записи можно отложить: всё, что не требует ответа сервера прямо сейчас (не ИИ, не поиск, не оплата, не ответы на вопросы)
 const QUEUEABLE = /^\/api\/(food\/(meals|drinks|entries)|body\/day|plans\/(tasks|goals|notes)|budget\/entries|gym\/(live|workouts)|study\/(time|sessions)|books\/[^/]+\/(progress|quotes))/;
 /*
@@ -63,7 +66,12 @@ export async function api<T>(path: string, opts: { method?: string; body?: unkno
   let r: Response;
   try { r = await send(path, method, opts.body, key); }
   catch {
-    if (method === 'GET') { const c = cached(path); if (c !== undefined) return c as T; throw new ApiError(0, OFFLINE); }
+    if (method === 'GET') {
+      const c = cached(path);
+      // копия без сети помечена: экран не затирает ею то, что человек только что записал
+      if (c !== undefined) return (c && typeof c === 'object' ? Object.defineProperty(structuredClone(c), OFFLINE_MARK, { value: true }) : c) as T;
+      throw new ApiError(0, OFFLINE);
+    }
     const o = owner();
     if (o && QUEUEABLE.test(path)) {
       write(OUTBOX, [...read<Pending[]>(OUTBOX, []), { path, method, body: opts.body, key: key!, at: Date.now(), owner: o }]); notify();
@@ -96,7 +104,8 @@ export async function flushOutbox(): Promise<{ sent: number; dropped: number }> 
       const x = mine()[0]; if (!x) break;
       let r: Response;
       try { r = await send(x.path, x.method, x.body, x.key); } catch { break; }
-      if (r.status >= 500 || r.status === 401) break;
+      // 5xx, 401 или «эта же запись ещё отправляется» — попробуем позже
+      if (r.status >= 500 || r.status === 401 || (r.status === 409 && r.headers.get('Idempotent-Replay'))) break;
       if (r.ok) sent++; else dropped++;
       write(OUTBOX, read<Pending[]>(OUTBOX, []).filter(p => p.key !== x.key)); notify();
     }

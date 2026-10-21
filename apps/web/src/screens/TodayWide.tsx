@@ -4,6 +4,7 @@
  * На телефоне плитки идут столбиком, у ленты нет подписей и итогов, а шапку дня можно смахнуть влево-вправо.
  */
 import { can } from '../lib/features';
+import { g } from '../lib/gender';
 import { useEffect, useRef, useState } from 'react';
 import { parseDay } from '@bortjournal/core';
 import { api, type Subscription, type Today as TodayData } from '../lib/api';
@@ -31,7 +32,7 @@ export function TodayWide({ wide = true, data, day, today, sub, still, settings 
   wide?: boolean; data: TodayData | null; day: string; today: string; sub: Subscription; still: boolean; settings?: Record<string, any>; onReminders?: () => void; onSettingsSaved?: (s: Record<string, unknown>) => void;
   onDay: (dir: number) => void; onAdd: (time?: string) => void; onDelete: (m: Mark) => void; onEdit: (m: Mark) => void; onToggleTask: (id: string) => void;
   onGo: (tab: string) => void; onPro: (what: string) => void; onPaywall: () => void;
-  onSteps: () => void; onWeight: () => void; onWater: () => void; onMeal: () => void; onAddWater: (ml: number) => void; onTaskAdded: () => void; onTaskOpen: () => void;
+  onSteps: () => void; onWeight: () => void; onWater: () => void; onMeal: () => void; onAddWater: (ml: number) => void; onTaskAdded: (title: string) => void; onTaskOpen: () => void;
 }) {
   const toast = useToast(), [title, setTitle] = useState(''), [busy, setBusy] = useState(false);
   const dt = parseDay(day), off = Math.round((dt.getTime() - parseDay(today).getTime()) / 864e5);
@@ -41,9 +42,11 @@ export function TodayWide({ wide = true, data, day, today, sub, still, settings 
   const done = tasks.filter(t => t.done).length;
   // что человек выбрал вести (в анкете или профиле); не выбрано ничего — показываем всё
   const chosen = settings.sections as string[] | undefined, has = (k: string) => !chosen || chosen.includes(k);
+  const [wideCols, setWideCols] = useState(() => matchMedia('(min-width:1101px)').matches);
+  useEffect(() => { const m = matchMedia('(min-width:1101px)'), on = () => setWideCols(m.matches); m.addEventListener('change', on); return () => m.removeEventListener('change', on); }, []);
   // чек-лист первого дня: пока не пройден и не скрыт
   const steps: Array<[string, boolean, () => void]> = [];
-  if (has('food') && food) steps.push(['Запиши, что ел сегодня', food.kcal > 0, onMeal]);
+  if (has('food') && food) steps.push([g('Запиши, что ел сегодня', 'Запиши, что ела сегодня'), food.kcal > 0, onMeal]);
   if (has('water') && food) steps.push(['Выпей стакан воды — нажми «+250»', food.waterMl > 0, () => onAddWater(250)]);
   if (has('tasks')) steps.push(['Добавь задачу на сегодня', tasks.length > 0, onTaskOpen]);
   steps.push(['Включи напоминания', !!settings.remindSeen, () => { onReminders?.(); saveSettings({ remindSeen: true }); }]);
@@ -82,7 +85,7 @@ export function TodayWide({ wide = true, data, day, today, sub, still, settings 
   const addTask = async () => {
     const t = title.trim(); if (!t || busy) return;
     setBusy(true);
-    try { await api('/api/plans/tasks', { method: 'POST', body: { title: t, day } }); setTitle(''); onTaskAdded(); }
+    try { await api('/api/plans/tasks', { method: 'POST', body: { title: t, day } }); setTitle(''); onTaskAdded(t); }
     catch (e) { toast(e instanceof Error ? e.message : 'Не получилось', { err: true }); } finally { setBusy(false); }
   };
   const proBtn = (what: string, label: string, ic: string) => <button className="btn-accent" onClick={() => onPro(what)}><Icon name={ic} />{label}{!can(sub, what) && <span className="lock">PRO</span>}</button>;
@@ -92,13 +95,18 @@ export function TodayWide({ wide = true, data, day, today, sub, still, settings 
       <div className="hero-left">
         <span className="hero-wd">{rel ? `${rel} · ` : ''}{WDF[dt.getUTCDay()]}</span>
         <h1 className="hero-day">{dt.getUTCDate()}<span>{MONG[dt.getUTCMonth()]}</span></h1>
+        {wide && <div className="datenav dn-left">
+          <button onClick={() => onDay(-1)} aria-label="Предыдущий день"><Icon name="chevL" /></button>
+          {off !== 0 && <button className="cur not-today" onClick={() => onDay(-off)}>К сегодня</button>}
+          <button onClick={() => onDay(1)} aria-label="Следующий день"><Icon name="chev" /></button>
+        </div>}
       </div>
       <div className="hero-side">
-        <div className="datenav">
+        {!wide && <div className="datenav">
           <button onClick={() => onDay(-1)} aria-label="Предыдущий день"><Icon name="chevL" /></button>
           <button className={`cur ${off ? 'not-today' : ''}`} onClick={() => off && onDay(-off)} title="К сегодняшнему дню">{rel || WDF[dt.getUTCDay()]} · {dt.getUTCDate()} {MON[dt.getUTCMonth()]}</button>
           <button onClick={() => onDay(1)} aria-label="Следующий день"><Icon name="chev" /></button>
-        </div>
+        </div>}
         {data && <span className="greet">{greet(data.now.hm)}{data.name ? `, ${data.name}` : ''}.</span>}
         {data && <div className="statgroup">
           {has('food') && <button onClick={() => onPro('Цель и прогноз')}><i><Icon name="today" />план</i><b>{fmt(data.plan.kcal)}<small>ккал</small></b><span>белок {fmt(data.plan.protein)} г</span></button>}
@@ -153,17 +161,17 @@ export function TodayWide({ wide = true, data, day, today, sub, still, settings 
           // второстепенные разделы — компактными строками: одна карточка вместо четырёх
           const quiz = !!study?.quiz?.left && has('study');
           const rows: Array<[string, string, string, string, () => void]> = [];
-          if (study && !quiz && has('study')) rows.push(['study', 'var(--study)', 'Учёба', study.minutes ? `${study.minutes} из ${study.goal} мин сегодня` : 'сегодня ещё не занимался', () => onPro('Учёба')]);
+          if (study && !quiz && has('study')) rows.push(['study', 'var(--study)', 'Учёба', study.minutes ? `${study.minutes} из ${study.goal} мин сегодня` : g('сегодня ещё не занимался', 'сегодня ещё не занималась'), () => onPro('Учёба')]);
           if (gym && has('gym')) rows.push(['gym', 'var(--gym)', 'Зал', gym.workouts.length ? gym.workouts.map(w => w.title).join(', ') : gym.plan ? `по плану: ${gym.plan.name}${gym.plan.time ? ` в ${gym.plan.time}` : ''}` : 'сегодня без тренировки', () => onPro('Зал')]);
           if (P.budget?.configured && P.budget.leftToday !== undefined && has('budget')) rows.push(['money', 'var(--money)', 'Бюджет', P.budget.leftToday >= 0 ? `${fmt2(P.budget.leftToday)} ${P.budget.currency} можно сегодня` : `перерасход ${fmt2(-P.budget.leftToday)} ${P.budget.currency}`, () => onPro('Бюджет')]);
           if (P.books?.reading && has('books')) rows.push(['books', 'var(--books)', 'Читаю', `${P.books.reading.title} · ${P.books.reading.pct}%${P.books.reading.todayPages ? ` · +${P.books.reading.todayPages} стр.` : ''}`, () => onPro('Книги')]);
-          return <>
+          const side = <>
             {quiz && <section className="wc solid s-orange span5 c-study" style={{ ['--i' as string]: 3 }}>
               <div className="card-head"><h2>Вопросы дня</h2><div className="card-actions"><button className="btn-accent" onClick={() => onPro('Вопросы дня')}>Ответить</button></div></div>
               <Big v={study!.quiz!.left} unit={`${plural(study!.quiz!.left, 'вопрос', 'вопроса', 'вопросов')} на сегодня`} />
-              <p className="card-note">{study!.quiz!.total > study!.quiz!.left ? `Уже ответил на ${study!.quiz!.total - study!.quiz!.left}` : 'По твоим конспектам'}</p>
+              <p className="card-note">{study!.quiz!.total > study!.quiz!.left ? `${g('Уже ответил', 'Уже ответила')} на ${study!.quiz!.total - study!.quiz!.left}` : 'По твоим конспектам'}</p>
             </section>}
-            {rows.length > 0 && <section className={`wc ${quiz ? 'span7' : 'span5'} c-more`} style={{ ['--i' as string]: 4 }}>
+            {rows.length > 0 && <section className="wc span5 c-more" style={{ ['--i' as string]: 4 }}>
               <div className="card-head"><h2>Остальное сегодня</h2></div>
               <div className="today-rows">{rows.map(([ic, c, name, sum, go]) => <button key={ic} className="today-row" onClick={go}>
                 <span className="chip-ic" style={{ ['--c' as string]: c }}><Icon name={ic} /></span><span className="mid"><b>{name}</b><small>{sum}</small></span><Icon name="chev" className="ic chev" /></button>)}</div>
@@ -173,6 +181,8 @@ export function TodayWide({ wide = true, data, day, today, sub, still, settings 
               <button className="btn-accent" onClick={onPaywall}>Посмотреть тарифы<Icon name="chev" /></button>
             </section>}
           </>;
+          // на компьютере правая колонка — одним блоком рядом с задачами, на телефоне — карточки по порядку
+          return wide && wideCols ? <div className="today-side">{side}</div> : side;
         })()}
 
         {has('tasks') && <section className="wc span7 c-tasks" style={{ ['--i' as string]: 7 }}>

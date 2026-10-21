@@ -32,9 +32,10 @@ export async function syncSeries(db: Tx, userId: string, today: string, only?: s
 type GoalRow = typeof goals.$inferSelect;
 /** все цели пользователя с прогрессом: по задачам и подцелям (до 4 уровней), отметка «сделано» — 100% */
 async function withProgress(db: Tx, userId: string) {
-  const gs = await db.select().from(goals).where(eq(goals.userId, userId));
+  const gs = await db.select().from(goals).where(eq(goals.userId, userId)), today = await localToday(db, userId);
+  // считаем задачи до сегодня включительно (и без даты): будущие повторы ещё не наступили и не тянут прогресс вниз
   const tc = await db.select({ g: tasks.goalId, n: sql<number>`count(*)::int`, d: sql<number>`count(*) filter (where ${tasks.done})::int` }).from(tasks)
-    .where(and(eq(tasks.userId, userId), sql`${tasks.goalId} is not null`)).groupBy(tasks.goalId);
+    .where(and(eq(tasks.userId, userId), sql`${tasks.goalId} is not null`, sql`(${tasks.day} is null or ${tasks.day} <= ${today}::date)`)).groupBy(tasks.goalId);
   const byG = new Map(tc.map(r => [r.g!, r])), kids = new Map<string, GoalRow[]>();
   for (const g of gs) if (g.parentId) kids.set(g.parentId, [...(kids.get(g.parentId) ?? []), g]);
   const memo = new Map<string, number>();

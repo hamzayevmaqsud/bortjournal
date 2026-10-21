@@ -4,6 +4,8 @@
  * адреса локальной сети, Tailscale и самого компьютера закрыты (иначе через «ссылку» можно было бы читать внутренние сервисы).
  */
 import dns from 'node:dns/promises';
+import http from 'node:http';
+import https from 'node:https';
 import net from 'node:net';
 import { aiEnabled, gemini } from '../../core/gemini.js';
 import { bad } from '../../core/http.js';
@@ -109,19 +111,44 @@ async function publicHost(u: URL) {
   const ips = net.isIP(host) ? [host] : (await dns.lookup(host, { all: true }).catch(() => { throw bad('Такой сайт не найден.'); })).map(a => a.address);
   if (!ips.length || ips.some(privateIp)) throw bad('Эта ссылка ведёт во внутреннюю сеть — такие адреса открывать нельзя.');
 }
+/**
+ * GET без подмены адреса (DNS rebinding): соединение идёт ровно на тот IP, который прошёл проверку,
+ * — свой lookup отдаёт только публичные адреса. Размер и время ограничены.
+ */
+function safeGet(u: URL): Promise<{ status: number; headers: http.IncomingHttpHeaders; body: Buffer }> {
+  const allowAll = process.env.STUDY_ALLOW_PRIVATE === '1';
+  const lookup: net.LookupFunction = (host, opts, cb) => {
+    dns.lookup(host, { all: true }).then(list => {
+      const ok = list.filter(a => allowAll || !privateIp(a.address));
+      if (!ok.length) { cb(Object.assign(new Error('внутренний адрес'), { code: 'EPRIVATE' }), '', 4); return; }
+      const want = (opts as { all?: boolean }).all;
+      if (want) (cb as unknown as (e: null, a: Array<{ address: string; family: number }>) => void)(null, ok); else cb(null, ok[0]!.address, ok[0]!.family);
+    }, e => cb(e as NodeJS.ErrnoException, '', 4));
+  };
+  return new Promise((resolve, reject) => {
+    const mod = u.protocol === 'https:' ? https : http;
+    const r = mod.get(u, { lookup, timeout: 20000, headers: { 'User-Agent': 'Mozilla/5.0 (Bortjournal; +study notes)', Accept: 'text/html,application/pdf,text/plain;q=0.9,*/*;q=0.5' } }, res => {
+      const len = Number(res.headers['content-length'] ?? 0); if (len > MAX_FILE) { res.destroy(); reject(bad('Страница больше 20 МБ.')); return; }
+      const parts: Buffer[] = []; let n = 0;
+      res.on('data', (c: Buffer) => { n += c.length; if (n > MAX_FILE) { res.destroy(); reject(bad('Страница больше 20 МБ.')); return; } parts.push(c); });
+      res.on('end', () => resolve({ status: res.statusCode ?? 0, headers: res.headers, body: Buffer.concat(parts) }));
+      res.on('error', () => reject(bad('Сайт оборвал соединение.')));
+    });
+    r.on('timeout', () => { r.destroy(); reject(bad('Сайт не ответил.')); });
+    r.on('error', e => reject((e as NodeJS.ErrnoException).code === 'EPRIVATE' ? bad('Эта ссылка ведёт во внутреннюю сеть — такие адреса открывать нельзя.') : bad('Сайт не ответил.')));
+  });
+}
+
 /** страница по ссылке → текст. Переходы проверяются на каждом шаге */
 export async function extractLink(raw: string): Promise<Extracted & { url: string; buf?: Buffer }> {
   let u: URL;
   try { u = new URL(raw.trim()); } catch { throw bad('Это не похоже на ссылку.'); }
   for (let hop = 0; hop < 5; hop++) {
     await publicHost(u);
-    const r = await fetch(u, { redirect: 'manual', signal: AbortSignal.timeout(20000), headers: { 'User-Agent': 'Mozilla/5.0 (Bortjournal; +study notes)', Accept: 'text/html,application/pdf,text/plain;q=0.9,*/*;q=0.5' } }).catch(() => { throw bad('Сайт не ответил.'); });
-    if (r.status >= 300 && r.status < 400 && r.headers.get('location')) { u = new URL(r.headers.get('location')!, u); continue; }
-    if (!r.ok) throw bad(`Сайт ответил ошибкой ${r.status}.`);
-    const len = Number(r.headers.get('content-length') ?? 0); if (len > MAX_FILE) throw bad('Страница больше 20 МБ.');
-    const reader = r.body!.getReader(), parts: Uint8Array[] = []; let n = 0;
-    for (;;) { const { done, value } = await reader.read(); if (done) break; n += value.length; if (n > MAX_FILE) { await reader.cancel(); throw bad('Страница больше 20 МБ.'); } parts.push(value); }
-    const buf = Buffer.concat(parts), type = (r.headers.get('content-type') ?? '').toLowerCase();
+    const r = await safeGet(u);
+    if (r.status >= 300 && r.status < 400 && r.headers.location) { u = new URL(r.headers.location, u); continue; }
+    if (r.status < 200 || r.status >= 300) throw bad(`Сайт ответил ошибкой ${r.status}.`);
+    const buf = r.body, type = String(r.headers['content-type'] ?? '').toLowerCase();
     if (type.includes('pdf') || buf.subarray(0, 5).toString() === '%PDF-') { const p = await pdfText(buf); return { kind: 'link', title: p.title ?? titleFrom(decodeURIComponent(u.pathname.split('/').pop() || u.hostname)), text: p.text, ext: 'pdf', url: u.toString(), buf }; }
     if (type.includes('html') || /<html|<body/i.test(buf.subarray(0, 2000).toString())) {
       const { title, md } = htmlToMd(buf.toString('utf8'));

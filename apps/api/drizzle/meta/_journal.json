@@ -64,6 +64,13 @@
       "when": 1792576594440,
       "tag": "0008_password_resets",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1792581272337,
+      "tag": "0009_idempotency",
+      "breakpoints": true
     }
   ]
 }

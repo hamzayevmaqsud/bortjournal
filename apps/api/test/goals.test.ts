@@ -112,3 +112,14 @@ describe('повторы', () => {
     expect(items.filter((t: any) => t.title === 'Зарядка' && t.done).length).toBe(1);
   });
 });
+
+describe('прогресс с повторами', () => {
+  it('будущие задачи повтора не считаются: сделал сегодняшнюю — 100%', async () => {
+    const g = (await req('POST', '/api/plans/goals', { period: 'week', periodKey: mondayOf(today), title: 'Зарядка всю неделю' })).json().id;
+    const sid = (await req('POST', '/api/plans/series', { title: 'Зарядка утром', rule: { kind: 'daily' }, goalId: g })).json().id;
+    const t = (await req('GET', `/api/plans/tasks?from=${today}&to=${today}`)).json().items.find((x: any) => x.seriesId === sid);
+    await req('POST', `/api/plans/tasks/${t.id}/toggle`);
+    const goal = (await req('GET', `/api/plans/goals?from=${today}&to=${today}`)).json().items.find((x: any) => x.id === g);
+    expect(goal).toMatchObject({ progress: 100, tasks: 1, tasksDone: 1 });
+  });
+});

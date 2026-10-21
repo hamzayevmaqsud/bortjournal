@@ -75,8 +75,8 @@ export function DrinkForm({ day, time, drink, onDone }: { day: string; time?: st
   </form>;
 }
 
-export function NumberForm({ kind, day, value, onDone }: { kind: 'steps' | 'weight'; day: string; value: number | null; onDone: () => void }) {
-  const [v, setV] = useState(value ? String(value) : ''), { busy, run } = useSubmit(onDone);
+export function NumberForm({ kind, day, value, onDone }: { kind: 'steps' | 'weight'; day: string; value: number | null; onDone: (v: number | null) => void }) {
+  const [v, setV] = useState(value ? String(value) : ''), { busy, run } = useSubmit(() => onDone(v === '' ? null : Number(v.replace(',', '.')) || null));
   const steps = kind === 'steps';
   return <form className="form" onSubmit={e => { e.preventDefault(); run(() => api('/api/body/day', { method: 'PUT', body: { day, [steps ? 'steps' : 'weightKg']: v === '' ? null : v } }), steps ? `Шаги: ${fmt(Number(v) || 0)}` : `Вес ${v} кг записан`); }}>
     <input id={`num-${kind}`} className="in big" inputMode={steps ? 'numeric' : 'decimal'} value={v} onChange={e => setV(e.target.value)} placeholder={steps ? '8 000' : '75,0'} autoFocus aria-label={steps ? 'Шагов за день' : 'Вес, кг'} />

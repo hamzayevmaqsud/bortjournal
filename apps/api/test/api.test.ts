@@ -154,6 +154,17 @@ describe('повтор записи из очереди телефона', () =>
     expect(c.json().id).not.toBe(a.json().id);
     expect((await req('GET', `/api/today?day=${day}`)).json().parts.food.waterMl).toBe(500);
   });
+  it('одновременный дубль и повтор после перезапуска сервера — тоже без второй записи', async () => {
+    const day = '2026-03-04', send = (a: typeof app, key: string) => a.inject({ method: 'POST', url: '/api/food/drinks', payload: { day, time: '11:00', type: 'water', ml: 300 }, headers: { ...H, cookie, 'idempotency-key': key } });
+    const [x, y] = await Promise.all([send(app, 'k-par'), send(app, 'k-par')]);
+    expect([x.statusCode, y.statusCode].sort()).toEqual([201, 409].sort((a, b) => a - b) as any);
+    const again = await buildApp({ db: conn.db, serveWeb: false });
+    const z = await send(again, 'k-par');
+    expect(z.statusCode).toBe(201);
+    expect(z.json().id).toBe((x.statusCode === 201 ? x : y).json().id);
+    await again.close();
+    expect((await req('GET', `/api/today?day=${day}`)).json().parts.food.waterMl).toBe(300);
+  });
 });
 
 describe('аккаунт: пароль и выгрузка', () => {

@@ -7,7 +7,7 @@
 import { can } from './lib/features';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { addDays } from '@bortjournal/core';
-import { api, ApiError, flushOutbox, forgetLocal, pendingCount, setOwner, type Drink, type FoodDay, type Meal, type Me, type Subscription, type TaskFull, type Today as TodayData } from './lib/api';
+import { api, ApiError, flushOutbox, forgetLocal, fromCache, pendingCount, setOwner, type Drink, type FoodDay, type Meal, type Me, type Subscription, type TaskFull, type Today as TodayData } from './lib/api';
 import { fmt, fmt1, plural } from './lib/format';
 import { buzz } from './lib/motion';
 import { DrinkForm, MealForm, NumberForm, TaskForm } from './components/Forms';
@@ -34,6 +34,7 @@ import { VoiceCapture } from './components/Voice';
 import { AiConsent } from './components/AiConsent';
 import { FeedbackForm } from './components/Feedback';
 import { Boundary } from './components/Boundary';
+import { setSex } from './lib/gender';
 import { Admin } from './screens/Admin';
 import { ResetPassword } from './screens/Reset';
 import { Stats, type StatsTab } from './screens/Stats';
@@ -116,12 +117,13 @@ export function App() {
   }, [toast]);
 
   // без сети и без сохранённой копии — не выкидываем на вход, а пробуем ещё раз
-  const loadMe = useCallback(async () => { try { const m = await api<Me>(ME()); setOwner(m.username); setMe(m); } catch (e) { if (e instanceof ApiError && e.status === 0) setTimeout(() => loadMeRef.current(), 5000); else setMe(null); } }, []);
+  const loadMe = useCallback(async () => { try { const m = await api<Me>(ME()); setOwner(m.username); setSex(m.profile?.sex); setMe(m); } catch (e) { if (e instanceof ApiError && e.status === 0) setTimeout(() => loadMeRef.current(), 5000); else setMe(null); } }, []);
   const loadMeRef = useRef(loadMe); loadMeRef.current = loadMe;
   const loadDay = useCallback(async (d?: string) => {
     try {
       const t = await api<TodayData>(`/api/today${d ? `?day=${d}` : ''}`);
-      setDays(x => ({ ...x, [t.day]: t }));
+      // без сети — не затираем экран старой копией: там уже видно только что записанное
+      setDays(x => fromCache(t) && x[t.day] ? x : { ...x, [t.day]: t });
       if (!d) { setToday(t.now.day); setDay(cur => cur ?? t.now.day); }
       return t;
     } catch (e) { fail(e); return null; }
@@ -163,8 +165,11 @@ export function App() {
     const onPay = () => openRef.current({ kind: 'paywall' });
     const onConsent = () => openRef.current({ kind: 'aiConsent' });
     addEventListener('bj-consent', onConsent);
+    // очередь общая для вкладок: другая вкладка отправила записи — эта тоже узнаёт
+    const onStore = (e: StorageEvent) => { if (e.key === 'bj-outbox') { onBox(); if (pendingCount() === 0) { setDays({}); sync.current(); } } };
+    addEventListener('storage', onStore);
     addEventListener('bj-outbox', onBox); addEventListener('bj-synced', onSync); addEventListener('bj-paywall', onPay); void flushOutbox();
-    return () => { removeEventListener('bj-outbox', onBox); removeEventListener('bj-synced', onSync); removeEventListener('bj-paywall', onPay); removeEventListener('bj-consent', onConsent); };
+    return () => { removeEventListener('bj-outbox', onBox); removeEventListener('bj-synced', onSync); removeEventListener('bj-paywall', onPay); removeEventListener('bj-consent', onConsent); removeEventListener('storage', onStore); };
   }, [toast]);
   useEffect(() => {
     if (!me) return;
@@ -274,7 +279,7 @@ export function App() {
         <Boundary name="today" onFeedback={() => open({ kind: 'feedback' })}>
         {day && today && <TodayWide wide={wide} data={data} day={day} today={today} still={still} sub={sub} settings={me.profile?.settings ?? {}} onReminders={() => open({ kind: 'reminders' })} onSettingsSaved={st => setMe(m => m && m.profile ? { ...m, profile: { ...m.profile, settings: st } } : m)} onDay={goDay} onAdd={at => open({ kind: 'add', at })} onDelete={deleteMark} onEdit={editMark} onToggleTask={toggleTask} onGo={go}
           onPro={pro} onPaywall={() => open({ kind: 'paywall' })} onSteps={() => open({ kind: 'steps' })} onWeight={() => open({ kind: 'weight' })} onWater={() => open({ kind: 'drink' })}
-          onMeal={() => open({ kind: 'meal' })} onAddWater={ml => addWater(ml)} onTaskAdded={() => { toast('Задача добавлена'); refresh(); }} onTaskOpen={() => open({ kind: 'task', day })} />}
+          onMeal={() => open({ kind: 'meal' })} onAddWater={ml => addWater(ml)} onTaskAdded={title => { patch(t => { if (t.parts.plans && !t.parts.plans.tasks.some(x => x.title === title && !x.done)) t.parts.plans.tasks.push({ id: `tmp-${Date.now()}`, title, time: null, done: false, prio: false, repeat: false }); return t; }); toast('Задача добавлена'); refresh(); }} onTaskOpen={() => open({ kind: 'task', day })} />}
         </Boundary>
       </section>
       <section className="screen" data-pos={pos('plans')} aria-hidden={tab !== 'plans'}>
@@ -366,8 +371,8 @@ export function App() {
       </>}
       {sheet.kind === 'meal' && day && <MealForm key={sheet.meal?.id ?? 'new'} day={sheet.meal?.day ?? sheet.day ?? day} time={sheet.at} meal={sheet.meal} onDone={done} />}
       {sheet.kind === 'drink' && day && <DrinkForm key={sheet.drink?.id ?? 'new'} day={sheet.drink?.day ?? sheet.day ?? day} time={sheet.at} drink={sheet.drink} onDone={done} />}
-      {sheet.kind === 'steps' && day && <NumberForm kind="steps" day={day} value={body?.steps || null} onDone={done} />}
-      {sheet.kind === 'weight' && day && <NumberForm kind="weight" day={day} value={body?.weight?.today ? body.weight.kg : null} onDone={done} />}
+      {sheet.kind === 'steps' && day && <NumberForm kind="steps" day={day} value={body?.steps || null} onDone={v => { patch(t => { if (t.parts.body) t.parts.body.steps = v ?? 0; return t; }); done(); }} />}
+      {sheet.kind === 'weight' && day && <NumberForm kind="weight" day={day} value={body?.weight?.today ? body.weight.kg : null} onDone={v => { patch(t => { if (t.parts.body && v) t.parts.body.weight = { kg: v, day, today: true }; return t; }); done(); }} />}
       {sheet.kind === 'task' && <TaskForm key={sheet.task?.id ?? `new-${sheet.day}`} day={sheet.day} task={sheet.task} plans={can(sub, 'plans')} onDone={done} />}
       {sheet.kind === 'paywall' && <Paywall sub={sub} focus={sheet.focus} onChange={setSub} onClose={close} />}
       {sheet.kind === 'settings' && <SettingsForm me={me} onDone={s => { setMe(m => m && m.profile ? { ...m, profile: { ...m.profile, settings: s } } : m); done(); setDays({}); }} onRedo={() => { close(); setRedo(true); }} />}

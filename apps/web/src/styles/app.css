@@ -1921,3 +1921,15 @@ a.btn-accent{text-decoration:none}
 .app.wide .plans-page{grid-template-columns:1.25fr 1fr}
 .app.wide .plans-page>.goal-sum{grid-column:auto}
 .app.wide .plans-page>.day-panel{grid-row:span 3;align-self:start}
+/* бюджет: расход — тем же оранжевым, что и все главные кнопки; доход остаётся зелёным */
+.m-form .primary{background:var(--fill-orange)}
+.day-more{margin:6px 0 0}
+.hero-left .dn-left{margin-top:10px;display:inline-flex}
+.bars-x span{font-size:11px}
+.legend{font-size:12px}
+/* компьютер: задачи — рядом с «Вопросами дня» или «Остальным», без пустоты справа */
+@media (min-width:1101px){.wide-page:not(.narrow) .c-food{order:1}.wide-page:not(.narrow) .c-water{order:2}.wide-page:not(.narrow) .c-steps{order:3}.wide-page:not(.narrow) .c-tasks{order:4}.wide-page:not(.narrow) .c-study{order:5}.wide-page:not(.narrow) .c-teaser{order:5}.wide-page:not(.narrow) .c-more{order:6}}
+@media (min-width:1101px){.wide-page:not(.narrow) .c-tasks{grid-row:span 2;align-self:start}.wide-page:not(.narrow) .c-study,.wide-page:not(.narrow) .c-more,.wide-page:not(.narrow) .c-teaser{align-self:start}}
+@media (min-width:1101px){.wide-page:not(.narrow) .c-tasks{grid-row:auto}
+  .today-side{grid-column:span 5;order:5;display:flex;flex-direction:column;gap:inherit;align-self:start;min-width:0}
+  .today-side>.wc{grid-column:auto;width:100%}}

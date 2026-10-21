@@ -88,7 +88,6 @@ export async function authRoutes(app: FastifyInstance, { db }: { db: DB }) {
   app.post('/api/auth/register', async (req, reply) => {
     const r = regs.get(req.ip);
     if (r && r.until > Date.now() && r.n >= 5) return reply.code(429).send({ error: 'Слишком много регистраций с этого адреса. Попробуй через час.' });
-    regs.set(req.ip, r && r.until > Date.now() ? { n: r.n + 1, until: r.until } : { n: 1, until: Date.now() + 3600e3 });
     const body = (req.body ?? {}) as Record<string, unknown>;
     const username = String(body.username ?? '').trim(), password = String(body.password ?? ''), email = String(body.email ?? '').trim().toLowerCase();
     if (!/^[A-Za-z0-9._-]{3,32}$/.test(username)) return reply.code(400).send({ error: 'Логин: 3–32 символа — латиница, цифры, точка, дефис или подчёркивание.' });
@@ -103,6 +102,8 @@ export async function authRoutes(app: FastifyInstance, { db }: { db: DB }) {
       await startTrial(tx, u!.id);
       return u!.id;
     });
+    // считаем только созданные аккаунты: ошибки в форме не съедают лимит
+    regs.set(req.ip, r && r.until > Date.now() ? { n: r.n + 1, until: r.until } : { n: 1, until: Date.now() + 3600e3 });
     await startSession(db, req, reply, userId);
     return reply.code(201).send({ username });
   });

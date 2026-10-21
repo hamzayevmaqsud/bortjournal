@@ -183,3 +183,13 @@ describe('конспекты и вопросы', () => {
     expect((await req('GET', '/api/study/quiz')).json().total).toBe(0);
   });
 });
+
+describe('ссылки: соединение только на проверенный адрес', () => {
+  it('имя, которое смотрит в localhost, не открывается даже без проверки по имени', async () => {
+    delete process.env.STUDY_ALLOW_PRIVATE;
+    // localhost резолвится в 127.0.0.1 — подключение отклоняет сам lookup
+    const r = await req('POST', '/api/study/materials/link', { url: 'http://localhost/' });
+    expect(r.statusCode).toBe(400);
+    expect(r.json().error).toMatch(/внутреннюю сеть/);
+  });
+});
