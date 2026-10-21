@@ -1,16 +1,23 @@
 /** Вход и регистрация. После регистрации — анкета; 7 дней Pro начинаются сразу */
 import { useState } from 'react';
+import { AppleMark, GoogleMark, startUrl, takeAuthResult, useProviders } from '../lib/oauth';
 import { TRIAL_DAYS } from '@bortjournal/core';
 import { api, ApiError } from '../lib/api';
 
 export function Login({ onDone }: { onDone: () => void }) {
   const [mode, setMode] = useState<'in' | 'up'>('in');
-  const [u, setU] = useState(''), [p, setP] = useState(''), [mail, setMail] = useState(''), [err, setErr] = useState(''), [busy, setBusy] = useState(false);
+  const [u, setU] = useState(''), [p, setP] = useState(''), [mail, setMail] = useState(''), [err, setErr] = useState(() => takeAuthResult()?.error ?? ''), [busy, setBusy] = useState(false);
+  const pv = useProviders(), any = pv.google || pv.apple;
   const up = mode === 'up';
   return <main className="login">
     <div className="brand"><i><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l1.6 6.4L20 12l-6.4 1.6L12 21l-1.6-7.4L4 12l6.4-2.6z" fill="currentColor" /></svg></i>Бортжурнал</div>
     <h1>{up ? 'Новый журнал' : 'С возвращением'}</h1>
     <p>{up ? `Еда, вода, шаги, задачи, цель и статистика — бесплатно навсегда. Всё остальное — ${TRIAL_DAYS} дней бесплатно.` : 'Войди, чтобы продолжить свой день.'}</p>
+    {any && <div className="pv-btns">
+      {pv.apple && <a className="pv-btn pv-apple" href={startUrl('apple')}><AppleMark />{up ? 'Создать через Apple' : 'Войти через Apple'}</a>}
+      {pv.google && <a className="pv-btn pv-google" href={startUrl('google')}><GoogleMark />{up ? 'Создать через Google' : 'Войти через Google'}</a>}
+      <div className="pv-or"><span>или по логину</span></div>
+    </div>}
     <div className="seg2" role="tablist">
       <button role="tab" aria-selected={!up} className={!up ? 'on' : ''} onClick={() => { setMode('in'); setErr(''); }}>Войти</button>
       <button role="tab" aria-selected={up} className={up ? 'on' : ''} onClick={() => { setMode('up'); setErr(''); }}>Создать аккаунт</button>

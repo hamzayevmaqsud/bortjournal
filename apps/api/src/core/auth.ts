@@ -10,7 +10,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type { DB } from '../db/index.js';
 import { startTrial, subscription } from './billing.js';
 import { modulesOf } from './entitlements.js';
-import { profiles, sessions, users } from './schema.js';
+import { authIdentities, profiles, sessions, users } from './schema.js';
 
 const scrypt = promisify(crypto.scrypt) as (pw: string, salt: string, len: number, opts: crypto.ScryptOptions) => Promise<Buffer>;
 export const COOKIE = 'bj_sid';
@@ -43,6 +43,14 @@ const tokenOf = (req: FastifyRequest) => /(?:^|;\s*)bj_sid=([A-Za-z0-9_-]{20,})/
 
 declare module 'fastify' { interface FastifyRequest { userId?: string } }
 
+/** открыть сессию: cookie на 60 дней, в базе — только хеш токена */
+export async function startSession(db: DB, req: FastifyRequest, reply: FastifyReply, userId: string) {
+  const token = crypto.randomBytes(32).toString('base64url');
+  await db.insert(sessions).values({ tokenHash: sha(token), userId, expiresAt: new Date(Date.now() + SESSION_DAYS * 864e5), userAgent: String(req.headers['user-agent'] ?? '').slice(0, 200) });
+  setCookie(req, reply, token, SESSION_DAYS * 86400);
+}
+export { isHttps };
+
 /**
  * Кто это — на каждом запросе. Вешается на корень приложения (не внутри плагина),
  * иначе Fastify изолирует хук, и маршруты модулей не увидят вошедшего пользователя.
@@ -66,9 +74,7 @@ export async function authRoutes(app: FastifyInstance, { db }: { db: DB }) {
     const [u] = await db.select().from(users).where(and(sql`lower(${users.username}) = ${username}`, sql`${users.deletedAt} is null`)).limit(1);
     if (!(await verifyPassword(password, u?.passwordHash)) || !u) { fail(...keys); return reply.code(401).send({ error: 'Неверный логин или пароль.' }); }
     keys.forEach(k => fails.delete(k));
-    const token = crypto.randomBytes(32).toString('base64url');
-    await db.insert(sessions).values({ tokenHash: sha(token), userId: u.id, expiresAt: new Date(Date.now() + SESSION_DAYS * 864e5), userAgent: String(req.headers['user-agent'] ?? '').slice(0, 200) });
-    setCookie(req, reply, token, SESSION_DAYS * 86400);
+    await startSession(db, req, reply, u.id);
     return { username: u.username };
   });
 
@@ -92,9 +98,7 @@ export async function authRoutes(app: FastifyInstance, { db }: { db: DB }) {
       await startTrial(tx, u!.id);
       return u!.id;
     });
-    const token = crypto.randomBytes(32).toString('base64url');
-    await db.insert(sessions).values({ tokenHash: sha(token), userId, expiresAt: new Date(Date.now() + SESSION_DAYS * 864e5), userAgent: String(req.headers['user-agent'] ?? '').slice(0, 200) });
-    setCookie(req, reply, token, SESSION_DAYS * 86400);
+    await startSession(db, req, reply, userId);
     return reply.code(201).send({ username });
   });
 
@@ -111,9 +115,10 @@ export async function authRoutes(app: FastifyInstance, { db }: { db: DB }) {
     const current = String(b.current ?? '').slice(0, 512), next = String(b.next ?? '');
     if (tooMany(`pw:${req.userId}`)) return reply.code(429).send({ error: 'Слишком много попыток. Подожди 15 минут.' });
     const [u] = await db.select({ hash: users.passwordHash }).from(users).where(eq(users.id, req.userId));
-    if (!(await verifyPassword(current, u?.hash))) { fail(`pw:${req.userId}`); return reply.code(400).send({ error: 'Текущий пароль неверный.' }); }
+    // вошёл через Google или Apple и пароля ещё нет — задаёт первый, текущий не нужен
+    if (u?.hash && !(await verifyPassword(current, u.hash))) { fail(`pw:${req.userId}`); return reply.code(400).send({ error: 'Текущий пароль неверный.' }); }
     if (next.length < 8 || next.length > 512) return reply.code(400).send({ error: 'Новый пароль — не короче 8 символов.' });
-    if (next === current) return reply.code(400).send({ error: 'Новый пароль совпадает с текущим.' });
+    if (u?.hash && next === current) return reply.code(400).send({ error: 'Новый пароль совпадает с текущим.' });
     await db.update(users).set({ passwordHash: await hashPassword(next) }).where(eq(users.id, req.userId));
     const t = tokenOf(req);
     const out = await db.delete(sessions).where(and(eq(sessions.userId, req.userId), t ? sql`${sessions.tokenHash} <> ${sha(t)}` : sql`true`)).returning({ h: sessions.tokenHash });
@@ -124,8 +129,10 @@ export async function authRoutes(app: FastifyInstance, { db }: { db: DB }) {
   const need = (req: FastifyRequest, reply: FastifyReply) => { if (!req.userId) { reply.code(401).send({ error: 'Нужно войти.' }); return false; } return true; };
   app.get('/api/account', async (req, reply) => {
     if (!need(req, reply)) return;
-    const [u] = await db.select({ username: users.username, email: users.email, createdAt: users.createdAt, tzOffset: users.tzOffset }).from(users).where(eq(users.id, req.userId!));
-    return u;
+    const [u] = await db.select({ username: users.username, email: users.email, createdAt: users.createdAt, tzOffset: users.tzOffset, hash: users.passwordHash }).from(users).where(eq(users.id, req.userId!));
+    const ids = await db.select({ provider: authIdentities.provider, email: authIdentities.email, createdAt: authIdentities.createdAt }).from(authIdentities).where(eq(authIdentities.userId, req.userId!));
+    const { hash, ...rest } = u!;
+    return { ...rest, hasPassword: !!hash, identities: ids };
   });
   app.put('/api/account', async (req, reply) => {
     if (!need(req, reply)) return;
@@ -163,10 +170,12 @@ export async function authRoutes(app: FastifyInstance, { db }: { db: DB }) {
   // удалить аккаунт: нужен пароль; все записи удаляются вместе с ним (каскадом) и без возврата
   app.post('/api/account/delete', async (req, reply) => {
     if (!need(req, reply)) return;
-    const password = String((req.body as { password?: unknown } | undefined)?.password ?? '').slice(0, 512);
+    const b = (req.body ?? {}) as { password?: unknown; confirm?: unknown }, password = String(b.password ?? '').slice(0, 512);
     if (tooMany(`del:${req.userId}`)) return reply.code(429).send({ error: 'Слишком много попыток. Подожди 15 минут.' });
-    const [u] = await db.select({ hash: users.passwordHash }).from(users).where(eq(users.id, req.userId!));
-    if (!(await verifyPassword(password, u?.hash))) { fail(`del:${req.userId}`); return reply.code(400).send({ error: 'Пароль неверный.' }); }
+    const [u] = await db.select({ hash: users.passwordHash, username: users.username }).from(users).where(eq(users.id, req.userId!));
+    // без пароля (вход через Google/Apple) подтверждение — логин
+    const ok = u?.hash ? await verifyPassword(password, u.hash) : String(b.confirm ?? '').trim().toLowerCase() === u?.username.toLowerCase();
+    if (!ok) { fail(`del:${req.userId}`); return reply.code(400).send({ error: u?.hash ? 'Пароль неверный.' : 'Логин не совпадает.' }); }
     await db.delete(users).where(eq(users.id, req.userId!));
     setCookie(req, reply, '', 0);
     return { ok: true };

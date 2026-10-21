@@ -103,7 +103,8 @@ export function InstallHelp() {
   </div>;
 }
 
-export function PasswordForm({ onDone }: { onDone: () => void }) {
+/** first — пароля ещё нет (вход через Google или Apple): текущий не спрашиваем */
+export function PasswordForm({ onDone, first = false }: { onDone: () => void; first?: boolean }) {
   const toast = useToast(), [v, setV] = useState({ current: '', next: '', again: '' }), [err, setErr] = useState(''), [busy, setBusy] = useState(false);
   return <form className="form" onSubmit={async e => {
     e.preventDefault(); setErr('');
@@ -112,10 +113,10 @@ export function PasswordForm({ onDone }: { onDone: () => void }) {
     try { const r = await api<{ signedOut: number }>('/api/auth/password', { method: 'POST', body: { current: v.current, next: v.next } }); toast(r.signedOut ? `Пароль изменён. Вышли с других устройств: ${r.signedOut}` : 'Пароль изменён'); onDone(); }
     catch (x) { setErr(x instanceof ApiError ? x.message : 'Не получилось'); } finally { setBusy(false); }
   }}>
-    <label className="fld"><span>Текущий пароль</span><input className="in" type="password" autoComplete="current-password" required value={v.current} onChange={e => setV({ ...v, current: e.target.value })} /></label>
+    {!first && <label className="fld"><span>Текущий пароль</span><input className="in" type="password" autoComplete="current-password" required value={v.current} onChange={e => setV({ ...v, current: e.target.value })} /></label>}
     <label className="fld"><span>Новый пароль</span><input className="in" type="password" autoComplete="new-password" required minLength={8} value={v.next} onChange={e => setV({ ...v, next: e.target.value })} /></label>
     <label className="fld"><span>Ещё раз</span><input className="in" type="password" autoComplete="new-password" required minLength={8} value={v.again} onChange={e => setV({ ...v, again: e.target.value })} /></label>
     {err && <p className="form-err">{err}</p>}
-    <button className="primary" disabled={busy}>Сменить пароль</button>
+    <button className="primary" disabled={busy}>{first ? 'Задать пароль' : 'Сменить пароль'}</button>
   </form>;
 }

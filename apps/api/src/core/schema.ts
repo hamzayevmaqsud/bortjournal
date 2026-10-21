@@ -17,7 +17,8 @@ export const users = pgTable('users', {
   username: text('username').notNull(),
   email: text('email'),
   /** scrypt$N$r$p$соль$хеш — формат переносится из старого журнала без изменений */
-  passwordHash: text('password_hash').notNull(),
+  /** null — вход только через Google или Apple, пароль не задан */
+  passwordHash: text('password_hash'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   /** часовой пояс: смещение от UTC в минутах — по нему считаются «сегодня» и напоминания */
   tzOffset: smallint('tz_offset').notNull().default(0),
@@ -26,6 +27,16 @@ export const users = pgTable('users', {
   uniqueIndex('users_username_uq').on(sql`lower(${t.username})`),
   uniqueIndex('users_email_uq').on(sql`lower(${t.email})`).where(sql`${t.email} is not null`)
 ]);
+
+/** Способы входа кроме пароля: Google и Apple. subject — постоянный id человека у провайдера */
+export const authIdentities = pgTable('auth_identities', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  provider: text('provider').notNull(),
+  subject: text('subject').notNull(),
+  email: text('email'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow()
+}, t => [uniqueIndex('auth_identities_provider_subject_uq').on(t.provider, t.subject), uniqueIndex('auth_identities_user_provider_uq').on(t.userId, t.provider)]);
 
 export const sessions = pgTable('sessions', {
   /** sha256 от токена из cookie — сам токен в базе не хранится */

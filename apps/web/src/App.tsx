@@ -28,6 +28,7 @@ import { Budget } from './screens/Budget';
 import { Books } from './screens/Books';
 import { Study } from './screens/Study';
 import { Profile } from './screens/Profile';
+import { takeAuthResult } from './lib/oauth';
 import { Reminders } from './components/Reminders';
 import { Stats, type StatsTab } from './screens/Stats';
 import { TodayWide } from './screens/TodayWide';
@@ -86,6 +87,8 @@ export function App() {
   const [me, setMe] = useState<Me | null | undefined>(undefined), [redo, setRedo] = useState(false);
   const ready = !!me?.profile?.heightCm;
   useEffect(() => { const h = location.hash.slice(1); if (ready && ORDER.includes(h)) { goRef.current(h); history.replaceState(null, '', location.pathname); } }, [ready]);
+  // вернулись после привязки Google или Apple из профиля — сказать, что вышло, и открыть профиль
+  useEffect(() => { if (!ready) return; const r = takeAuthResult(); if (!r) return; toast(r.error ?? r.ok!, r.error ? { err: true } : undefined); goRef.current('profile'); }, [ready]); // eslint-disable-line react-hooks/exhaustive-deps
   const [tab, setTab] = useState('today');
   const [day, setDay] = useState<string | null>(null), [today, setToday] = useState<string | null>(null);
   const [days, setDays] = useState<Record<string, TodayData>>({});

@@ -12,8 +12,9 @@ import { SubStatus } from '../components/Paywall';
 import { Sheet } from '../components/Sheet';
 import { useToast } from '../components/Toasts';
 import { PasswordForm, ThemePick } from './More';
+import { AppleMark, GoogleMark, PROVIDER_NAMES, startUrl, useProviders, type ProviderId } from '../lib/oauth';
 
-interface Account { username: string; email: string | null; createdAt: string; tzOffset: number }
+interface Account { username: string; email: string | null; createdAt: string; tzOffset: number; hasPassword: boolean; identities: Array<{ provider: ProviderId; email: string | null; createdAt: string }> }
 interface Device { id: string; current: boolean; userAgent: string | null; createdAt: string }
 const tzText = (m: number) => `UTC${m >= 0 ? '+' : '−'}${Math.floor(Math.abs(m) / 60)}${Math.abs(m) % 60 ? `:${String(Math.abs(m) % 60).padStart(2, '0')}` : ''}`;
 const since = (iso: string) => new Date(iso).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' });
@@ -57,18 +58,18 @@ function SectionsForm({ me, onSaved }: { me: Me; onSaved: (s: Record<string, unk
   </div>;
 }
 
-function DeleteForm({ username, onDeleted }: { username: string; onDeleted: () => void }) {
+function DeleteForm({ username, hasPassword, onDeleted }: { username: string; hasPassword: boolean; onDeleted: () => void }) {
   const [v, setV] = useState({ name: '', password: '' }), [err, setErr] = useState(''), [busy, setBusy] = useState(false);
   return <form className="form" onSubmit={async e => {
     e.preventDefault(); setErr(''); setBusy(true);
-    try { await api('/api/account/delete', { method: 'POST', body: { password: v.password } }); forgetLocal(); onDeleted(); }
+    try { await api('/api/account/delete', { method: 'POST', body: hasPassword ? { password: v.password } : { confirm: v.name } }); forgetLocal(); onDeleted(); }
     catch (x) { setErr(x instanceof ApiError ? x.message : 'Не получилось'); } finally { setBusy(false); }
   }}>
     <p className="del-warn">Аккаунт и <b>все записи</b> — еда, тренировки, учёба, бюджет, книги, планы — удалятся навсегда, вернуть их будет нельзя. Если данные могут пригодиться, сначала выгрузи их.</p>
     <label className="fld"><span>Напиши логин «{username}», чтобы подтвердить</span><input className="in" autoComplete="off" autoCapitalize="none" value={v.name} onChange={e => setV({ ...v, name: e.target.value })} /></label>
-    <label className="fld"><span>Пароль</span><input className="in" type="password" autoComplete="current-password" value={v.password} onChange={e => setV({ ...v, password: e.target.value })} /></label>
+    {hasPassword && <label className="fld"><span>Пароль</span><input className="in" type="password" autoComplete="current-password" value={v.password} onChange={e => setV({ ...v, password: e.target.value })} /></label>}
     {err && <p className="form-err">{err}</p>}
-    <button className="primary danger-bg" disabled={busy || v.name.trim().toLowerCase() !== username.toLowerCase() || !v.password}>Удалить аккаунт навсегда</button>
+    <button className="primary danger-bg" disabled={busy || v.name.trim().toLowerCase() !== username.toLowerCase() || (hasPassword && !v.password)}>Удалить аккаунт навсегда</button>
   </form>;
 }
 
@@ -89,7 +90,8 @@ export function Profile({ me, wide, onBack, onSaved, onRedo, onReminders, onPayw
   const outOne = async (id: string) => { try { await api(`/api/account/sessions/${id}`, { method: 'DELETE' }); setDevs(d => d.filter(x => x.id !== id)); toast('Устройство вышло из аккаунта'); } catch (x) { toast(x instanceof ApiError ? x.message : 'Не получилось', { err: true }); } };
   const outAll = async () => { try { const r = await api<{ signedOut: number }>('/api/account/sessions/others', { method: 'POST' }); setDevs(d => d.filter(x => x.current)); toast(`Вышли с других устройств: ${r.signedOut}`); } catch (x) { toast(x instanceof ApiError ? x.message : 'Не получилось', { err: true }); } };
   const display = String(s.name || me.username), goal = p?.goal as keyof typeof GOALS | null, pace = p?.pace as 'soft' | 'mid' | 'hard' | null;
-  const others = devs.filter(d => !d.current).length;
+  const others = devs.filter(d => !d.current).length, pv = useProviders();
+  const unlink = async (p: ProviderId) => { try { await api(`/api/auth/identities/${p}`, { method: 'DELETE' }); toast(`${PROVIDER_NAMES[p]} отвязан`); load(); } catch (x) { toast(x instanceof ApiError ? x.message : 'Не получилось', { err: true }); } };
 
   return <div className="day profile-page">
     <header className="dayhead">
@@ -109,9 +111,20 @@ export function Profile({ me, wide, onBack, onSaved, onRedo, onReminders, onPayw
         <label className="pf-row pf-edit"><span className="mid"><b>Почта</b><small>для входа и восстановления — по желанию</small></span><input className="in" type="email" inputMode="email" autoCapitalize="none" value={email} placeholder="name@mail.az" onChange={e => setEmail(e.target.value)} onBlur={saveEmail} onKeyDown={e => e.key === 'Enter' && saveEmail()} />{acc && email.trim().toLowerCase() !== (acc.email ?? '') && <button type="button" className="btn-accent" onClick={saveEmail}>Сохранить</button>}</label>
         <div className="pf-row"><span className="mid"><b>Логин</b><small>для входа, не меняется</small></span><span className="pf-val">{me.username}</span></div>
         <div className="pf-row"><span className="mid"><b>Часовой пояс</b><small>берётся с устройства — по нему «сегодня» и напоминания</small></span><span className="pf-val">{tzText(acc?.tzOffset ?? me.tzOffset)}</span></div>
-        <button className="pf-row" onClick={() => setSheet('password')}><span className="mid"><b>Сменить пароль</b><small>другие устройства выйдут из аккаунта</small></span><Icon name="chev" className="ic chev" /></button>
+        <button className="pf-row" onClick={() => setSheet('password')}><span className="mid"><b>{acc && !acc.hasPassword ? 'Задать пароль' : 'Сменить пароль'}</b><small>{acc && !acc.hasPassword ? 'чтобы входить и по логину' : 'другие устройства выйдут из аккаунта'}</small></span><Icon name="chev" className="ic chev" /></button>
       </div>
     </section>
+
+    {(pv.google || pv.apple || (acc?.identities.length ?? 0) > 0) && <section className="panel"><div className="panel-h"><h2>Способы входа</h2></div>
+      <div className="pf-list">
+        <div className="pf-row"><span className="mid"><b>Логин и пароль</b><small>{acc?.hasPassword ? `@${me.username}` : 'пароль не задан'}</small></span>{acc && !acc.hasPassword && <button className="btn-accent" onClick={() => setSheet('password')}>Задать</button>}</div>
+        {(['apple', 'google'] as const).filter(p => pv[p] || acc?.identities.some(i => i.provider === p)).map(p => { const id = acc?.identities.find(i => i.provider === p); return <div key={p} className="pf-row">
+          <span className="pv-ic">{p === 'google' ? <GoogleMark /> : <AppleMark />}</span>
+          <span className="mid"><b>{PROVIDER_NAMES[p]}</b><small>{id ? (id.email ? `привязан · ${id.email}` : 'привязан') : 'не привязан'}</small></span>
+          {id ? <button className="btn-accent" onClick={() => unlink(p)}>Отвязать</button> : pv[p] && <a className="btn-accent" href={startUrl(p, true)}>Привязать</a>}</div>; })}
+      </div>
+      <p className="card-note">Привязанным аккаунтом можно входить вместо логина и пароля. Последний способ входа отвязать нельзя.</p>
+    </section>}
 
     <section className="panel"><div className="panel-h"><h2>Тело и цель</h2><small>по анкете</small></div>
       {p?.heightCm ? <div className="pf-facts">
@@ -150,9 +163,9 @@ export function Profile({ me, wide, onBack, onSaved, onRedo, onReminders, onPayw
       </div>
     </section>
 
-    <Sheet open={!!sheet} onClose={() => setSheet(null)} title={sheet === 'delete' ? 'Удалить аккаунт' : 'Сменить пароль'}>
-      {sheet === 'password' && <PasswordForm onDone={() => { setSheet(null); load(); }} />}
-      {sheet === 'delete' && <DeleteForm username={me.username} onDeleted={onDeleted} />}
+    <Sheet open={!!sheet} onClose={() => setSheet(null)} title={sheet === 'delete' ? 'Удалить аккаунт' : acc && !acc.hasPassword ? 'Задать пароль' : 'Сменить пароль'}>
+      {sheet === 'password' && <PasswordForm first={acc ? !acc.hasPassword : false} onDone={() => { setSheet(null); load(); }} />}
+      {sheet === 'delete' && <DeleteForm username={me.username} hasPassword={acc?.hasPassword ?? true} onDeleted={onDeleted} />}
     </Sheet>
   </div>;
 }
