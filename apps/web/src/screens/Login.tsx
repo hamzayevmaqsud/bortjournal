@@ -3,10 +3,11 @@ import { useState } from 'react';
 import { AppleMark, GoogleMark, startUrl, takeAuthResult, useProviders } from '../lib/oauth';
 import { TRIAL_DAYS } from '@bortjournal/core';
 import { api, ApiError } from '../lib/api';
+import { Icon } from '../components/Icon';
 
-export function Login({ onDone }: { onDone: () => void }) {
+export function Login({ onDone, onForgot }: { onDone: () => void; onForgot?: () => void }) {
   const [mode, setMode] = useState<'in' | 'up'>('in');
-  const [u, setU] = useState(''), [p, setP] = useState(''), [mail, setMail] = useState(''), [err, setErr] = useState(() => takeAuthResult()?.error ?? ''), [busy, setBusy] = useState(false);
+  const [show, setShow] = useState(false), [u, setU] = useState(''), [p, setP] = useState(''), [mail, setMail] = useState(''), [err, setErr] = useState(() => takeAuthResult()?.error ?? ''), [busy, setBusy] = useState(false);
   const pv = useProviders(), any = pv.google || pv.apple;
   const up = mode === 'up';
   return <main className="login">
@@ -33,7 +34,9 @@ export function Login({ onDone }: { onDone: () => void }) {
     }}>
       <input id="login-user" autoComplete="username" placeholder="Логин" value={u} onChange={e => setU(e.target.value)} required autoCapitalize="none" spellCheck={false} />
       {up && <input id="login-mail" type="email" autoComplete="email" placeholder="Почта (по желанию)" value={mail} onChange={e => setMail(e.target.value)} />}
-      <input id="login-pass" type="password" autoComplete={up ? 'new-password' : 'current-password'} placeholder={up ? 'Пароль — от 8 символов' : 'Пароль'} value={p} onChange={e => setP(e.target.value)} required minLength={up ? 8 : undefined} />
+      <div className="pw-field"><input id="login-pass" type={show ? 'text' : 'password'} autoComplete={up ? 'new-password' : 'current-password'} placeholder={up ? 'Пароль — от 8 символов' : 'Пароль'} value={p} onChange={e => setP(e.target.value)} required minLength={up ? 8 : undefined} />
+        <button type="button" className="pw-eye" onClick={() => setShow(x => !x)} aria-label={show ? 'Скрыть пароль' : 'Показать пароль'} aria-pressed={show}><Icon name={show ? 'eyeOff' : 'eye'} /></button></div>
+      {!up && onForgot && <button type="button" className="forgot" onClick={onForgot}>Забыли пароль?</button>}
       <div className="err" role="alert">{err}</div>
       <button type="submit" disabled={busy}>{busy ? (up ? 'Создаю…' : 'Вхожу…') : up ? 'Создать аккаунт' : 'Войти'}</button>
     </form>

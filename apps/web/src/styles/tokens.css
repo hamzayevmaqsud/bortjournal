@@ -2,12 +2,14 @@
 :root{
   --bg:#EFE3CE; --card:#FBF4E6; --field:#FFFAF1; --track:#E6D8C0;
   --line:rgba(46,58,78,.10); --line-2:rgba(46,58,78,.18);
-  --text:#2B3445; --text-2:#6E6758; --text-3:#A19682;
+  --text:#2B3445; --text-2:#6E6758; --text-3:#736956;
   --navy:#2F3B4F; --on-navy:#FBF4E6;
-  --orange:#D9622B; --orange-soft:#F4D4BE;
-  --food:#D9622B; --water:#2F86C8; --steps:#4D7B78; --study:#2F3B4F; --gym:#3C5B38; --money:#2E6B57; --books:#7A4B2A; --quiz:#B5891E;
+  --orange:#B9501F; --orange-soft:#F4D4BE; --orange-ink:#9E3F14;
+  /* заливки под белым текстом — контраст не ниже 4,5:1 в обеих темах */
+  --fill-orange:#B9501F; --fill-water:#2775B0;
+  --food:#B9501F; --water:#2775B0; --steps:#4D7B78; --study:#2F3B4F; --gym:#3C5B38; --money:#2E6B57; --books:#7A4B2A; --quiz:#B5891E;
   --good:#3C5B38; --bad:#B8432E; --bad-soft:#F3C8BB; --mustard:#CFA232;
-  --sage:#C8D8BD; --on-sage:#3C5B38; --peach:#F4D4BE; --on-peach:#8E2F22; --on-mustard:#FBF4E6; --water-on-navy:#6FB4EA;
+  --sage:#C8D8BD; --on-sage:#3C5B38; --peach:#F4D4BE; --on-peach:#8E2F22; --on-mustard:#2B3445; --water-on-navy:#6FB4EA;
   --mustard-solid:#CFA232;
   --c-kcal:#D9622B; --c-prot:#3F6FB5; --c-fat:#B07D0A; --c-carb:#1F9473; --c-water:#2A7FB8; --c-caf:#5A3A22; --c-fiber:#6B8E23; --c-sugar:#C2185B; --c-salt:#5F6B7A;
   --st-good:#3C7A3A; --st-warn:#B5891E; --st-bad:#C0392B;
@@ -21,9 +23,9 @@
   color-scheme:dark;
   --bg:#1B1915; --card:#25221D; --field:#2D2924; --track:#3A352E;
   --line:rgba(251,244,230,.08); --line-2:rgba(251,244,230,.15);
-  --text:#F3EADA; --text-2:#B8AD9A; --text-3:#82786A;
+  --text:#F3EADA; --text-2:#B8AD9A; --text-3:#9A8F7F;
   --navy:#2C3546; --on-navy:#F3EADA;
-  --orange:#E5733C; --orange-soft:#4A2E20;
+  --orange:#E5733C; --orange-soft:#4A2E20; --orange-ink:#F2A26F; --fill-orange:#B5541F; --fill-water:#2F6FA8;
   --food:#E5733C; --water:#5AA6E0; --steps:#6FA9A4; --study:#9AAACB; --gym:#7FA877; --money:#5DAA8A; --books:#C08A5E; --quiz:#D9B04A;
   --good:#7FA877; --bad:#E07A62; --bad-soft:#4A2620; --mustard:#D9B04A;
   --sage:#2E3A2B; --on-sage:#B9D3AE; --peach:#3F2A21; --on-peach:#F2C2A6; --on-mustard:#FFF3D6; --water-on-navy:#6FB4EA; --mustard-solid:#8A6A1A;
@@ -35,9 +37,9 @@
   color-scheme:dark;
   --bg:#1B1915; --card:#25221D; --field:#2D2924; --track:#3A352E;
   --line:rgba(251,244,230,.08); --line-2:rgba(251,244,230,.15);
-  --text:#F3EADA; --text-2:#B8AD9A; --text-3:#82786A;
+  --text:#F3EADA; --text-2:#B8AD9A; --text-3:#9A8F7F;
   --navy:#2C3546; --on-navy:#F3EADA;
-  --orange:#E5733C; --orange-soft:#4A2E20;
+  --orange:#E5733C; --orange-soft:#4A2E20; --orange-ink:#F2A26F; --fill-orange:#B5541F; --fill-water:#2F6FA8;
   --food:#E5733C; --water:#5AA6E0; --steps:#6FA9A4; --study:#9AAACB; --gym:#7FA877; --money:#5DAA8A; --books:#C08A5E; --quiz:#D9B04A;
   --good:#7FA877; --bad:#E07A62; --bad-soft:#4A2620; --mustard:#D9B04A;
   --sage:#2E3A2B; --on-sage:#B9D3AE; --peach:#3F2A21; --on-peach:#F2C2A6; --on-mustard:#FFF3D6; --water-on-navy:#6FB4EA; --mustard-solid:#8A6A1A;

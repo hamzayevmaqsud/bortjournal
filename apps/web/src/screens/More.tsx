@@ -9,11 +9,14 @@ import { useToast } from '../components/Toasts';
 import { applyTheme, savedTheme, type Theme } from '../lib/theme';
 import { buzz } from '../lib/motion';
 import { can } from '../lib/features';
+import { nativeApp } from '../lib/oauth';
+// уже стоит как приложение (с экрана «Домой» или из App Store) — ставить нечего
+const installed = () => nativeApp() || matchMedia('(display-mode: standalone)').matches || (navigator as { standalone?: boolean }).standalone === true;
 
 // уже переехали в новую версию — открываются по-настоящему
 const PRO_SECTIONS: Array<[string, string, string, string]> = [
   ['goal', 'Цель и прогноз', 'target', 'var(--steps)'], ['gym', 'Зал', 'gym', 'var(--gym)'], ['study', 'Учёба и вопросы', 'study', 'var(--study)'],
-  ['budget', 'Бюджет', 'money', 'var(--money)'], ['books', 'Книги', 'books', 'var(--books)'], ['stats', 'Статистика и итог недели', 'stats', 'var(--orange)'],
+  ['budget', 'Бюджет', 'money', 'var(--money)'], ['books', 'Книги', 'books', 'var(--books)'], ['stats', 'Статистика', 'stats', 'var(--orange)'],
   ['awards', 'Достижения', 'star', 'var(--quiz)'], ['reminders', 'Напоминания', 'drop', 'var(--water)']
 ];
 
@@ -35,7 +38,11 @@ export function ThemePick({ me, onSaved }: { me: Me; onSaved: (s: Record<string,
   </section>;
 }
 
-export function More({ me, onPaywall, onPro, onSettings, onInstall, onLogout, onSaved }: { me: Me; onPaywall: (focus?: string) => void; onPro: (what: string) => void; onSettings: () => void; onInstall: () => void; onLogout: () => void; onSaved: (s: Record<string, unknown>) => void }) {
+/** живая сводка раздела вместо «открыть»: что там сейчас */
+export type MoreSummary = Partial<Record<string, string>>;
+// разделы, которые на компьютере уже есть в нижней панели — в «Ещё» их не дублируем
+const IN_DOCK = new Set(['goal', 'gym', 'study', 'budget', 'books', 'stats']);
+export function More({ me, wide = false, summary = {}, onPaywall, onPro, onSettings, onInstall, onLogout }: { me: Me; wide?: boolean; summary?: MoreSummary; onPaywall: (focus?: string) => void; onPro: (what: string) => void; onSettings: () => void; onInstall: () => void; onLogout: () => void; onSaved?: (s: Record<string, unknown>) => void }) {
   const s = me.profile?.settings ?? {}, sub = me.subscription, [pw, setPw] = useState(false);
   return <div className="day more-page">
     <header className="dayhead"><div className="daytitle"><span>ещё</span><b>{s.name || me.username}</b></div></header>
@@ -48,21 +55,20 @@ export function More({ me, onPaywall, onPro, onSettings, onInstall, onLogout, on
       <span className="mid"><b>Подписка</b><small>{sub.source === 'trial' ? `Пробный Pro закончится через ${sub.daysLeft} дн.` : sub.pro ? (sub.expiresAt ? `Pro до ${new Date(sub.expiresAt).toLocaleDateString('ru-RU')}` : 'Pro открыт навсегда') : sub.features?.length ? `Свой набор: ${sub.features.length} ${sub.features.length === 1 ? 'раздел' : sub.features.length < 5 ? 'раздела' : 'разделов'}${sub.expiresAt ? ` · до ${new Date(sub.expiresAt).toLocaleDateString('ru-RU')}` : ''}` : 'Еда, вода, шаги, задачи, цель и статистика — бесплатно'}</small></span>
       <SubStatus sub={sub} />
     </button>
-    <ThemePick me={me} onSaved={onSaved} />
     <div className="rows">
-      {PRO_SECTIONS.map(([k, n, ic, c]) => { const open = can(sub, k === 'awards' ? 'stats' : k); return <button key={k} className="row" onClick={() => onPro(n)}>
+      {PRO_SECTIONS.filter(([k]) => !wide || !IN_DOCK.has(k)).map(([k, n, ic, c]) => { const open = can(sub, k === 'awards' ? 'stats' : k); return <button key={k} className="row" onClick={() => onPro(n)}>
         <span className="chip-ic" style={{ ['--c' as string]: c }}><Icon name={ic} /></span>
-        <span className="mid"><b>{n}</b><small>{open ? 'открыть' : 'в Pro или в своём наборе'}</small></span>
+        <span className="mid"><b>{n}</b><small>{open ? summary[k] ?? 'открыть' : 'в Pro или в своём наборе'}</small></span>
         {!open ? <span className="lock">PRO</span> : <Icon name="chev" className="ic chev" />}
       </button>; })}
     </div>
     <div className="rows">
-      <button className="row" onClick={onInstall}><span className="chip-ic" style={{ ['--c' as string]: 'var(--water)' }}><Icon name="plus" /></span><span className="mid"><b>Установить на телефон</b><small>как приложение, с иконкой на экране</small></span><Icon name="chev" className="ic chev" /></button>
+      {!installed() && <button className="row" onClick={onInstall}><span className="chip-ic" style={{ ['--c' as string]: 'var(--water)' }}><Icon name="plus" /></span><span className="mid"><b>Установить на телефон</b><small>как приложение, с иконкой на экране</small></span><Icon name="chev" className="ic chev" /></button>}
       <button className="row" onClick={() => setPw(true)}><span className="chip-ic" style={{ ['--c' as string]: 'var(--orange)' }}><Icon name="edit" /></span><span className="mid"><b>Сменить пароль</b><small>другие устройства выйдут из аккаунта</small></span><Icon name="chev" className="ic chev" /></button>
-      <a className="row" href="/api/export" download><span className="chip-ic" style={{ ['--c' as string]: 'var(--steps)' }}><Icon name="stats" /></span><span className="mid"><b>Выгрузить мои данные</b><small>всё, что записано, — одним файлом JSON</small></span><Icon name="chev" className="ic chev" /></a>
-      <button className="row" onClick={onLogout}><span className="chip-ic" style={{ ['--c' as string]: 'var(--bad)' }}><Icon name="chevL" /></span><span className="mid"><b>Выйти</b><small>{me.username}</small></span></button>
+      <a className="row" href="/api/export" download><span className="chip-ic" style={{ ['--c' as string]: 'var(--steps)' }}><Icon name="file" /></span><span className="mid"><b>Выгрузить мои данные</b><small>всё, что записано, — одним файлом JSON</small></span><Icon name="chev" className="ic chev" /></a>
+      <button className="row" onClick={onLogout}><span className="chip-ic" style={{ ['--c' as string]: 'var(--bad)' }}><Icon name="logout" /></span><span className="mid"><b>Выйти</b><small>{me.username}</small></span></button>
     </div>
-    <p className="hint">Бортжурнал · новая версия</p>
+    <p className="hint">Бортжурнал · бета</p>
     <Sheet open={pw} onClose={() => setPw(false)} title="Сменить пароль">{pw && <PasswordForm onDone={() => setPw(false)} />}</Sheet>
   </div>;
 }

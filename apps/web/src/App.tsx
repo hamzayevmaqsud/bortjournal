@@ -8,7 +8,7 @@ import { can } from './lib/features';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { addDays } from '@bortjournal/core';
 import { api, ApiError, flushOutbox, forgetLocal, pendingCount, setOwner, type Drink, type FoodDay, type Meal, type Me, type Subscription, type TaskFull, type Today as TodayData } from './lib/api';
-import { fmt1 } from './lib/format';
+import { fmt, fmt1, plural } from './lib/format';
 import { buzz } from './lib/motion';
 import { DrinkForm, MealForm, NumberForm, TaskForm } from './components/Forms';
 import { FoodAi, FoodSearch } from './components/FoodPro';
@@ -230,6 +230,18 @@ export function App() {
     return <Onboarding initial={initial} onCancel={p?.heightCm ? () => setRedo(false) : undefined} onDone={async () => { setRedo(false); await loadMe(); setDays({}); loadDay(); }} />;
   }
 
+  // «Ещё»: короткая живая сводка каждого раздела вместо «открыть»
+  const P = data?.parts as any, moreSummary: Record<string, string> = {};
+  if (P) {
+    if (P.body?.weight) moreSummary.goal = `вес ${fmt1(P.body.weight.kg)} кг · прогноз и вехи`;
+    if (P.gym) moreSummary.gym = P.gym.workouts?.length ? `сегодня: ${P.gym.workouts.map((w: any) => w.title).join(', ')}` : P.gym.plan ? `по плану: ${P.gym.plan.name}` : 'сегодня без тренировки';
+    if (P.study) moreSummary.study = P.study.quiz?.left ? `${P.study.quiz.left} ${plural(P.study.quiz.left, 'вопрос', 'вопроса', 'вопросов')} на сегодня` : P.study.minutes ? `${P.study.minutes} мин сегодня` : 'конспекты и вопросы';
+    if (P.budget) moreSummary.budget = P.budget.configured && P.budget.leftToday !== undefined ? (P.budget.leftToday >= 0 ? `${fmt(Math.round(P.budget.leftToday))} ${P.budget.currency} можно сегодня` : `перерасход ${fmt(Math.round(-P.budget.leftToday))} ${P.budget.currency}`) : 'задай бюджет на месяц';
+    if (P.books) moreSummary.books = P.books.reading ? `читаю: ${P.books.reading.title} · ${P.books.reading.pct}%` : 'полка и цель года';
+    moreSummary.stats = `серия ${data!.streak} ${plural(data!.streak, 'день', 'дня', 'дней')} · оценки дней`;
+    moreSummary.awards = 'награды за серии и рекорды';
+  }
+  moreSummary.reminders = me.profile?.settings?.remind?.off ? 'выключены' : 'вода, еда, задачи, тренировки';
   const logout = async () => { await api('/api/auth/logout', { method: 'POST' }).catch(() => {}); forgetLocal(); setMe(null); setDays({}); setDay(null); setToday(null); setTab('today'); };
   const pos = (name: string) => name === tab ? 'center' : ORDER.indexOf(name) < ORDER.indexOf(tab) ? 'left' : 'right';
   const foodPart = data?.parts.food, body = data?.parts.body;
@@ -275,7 +287,7 @@ export function App() {
           onDeleted={() => { toast('Аккаунт удалён'); setMe(null); setDays({}); setDay(null); setToday(null); setTab('today'); }} />}
       </section>
       <section className="screen" data-pos={pos('more')} aria-hidden={tab !== 'more'}>
-        <More me={me} onPro={pro} onSaved={st => setMe(m => m && m.profile ? { ...m, profile: { ...m.profile, settings: st } } : m)} onPaywall={focus => open({ kind: 'paywall', focus })} onSettings={() => go('profile')} onInstall={() => open({ kind: 'install' })}
+        <More me={me} wide={wide} summary={moreSummary} onPro={pro} onSaved={st => setMe(m => m && m.profile ? { ...m, profile: { ...m.profile, settings: st } } : m)} onPaywall={focus => open({ kind: 'paywall', focus })} onSettings={() => go('profile')} onInstall={() => open({ kind: 'install' })}
           onLogout={logout} />
       </section>
     </div>

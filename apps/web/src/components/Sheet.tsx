@@ -60,7 +60,8 @@ export function Sheet({ open, onClose, title, children, tall = false }: { open: 
   const ui = <>
     <div ref={scrim} className={`scrim ${open ? 'on' : ''}`} onClick={onClose} />
     <div ref={sheet} className={`sheet ${tall ? 'tall' : ''} ${wide ? 'modal' : ''}`} role="dialog" aria-modal="true" aria-label={title} aria-hidden={!open} inert={!open || undefined}>
-      {wide ? <button className="x" onClick={onClose} aria-label="Закрыть">×</button> : <div className="grab" />}
+      {!wide && <div className="grab" />}
+      <button className="x" onClick={onClose} aria-label="Закрыть">×</button>
       {title && <h2>{title}</h2>}
       <div className="sheet-body" ref={body}>{open ? children : null}</div>
     </div>
