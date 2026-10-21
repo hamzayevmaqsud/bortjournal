@@ -5,10 +5,21 @@ import { TRIAL_DAYS } from '@bortjournal/core';
 import { api, ApiError } from '../lib/api';
 import { Icon } from '../components/Icon';
 
-export function Login({ onDone, onForgot }: { onDone: () => void; onForgot?: () => void }) {
+export function Login({ onDone }: { onDone: () => void }) {
   const [mode, setMode] = useState<'in' | 'up'>('in');
   const [show, setShow] = useState(false), [u, setU] = useState(''), [p, setP] = useState(''), [mail, setMail] = useState(''), [err, setErr] = useState(() => takeAuthResult()?.error ?? ''), [busy, setBusy] = useState(false);
-  const pv = useProviders(), any = pv.google || pv.apple;
+  const pv = useProviders(), any = pv.google || pv.apple, [forgot, setForgot] = useState(false), [sent, setSent] = useState('');
+  if (forgot) return <main className="login">
+    <div className="brand"><i><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l1.6 6.4L20 12l-6.4 1.6L12 21l-1.6-7.4L4 12l6.4-2.6z" fill="currentColor" /></svg></i>Бортжурнал</div>
+    <h1>Новый пароль</h1>
+    {sent ? <p>{sent}</p> : <p>Напиши логин или почту — пришлём ссылку, чтобы задать новый пароль.</p>}
+    {!sent && <form onSubmit={async e => { e.preventDefault(); setBusy(true); setErr(''); try { const r = await api<{ message: string }>('/api/auth/forgot', { method: 'POST', body: { login: u } }); setSent(r.message); } catch (x) { setErr(x instanceof ApiError ? x.message : 'Не получилось.'); } finally { setBusy(false); } }}>
+      <input id="forgot-login" autoComplete="username" autoCapitalize="none" spellCheck={false} placeholder="Логин или почта" value={u} onChange={e => setU(e.target.value)} required />
+      <div className="err" role="alert">{err}</div>
+      <button type="submit" disabled={busy}>{busy ? 'Отправляю…' : 'Прислать ссылку'}</button>
+    </form>}
+    <button type="button" className="forgot" style={{ alignSelf: 'center' }} onClick={() => { setForgot(false); setSent(''); }}>← Ко входу</button>
+  </main>;
   const up = mode === 'up';
   return <main className="login">
     <div className="brand"><i><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l1.6 6.4L20 12l-6.4 1.6L12 21l-1.6-7.4L4 12l6.4-2.6z" fill="currentColor" /></svg></i>Бортжурнал</div>
@@ -33,10 +44,10 @@ export function Login({ onDone, onForgot }: { onDone: () => void; onForgot?: () 
       finally { setBusy(false); }
     }}>
       <input id="login-user" autoComplete="username" placeholder="Логин" value={u} onChange={e => setU(e.target.value)} required autoCapitalize="none" spellCheck={false} />
-      {up && <input id="login-mail" type="email" autoComplete="email" placeholder="Почта (по желанию)" value={mail} onChange={e => setMail(e.target.value)} />}
+      {up && <input id="login-mail" type="email" autoComplete="email" placeholder="Почта — чтобы восстановить пароль" value={mail} onChange={e => setMail(e.target.value)} />}
       <div className="pw-field"><input id="login-pass" type={show ? 'text' : 'password'} autoComplete={up ? 'new-password' : 'current-password'} placeholder={up ? 'Пароль — от 8 символов' : 'Пароль'} value={p} onChange={e => setP(e.target.value)} required minLength={up ? 8 : undefined} />
         <button type="button" className="pw-eye" onClick={() => setShow(x => !x)} aria-label={show ? 'Скрыть пароль' : 'Показать пароль'} aria-pressed={show}><Icon name={show ? 'eyeOff' : 'eye'} /></button></div>
-      {!up && onForgot && <button type="button" className="forgot" onClick={onForgot}>Забыли пароль?</button>}
+      {!up && <button type="button" className="forgot" onClick={() => { setForgot(true); setErr(''); }}>Забыли пароль?</button>}
       <div className="err" role="alert">{err}</div>
       <button type="submit" disabled={busy}>{busy ? (up ? 'Создаю…' : 'Вхожу…') : up ? 'Создать аккаунт' : 'Войти'}</button>
     </form>

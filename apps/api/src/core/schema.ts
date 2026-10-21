@@ -30,6 +30,15 @@ export const users = pgTable('users', {
   uniqueIndex('users_email_uq').on(sql`lower(${t.email})`).where(sql`${t.email} is not null`)
 ]);
 
+/** Ссылки для сброса пароля: в базе — sha256, ссылка живёт 30 минут и срабатывает один раз */
+export const passwordResets = pgTable('password_resets', {
+  tokenHash: text('token_hash').primaryKey(),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  usedAt: timestamp('used_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow()
+});
+
 /** Отзывы из приложения: «Написать разработчику» */
 export const feedback = pgTable('feedback', {
   id: uuid('id').primaryKey().defaultRandom(),

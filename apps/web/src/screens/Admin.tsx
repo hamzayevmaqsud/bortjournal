@@ -20,6 +20,8 @@ export function Admin({ wide, onBack }: { wide: boolean; onBack: () => void }) {
   if (!d) return <div className="day"><div className="skel" style={{ height: 400 }} /></div>;
   const today = new Date().toISOString().slice(0, 10), days = Array.from({ length: 14 }, (_, k) => addDays(today, k - 13));
   const series = (rows: Array<{ day: string; n: number }>) => days.map(day => { const n = rows.filter(r => r.day === day).reduce((a, r) => a + r.n, 0); return { label: String(+day.slice(8)), v: n, hint: `${human(day)}: ${n}` }; });
+  const [links, setLinks] = useState<Record<string, string>>({});
+  const resetLink = async (id: string) => { try { const r = await api<{ link: string }>(`/api/admin/users/${id}/reset-link`, { method: 'POST' }); setLinks(l => ({ ...l, [id]: r.link })); } catch (e) { toast(e instanceof ApiError ? e.message : 'Не получилось', { err: true }); } };
   const toggle = async (id: string) => { await api(`/api/admin/feedback/${id}/done`, { method: 'POST' }).catch(() => {}); load(); };
   const people = all ? d.people : d.people.slice(0, 30);
   return <div className="day admin-page">
@@ -50,6 +52,8 @@ export function Admin({ wide, onBack }: { wide: boolean; onBack: () => void }) {
       <div className="ad-people">{people.map((p: any) => <div key={p.id} className="ad-p">
         <div className="ad-p-head"><b>@{p.username}</b><span>{ago(p.lastSeenAt)}</span></div>
         <small>с {human(String(p.createdAt).slice(0, 10))}{p.onboarded ? '' : ' · анкета не пройдена'}{Array.isArray(p.sections) ? ` · ${p.sections.map((x: string) => SECT[x] ?? x).join(', ')}` : ''}</small>
+        <button className="link-btn ad-reset" onClick={() => resetLink(p.id)}>Ссылка для нового пароля</button>
+        {links[p.id] && <div className="vs-key"><code>{links[p.id]}</code><button className="btn-accent" onClick={() => navigator.clipboard.writeText(links[p.id]!).then(() => toast('Ссылка скопирована — действует 30 минут'), () => {})}>Скопировать</button></div>}
         <div className="ad-nums">{([['еда', p.meals], ['напитки', p.drinks], ['задачи', p.tasks], ['трен.', p.workouts], ['конспекты', p.materials], ['траты', p.spends], ['дней из 7', p.days7], ['ИИ 7д', p.ai7]] as Array<[string, number]>).map(([n, v]) => <span key={n} className={v ? '' : 'zero'}><b>{fmt(v)}</b>{n}</span>)}</div>
       </div>)}</div>
       {!all && d.people.length > 30 && <button className="link-btn" onClick={() => setAll(true)}>Показать всех · {d.people.length} {plural(d.people.length, 'человек', 'человека', 'человек')}</button>}

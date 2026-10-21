@@ -34,6 +34,7 @@ import { VoiceCapture } from './components/Voice';
 import { AiConsent } from './components/AiConsent';
 import { FeedbackForm } from './components/Feedback';
 import { Admin } from './screens/Admin';
+import { ResetPassword } from './screens/Reset';
 import { Stats, type StatsTab } from './screens/Stats';
 import { TodayWide } from './screens/TodayWide';
 import { useWide } from './lib/wide';
@@ -90,6 +91,8 @@ export function App() {
   }, [wide, showTabs]);
   const [me, setMe] = useState<Me | null | undefined>(undefined), [redo, setRedo] = useState(false);
   const ready = !!me?.profile?.heightCm;
+  // ссылка для нового пароля: /#reset=…
+  const [resetToken, setResetToken] = useState(() => /^#reset=([\w-]{20,})$/.exec(location.hash)?.[1] ?? '');
   useEffect(() => { const h = location.hash.slice(1); if (!ready) return; if (h === 'voice') { openRef.current({ kind: 'voice' }); history.replaceState(null, '', location.pathname); } else if (ORDER.includes(h)) { goRef.current(h); history.replaceState(null, '', location.pathname); } }, [ready]);
   // вернулись после привязки Google или Apple из профиля — сказать, что вышло, и открыть профиль
   useEffect(() => { if (!ready) return; const r = takeAuthResult(); if (!r) return; toast(r.error ?? r.ok!, r.error ? { err: true } : undefined); goRef.current('profile'); }, [ready]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -230,6 +233,7 @@ export function App() {
   };
   goRef.current = go;
 
+  if (resetToken) return <ResetPassword token={resetToken} onDone={async () => { setResetToken(''); await loadMe(); setDays({}); loadDay(); }} />;
   if (me === undefined) return <div className="app" />;
   if (me === null) return <Login onDone={loadMe} />;
   if ((!me.profile?.heightCm && me.profile?.settings?.onboarded !== true) || redo) {
