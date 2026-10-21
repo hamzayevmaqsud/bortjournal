@@ -14,13 +14,13 @@ const ago = (iso: string | null) => { if (!iso) return 'не заходил'; co
 const SECT: Record<string, string> = { food: 'еда', water: 'вода', steps: 'шаги', tasks: 'задачи', gym: 'зал', study: 'учёба', budget: 'бюджет', books: 'книги' };
 
 export function Admin({ wide, onBack }: { wide: boolean; onBack: () => void }) {
-  const toast = useToast(), [d, setD] = useState<any>(null), [all, setAll] = useState(false);
+  // все хуки — до раннего выхода «ещё грузится», иначе React падает (ошибка #310)
+  const toast = useToast(), [d, setD] = useState<any>(null), [all, setAll] = useState(false), [links, setLinks] = useState<Record<string, string>>({});
   const load = useCallback(async () => { try { setD(await api<any>('/api/admin/overview')); } catch (e) { toast(e instanceof ApiError ? e.message : 'Не получилось загрузить', { err: true }); } }, [toast]);
   useEffect(() => { load(); }, [load]);
   if (!d) return <div className="day"><div className="skel" style={{ height: 400 }} /></div>;
   const today = new Date().toISOString().slice(0, 10), days = Array.from({ length: 14 }, (_, k) => addDays(today, k - 13));
   const series = (rows: Array<{ day: string; n: number }>) => days.map(day => { const n = rows.filter(r => r.day === day).reduce((a, r) => a + r.n, 0); return { label: String(+day.slice(8)), v: n, hint: `${human(day)}: ${n}` }; });
-  const [links, setLinks] = useState<Record<string, string>>({});
   const resetLink = async (id: string) => { try { const r = await api<{ link: string }>(`/api/admin/users/${id}/reset-link`, { method: 'POST' }); setLinks(l => ({ ...l, [id]: r.link })); } catch (e) { toast(e instanceof ApiError ? e.message : 'Не получилось', { err: true }); } };
   const toggle = async (id: string) => { await api(`/api/admin/feedback/${id}/done`, { method: 'POST' }).catch(() => {}); load(); };
   const people = all ? d.people : d.people.slice(0, 30);

@@ -15,7 +15,7 @@ export function FeedbackForm({ onDone }: { onDone: () => void }) {
     e.preventDefault(); setBusy(true);
     try {
       await api('/api/feedback', { method: 'POST', body: { text, screen: lastScreen(), version: VERSION, theme: document.documentElement.dataset.theme ?? 'system', size: `${innerWidth}×${innerHeight}` } });
-      buzz([10, 30, 10]); toast('Спасибо! Сообщение у разработчика'); onDone();
+      buzz([10, 30, 10]); toast('Спасибо! Отзыв сохранён — он в «Ещё → Админка → Отзывы»'); onDone();
     } catch (x) { toast(x instanceof ApiError ? x.message : 'Не получилось отправить', { err: true }); } finally { setBusy(false); }
   }}>
     <p className="card-note">Что понравилось, что мешает, где ошибка — пиши как есть. Экран, версия и тип устройства приложатся сами.</p>

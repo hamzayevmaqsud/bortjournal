@@ -1893,3 +1893,6 @@ a.btn-accent{text-decoration:none}
 .ad-nums span b{font:800 13px var(--display);color:var(--text)}
 .ad-nums span.zero{opacity:.45}
 .ad-reset{align-self:flex-start;font-size:12.5px}
+.crash{margin:24px auto;max-width:480px;padding:20px;border-radius:var(--r3);background:var(--card);display:flex;flex-direction:column;gap:10px}
+.crash h2{margin:0;font:800 20px var(--display)}
+.crash p{margin:0;color:var(--text-2)}

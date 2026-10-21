@@ -33,6 +33,7 @@ import { Reminders } from './components/Reminders';
 import { VoiceCapture } from './components/Voice';
 import { AiConsent } from './components/AiConsent';
 import { FeedbackForm } from './components/Feedback';
+import { Boundary } from './components/Boundary';
 import { Admin } from './screens/Admin';
 import { ResetPassword } from './screens/Reset';
 import { Stats, type StatsTab } from './screens/Stats';
@@ -270,46 +271,70 @@ export function App() {
     {queued > 0 && <button className="outbox-bar" onClick={() => void flushOutbox()}><Icon name="repeat" />Без сети: {queued} {queued % 10 === 1 && queued % 100 !== 11 ? 'запись ждёт' : 'записей ждут'} отправки — нажми, чтобы отправить сейчас</button>}
     <div className="screens">
       <section className="screen" data-pos={pos('today')} aria-hidden={tab !== 'today'}>
+        <Boundary name="today" onFeedback={() => open({ kind: 'feedback' })}>
         {day && today && <TodayWide wide={wide} data={data} day={day} today={today} still={still} sub={sub} settings={me.profile?.settings ?? {}} onReminders={() => open({ kind: 'reminders' })} onSettingsSaved={st => setMe(m => m && m.profile ? { ...m, profile: { ...m.profile, settings: st } } : m)} onDay={goDay} onAdd={at => open({ kind: 'add', at })} onDelete={deleteMark} onEdit={editMark} onToggleTask={toggleTask} onGo={go}
           onPro={pro} onPaywall={() => open({ kind: 'paywall' })} onSteps={() => open({ kind: 'steps' })} onWeight={() => open({ kind: 'weight' })} onWater={() => open({ kind: 'drink' })}
           onMeal={() => open({ kind: 'meal' })} onAddWater={ml => addWater(ml)} onTaskAdded={() => { toast('Задача добавлена'); refresh(); }} onTaskOpen={() => open({ kind: 'task', day })} />}
+        </Boundary>
       </section>
       <section className="screen" data-pos={pos('plans')} aria-hidden={tab !== 'plans'}>
+        <Boundary name="plans" onFeedback={() => open({ kind: 'feedback' })}>
         {today && <Plans today={today} sub={sub} version={version} onAdd={d => open({ kind: 'task', day: d })} onOpen={t => open({ kind: 'task', day: t.day, task: t })} onPro={pro} onChanged={() => { if (day) loadDay(day); }} />}
+        </Boundary>
       </section>
       <section className="screen" data-pos={pos('food')} aria-hidden={tab !== 'food'}>
+        <Boundary name="food" onFeedback={() => open({ kind: 'feedback' })}>
         {today && tab === 'food' && <Food today={today} sub={sub} version={version} wide={wide} onChanged={() => { setStill(true); if (day) loadDay(day); }}
           onAddMeal={d => open({ kind: 'meal', day: d })} onAddDrink={d => open({ kind: 'drink', day: d })} onMeal={meal => open({ kind: 'meal', meal })} onDrink={drink => open({ kind: 'drink', drink })} onPro={(w, d) => pro(w, undefined, d)} />}
+        </Boundary>
       </section>
       <section className="screen" data-pos={pos('study')} aria-hidden={tab !== 'study'}>
+        <Boundary name="study" onFeedback={() => open({ kind: 'feedback' })}>
         {tab === 'study' && <Study wide={wide} version={version} tab={studyTab} onBack={() => setTab(back)} onChanged={() => { setStill(true); if (day) loadDay(day); setTimeout(checkAwards, 600); }} />}
+        </Boundary>
       </section>
       <section className="screen" data-pos={pos('gym')} aria-hidden={tab !== 'gym'}>
+        <Boundary name="gym" onFeedback={() => open({ kind: 'feedback' })}>
         {tab === 'gym' && <Gym wide={wide} version={version} restSec={Number(me.profile?.settings?.rest) || 90} onBack={() => setTab(back)} onChanged={() => { setStill(true); if (day) loadDay(day); setTimeout(checkAwards, 600); }} />}
+        </Boundary>
       </section>
       <section className="screen" data-pos={pos('budget')} aria-hidden={tab !== 'budget'}>
+        <Boundary name="budget" onFeedback={() => open({ kind: 'feedback' })}>
         {tab === 'budget' && <Budget wide={wide} version={version} onBack={() => setTab(back)} onChanged={() => { setStill(true); if (day) loadDay(day); }} />}
+        </Boundary>
       </section>
       <section className="screen" data-pos={pos('books')} aria-hidden={tab !== 'books'}>
+        <Boundary name="books" onFeedback={() => open({ kind: 'feedback' })}>
         {tab === 'books' && <Books wide={wide} version={version} onBack={() => setTab(back)} onChanged={() => { setStill(true); if (day) loadDay(day); setTimeout(checkAwards, 600); }} />}
+        </Boundary>
       </section>
       <section className="screen" data-pos={pos('goal')} aria-hidden={tab !== 'goal'}>
+        <Boundary name="goal" onFeedback={() => open({ kind: 'feedback' })}>
         {tab === 'goal' && <Goal wide={wide} onBack={() => setTab(back)} onWeigh={() => open({ kind: 'weight' })} onRedo={() => setRedo(true)} onChanged={() => { setDays({}); if (day) loadDay(day); }} />}
+        </Boundary>
       </section>
       <section className="screen" data-pos={pos('stats')} aria-hidden={tab !== 'stats'}>
+        <Boundary name="stats" onFeedback={() => open({ kind: 'feedback' })}>
         {tab === 'stats' && <Stats wide={wide} tab={statsTab} onBack={() => setTab(back)} />}
+        </Boundary>
       </section>
       <section className="screen" data-pos={pos('profile')} aria-hidden={tab !== 'profile'}>
+        <Boundary name="profile" onFeedback={() => open({ kind: 'feedback' })}>
         {tab === 'profile' && <Profile me={me} wide={wide} onBack={() => setTab(back)} onSaved={st => { setMe(m => m && m.profile ? { ...m, profile: { ...m.profile, settings: st } } : m); setDays({}); if (day) loadDay(day); }}
           onRedo={() => setRedo(true)} onFeedback={() => open({ kind: 'feedback' })} onReminders={() => open({ kind: 'reminders' })} onPaywall={() => open({ kind: 'paywall' })} onLogout={logout}
           onDeleted={() => { toast('Аккаунт удалён'); setMe(null); setDays({}); setDay(null); setToday(null); setTab('today'); }} />}
+        </Boundary>
       </section>
       <section className="screen" data-pos={pos('admin')} aria-hidden={tab !== 'admin'}>
+        <Boundary name="admin" onFeedback={() => open({ kind: 'feedback' })}>
         {tab === 'admin' && me.admin && <Admin wide={wide} onBack={() => setTab(back)} />}
+        </Boundary>
       </section>
       <section className="screen" data-pos={pos('more')} aria-hidden={tab !== 'more'}>
+        <Boundary name="more" onFeedback={() => open({ kind: 'feedback' })}>
         <More me={me} wide={wide} summary={moreSummary} onFeedback={() => open({ kind: 'feedback' })} onAdmin={() => go('admin')} onPro={pro} onSaved={st => setMe(m => m && m.profile ? { ...m, profile: { ...m.profile, settings: st } } : m)} onPaywall={focus => open({ kind: 'paywall', focus })} onSettings={() => go('profile')} onInstall={() => open({ kind: 'install' })}
           onLogout={logout} />
+        </Boundary>
       </section>
     </div>
     <nav ref={tabsRef} className="tabs" aria-label="Разделы">
@@ -318,6 +343,7 @@ export function App() {
     </nav>
 
     <Sheet open={sheetOpen} onClose={close} tall={sheet.kind === 'paywall' || sheet.kind === 'search' || sheet.kind === 'ai'} title={sheet.kind === 'add' && sheet.at ? `Записать на ${sheet.at}` : TITLES[sheet.kind] ?? ''}>
+      <Boundary key={sheet.kind} name={`лист ${sheet.kind}`}>
       {sheet.kind === 'add' && <>
         <div className="big2">
           <button className="bigt" style={{ background: 'var(--food)' }} onClick={() => open({ kind: 'meal', at: sheet.at })}><span className="chip-ic"><Icon name="food" /></span><b>Приём пищи</b><small>калории и БЖУ вручную</small></button>
@@ -352,6 +378,7 @@ export function App() {
       {sheet.kind === 'voice' && <VoiceCapture onDone={() => { setVersion(v => v + 1); if (day) loadDay(day); }} />}
       {sheet.kind === 'search' && day && <FoodSearch day={sheet.day ?? day} time={sheet.at} onDone={done} />}
       {sheet.kind === 'ai' && day && <FoodAi key={sheet.mode} day={sheet.day ?? day} time={sheet.at} mode={sheet.mode} onDone={done} />}
+      </Boundary>
     </Sheet>
   </div>;
 }
