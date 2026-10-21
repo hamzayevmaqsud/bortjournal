@@ -29,6 +29,13 @@
       "when": 1792563913734,
       "tag": "0003_login_providers",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1792570097074,
+      "tag": "0004_study_materials",
+      "breakpoints": true
     }
   ]
 }

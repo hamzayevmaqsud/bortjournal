@@ -91,7 +91,7 @@ export interface Today {
   parts: {
     food?: { kcal: number; protein: number; fat: number; carbs: number; waterMl: number; norm: { kcal: number; protein: number; fat: number; carbs: number; water: number } };
     body?: { steps: number; stepsGoal: number; weight: { kg: number; day: string | null; today: boolean } | null };
-    study?: { minutes: number; goal: number; quiz: { left: number; total: number } };
+    study?: { minutes: number; goal: number; quiz: { left: number; total: number } | null };
     budget?: { configured: boolean; currency?: string; leftToday?: number; allow?: number };
     books?: { reading: { id: string; title: string; page: number; pages: number | null; pct: number; todayPages: number } | null };
     gym?: { workouts: Array<{ id: string; title: string; time: string | null; minutes: number | null }>; plan: { id: string; name: string; time: string | null; exercises: number } | null };

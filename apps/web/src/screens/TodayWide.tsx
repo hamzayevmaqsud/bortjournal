@@ -135,8 +135,8 @@ export function TodayWide({ wide = true, data, day, today, sub, still, onDay, on
 
         {study || gym || (P.budget?.configured && P.budget.leftToday !== undefined) || P.books?.reading ? <>
           {study && <section className="wc solid s-orange span7 c-study" style={{ ['--i' as string]: 3 }}>
-            <div className="card-head"><h2>{study.quiz.left ? 'Вопросы дня' : 'Учёба'}</h2><div className="card-actions"><button className="btn-accent" onClick={() => onPro('Учёба')}>Открыть</button></div></div>
-            {study.quiz.left ? <><Big v={study.quiz.left} unit={`${plural(study.quiz.left, 'вопрос', 'вопроса', 'вопросов')} на сегодня`} /><p className="card-note">Всего ждут повторения {fmt(study.quiz.total)}</p></>
+            <div className="card-head"><h2>{study.quiz?.left ? 'Вопросы дня' : 'Учёба'}</h2><div className="card-actions"><button className="btn-accent" onClick={() => onPro(study.quiz?.left ? 'Вопросы дня' : 'Учёба')}>Открыть</button></div></div>
+            {study.quiz?.left ? <><Big v={study.quiz.left} unit={`${plural(study.quiz.left, 'вопрос', 'вопроса', 'вопросов')} на сегодня`} /><p className="card-note">{study.quiz.total > study.quiz.left ? `Уже ответил на ${study.quiz.total - study.quiz.left}` : 'По твоим конспектам'}</p></>
               : <><Big v={study.minutes} of={`${study.goal} мин`} /><p className="card-note">{study.minutes ? 'Занятия сегодня' : 'Ни одного занятия'}</p></>}
           </section>}
           {gym && <section className="wc solid s-sage span5 c-gym" style={{ ['--i' as string]: 4 }}>

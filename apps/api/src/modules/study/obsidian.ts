@@ -26,7 +26,7 @@ export function obsidian(): Obs | null {
   const create = createRequire(import.meta.url)(path.join(ROOT, 'obsidian.js'));
   inst = create({ vault, user, folder: process.env.OBSIDIAN_FOLDER || 'Учёба', cheatsFolder: process.env.OBSIDIAN_CHEATS || 'Шпаргалки', dataDir,
     gemini: aiEnabled() ? async (parts: unknown[], schema: unknown, opts?: { timeout?: number }) => ({ out: await gemini(parts, schema, opts) }) : null,
-    log: () => {} }) as Obs;
+    log: () => {}, autoQuestions: false }) as Obs;
   return inst;
 }
 /** Obsidian открыт только владельцу хранилища */

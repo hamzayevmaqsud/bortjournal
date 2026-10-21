@@ -70,7 +70,8 @@ function parseNote(raw, rel, stat) {
   return { title, tags, date, minutes, sections: out, tasks };
 }
 
-module.exports = function createObsidian({ vault, user, folder = 'Учёба', cheatsFolder = 'Шпаргалки', dataDir, gemini, log = console.log }) {
+// autoQuestions: false — вопросы по разделам не собираются сами (новая версия делает их только по просьбе)
+module.exports = function createObsidian({ vault, user, folder = 'Учёба', cheatsFolder = 'Шпаргалки', dataDir, gemini, log = console.log, autoQuestions = true }) {
   const vaultName = path.basename(vault);
   const root = path.join(vault, folder);
   const storeFile = path.join(dataDir, 'obsidian', `${user}.json`);
@@ -173,7 +174,7 @@ module.exports = function createObsidian({ vault, user, folder = 'Учёба', c
   }
   let pumping = false;
   async function pump() {
-    if (pumping || !gemini) return;
+    if (pumping || !gemini || !autoQuestions) return;
     pumping = true;
     try {
       for (let t = nextTask(); t; t = nextTask()) {
