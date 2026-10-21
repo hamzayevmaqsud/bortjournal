@@ -231,7 +231,7 @@ export function App() {
   const lockTile = (name: string, ic: string, c: string) => <button key={name} className="tile" onClick={() => pro(name, sheet.kind === 'add' ? sheet.at : undefined)}><span className="chip-ic" style={{ ['--c' as string]: c }}><Icon name={ic} /></span>{name}{!can(sub, name) && <span className="lock">PRO</span>}</button>;
 
   return <div className={`app ${wide ? 'wide' : ''}`}>
-    {wide && <div className="brand"><i>✦</i>Бортжурнал</div>}
+    {wide && <div className="brand"><i><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l1.6 6.4L20 12l-6.4 1.6L12 21l-1.6-7.4L4 12l6.4-2.6z" fill="currentColor" /></svg></i>Бортжурнал</div>}
     {queued > 0 && <button className="outbox-bar" onClick={() => void flushOutbox()}><Icon name="repeat" />Без сети: {queued} {queued % 10 === 1 && queued % 100 !== 11 ? 'запись ждёт' : 'записей ждут'} отправки — нажми, чтобы отправить сейчас</button>}
     <div className="screens">
       <section className="screen" data-pos={pos('today')} aria-hidden={tab !== 'today'}>

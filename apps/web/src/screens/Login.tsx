@@ -8,7 +8,7 @@ export function Login({ onDone }: { onDone: () => void }) {
   const [u, setU] = useState(''), [p, setP] = useState(''), [mail, setMail] = useState(''), [err, setErr] = useState(''), [busy, setBusy] = useState(false);
   const up = mode === 'up';
   return <main className="login">
-    <div className="brand"><i>✦</i>Бортжурнал</div>
+    <div className="brand"><i><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l1.6 6.4L20 12l-6.4 1.6L12 21l-1.6-7.4L4 12l6.4-2.6z" fill="currentColor" /></svg></i>Бортжурнал</div>
     <h1>{up ? 'Новый журнал' : 'С возвращением'}</h1>
     <p>{up ? `Еда, вода, шаги, задачи, цель и статистика — бесплатно навсегда. Всё остальное — ${TRIAL_DAYS} дней бесплатно.` : 'Войди, чтобы продолжить свой день.'}</p>
     <div className="seg2" role="tablist">

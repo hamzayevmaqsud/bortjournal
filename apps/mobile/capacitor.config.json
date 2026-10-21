@@ -1,0 +1,14 @@
+{
+  "appId": "az.nanopay.bortjournal",
+  "appName": "Бортжурнал",
+  "webDir": "www",
+  "server": {
+    "url": "https://maksuds-macbook-pro.tailec5b6a.ts.net:8443/m",
+    "errorPath": "offline.html"
+  },
+  "ios": {
+    "contentInset": "never",
+    "backgroundColor": "#EFE3CE",
+    "limitsNavigationsToAppBoundDomains": true
+  }
+}
