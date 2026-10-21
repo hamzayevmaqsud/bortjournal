@@ -9,6 +9,7 @@ import { api, ApiError, type Subscription } from '../lib/api';
 import { featureOf } from '../lib/features';
 import { buzz } from '../lib/motion';
 import { Icon } from './Icon';
+import { nativeApp } from '../lib/oauth';
 import { useToast } from './Toasts';
 
 // «20 октября 2027» — без «г.», чтобы точка в конце фразы не удваивалась
@@ -20,12 +21,23 @@ const word = (n: number) => n === 1 ? 'раздел' : n < 5 ? 'раздела' 
 export function SubStatus({ sub }: { sub: Subscription }) {
   if (sub.features?.length && !sub.pro) return <span className="sub-pill pro">Свой набор · {sub.features.length}</span>;
   if (!sub.pro) return <span className="sub-pill off">Бесплатный тариф</span>;
+  if (sub.beta) return <span className="sub-pill pro">Бета · всё открыто</span>;
   if (sub.source === 'trial') return <span className="sub-pill trial">Пробный Pro · ещё {sub.daysLeft} дн.</span>;
   if (sub.source === 'free') return <span className="sub-pill pro">Pro навсегда</span>;
   return <span className="sub-pill pro">Pro · {sub.plan === 'year' ? 'год' : 'месяц'}</span>;
 }
 
-export function Paywall({ sub, focus, onChange, onClose }: { sub: Subscription; focus?: string; onChange: (s: Subscription) => void; onClose: () => void }) {
+/** бета — всё открыто; в приложении для iPhone цен нет: цифровую подписку там можно продавать только через Apple */
+export function Paywall(props: { sub: Subscription; focus?: string; onChange: (s: Subscription) => void; onClose: () => void }) {
+  if (props.sub.beta || nativeApp()) return <div className="pw pw-info">
+    <div className="pw-hero"><h2>{props.sub.beta ? 'Сейчас всё открыто' : 'Подписка'}</h2>
+      <p>{props.sub.beta ? 'Идёт закрытая бета: все разделы — еда с ИИ, зал, учёба, бюджет, книги, цели и повторы — бесплатно. Спасибо, что помогаешь сделать журнал лучше!' : props.sub.pro ? 'Все разделы открыты.' : 'Оформление подписки в приложении появится скоро. Еда, вода, шаги, задачи, цель, статистика и напоминания — бесплатно.'}</p></div>
+    {props.sub.beta && <p className="card-note">Что понравилось, что мешает — напиши в профиле: «Написать разработчику».</p>}
+    <button className="primary" onClick={props.onClose}>Понятно</button>
+  </div>;
+  return <PaywallInner {...props} />;
+}
+function PaywallInner({ sub, focus, onChange, onClose }: { sub: Subscription; focus?: string; onChange: (s: Subscription) => void; onClose: () => void }) {
   const toast = useToast(), focusKey = focus ? featureOf(focus) : null;
   const custom = !sub.pro && !!sub.features?.length;
   const [mode, setMode] = useState<'pro' | 'custom'>(custom ? 'custom' : 'pro');

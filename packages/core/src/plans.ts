@@ -74,13 +74,15 @@ export function customPrice(keys: readonly string[], plan: PriceId) {
 
 export interface Subscription {
   pro: boolean;
-  source: 'trial' | 'web' | 'apple' | 'google' | 'free' | null;
+  source: 'trial' | 'web' | 'apple' | 'google' | 'free' | 'beta' | null;
   expiresAt: string | null;
   daysLeft: number | null;
   plan: PriceId | null;
   autoRenew: boolean;
-  /** подписка была, но кончилась */
+  /** подписка была, но кончилась — платные разделы открыты на просмотр */
   ended?: boolean;
+  /** закрытая бета: всё открыто бесплатно, оплаты нет */
+  beta?: boolean;
   /** «свой набор»: какие разделы открыты; null — всё (Pro, пробный, навсегда) */
   features?: PackKey[] | null;
 }

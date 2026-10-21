@@ -72,6 +72,8 @@ export async function api<T>(path: string, opts: { method?: string; body?: unkno
     throw new ApiError(0, OFFLINE);
   }
   const data = await r.json().catch(() => ({}));
+  // раздел закрыт подпиской — приложение откроет тарифы
+  if (r.status === 402) dispatchEvent(new CustomEvent('bj-paywall', { detail: (data as { feature?: string }).feature ?? null }));
   if (!r.ok) throw new ApiError(r.status, (data as { error?: string }).error ?? `Ошибка ${r.status}`);
   if (method === 'GET') remember(path, data); else if (!path.startsWith('/api/auth/') && pendingCount()) void flushOutbox();
   return data as T;
@@ -106,7 +108,7 @@ if (typeof window !== 'undefined') {
   try { const q = read<Pending[]>(OUTBOX, []); if (q.some(p => !p.owner)) write(OUTBOX, q.filter(p => p.owner)); } catch { /* нет доступа */ }
 }
 
-export interface Subscription { pro: boolean; source: 'trial' | 'web' | 'apple' | 'google' | 'free' | null; expiresAt: string | null; daysLeft: number | null; plan: 'month' | 'year' | null; autoRenew: boolean; ended?: boolean; features?: import('@bortjournal/core').PackKey[] | null }
+export interface Subscription { pro: boolean; source: 'trial' | 'web' | 'apple' | 'google' | 'free' | 'beta' | null; expiresAt: string | null; daysLeft: number | null; plan: 'month' | 'year' | null; autoRenew: boolean; ended?: boolean; beta?: boolean; features?: import('@bortjournal/core').PackKey[] | null }
 export interface Profile { sex: string | null; age: number | null; heightCm: number | null; goal: string | null; pace?: string | null; targetKg: number | null; startWeightKg: number | null; settings: Record<string, any> }
 export interface Me { username: string; tzOffset: number; modules: string[]; subscription: Subscription; profile: Profile | null }
 export interface PlanResult { kcal: number; protein: number; fat: number; carbs: number; weeklyKg: number; tdee: number; bmi: number; notes: string[]; weeks: number | null; water: number; steps: number }

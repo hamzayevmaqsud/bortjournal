@@ -38,6 +38,8 @@ export async function dueNudges(db: DB, userId: string, at = Date.now()): Promis
   // серия: вечером, если сегодня ещё пусто, а подряд перед этим — хотя бы 2 дня
   let d = addDays(now.day, -1), n = 0; while (days.has(d) && n < 400) { n++; d = addDays(d, -1); }
   if (n >= 2 && !days.has(now.day)) list.push({ key: 'streak', kind: 'streak', title: `Серия ${n} ${plural(n, 'день', 'дня', 'дней')} под угрозой`, body: 'Запиши что-нибудь до полуночи — приём пищи, шаги или занятие.', url: '/#today', at: 21 * 60 });
+  // пробный Pro кончается: за 2 дня и накануне, в 19:00
+  if (sub.source === 'trial' && (sub.daysLeft === 2 || sub.daysLeft === 1)) list.push({ key: `trial:${sub.daysLeft}`, kind: 'trial', title: sub.daysLeft === 1 ? 'Завтра заканчивается пробный Pro' : 'Пробный Pro — ещё 2 дня', body: 'Еда, вода, шаги, задачи, цель и статистика останутся бесплатными. Остальное — по подписке или своим набором.', url: '/#more', at: 19 * 60 });
   // итог недели: воскресенье, 19:00, если за неделю что-то было
   if (weekday(now.day) === 0 && [0, 1, 2, 3, 4, 5, 6].some(k => days.has(addDays(now.day, -k)))) list.push({ key: 'review', kind: 'review', title: 'Итог недели готов', body: 'Что получилось, что нет и лучший день — загляни на минуту.', url: '/#stats', at: 19 * 60 });
   return { today: now.day, list: list.filter(x => R[x.kind as keyof RemindSettings] !== false && (x.at === undefined || (min >= x.at && min < x.at + WINDOW))) };

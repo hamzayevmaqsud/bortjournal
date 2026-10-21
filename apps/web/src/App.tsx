@@ -153,8 +153,9 @@ export function App() {
     let last = pendingCount();
     const onBox = () => { const n = pendingCount(); if (n > last) toast('Нет связи — запись сохранена на телефоне и уйдёт, когда появится сеть'); last = n; setQueued(n); };
     const onSync = (e: Event) => { const { sent, dropped } = (e as CustomEvent<{ sent: number; dropped: number }>).detail; if (sent) toast(`Отправлено записей: ${sent}`); if (dropped) toast(`Сервер не принял записей: ${dropped}`, { err: true }); setDays({}); sync.current(); };
-    addEventListener('bj-outbox', onBox); addEventListener('bj-synced', onSync); void flushOutbox();
-    return () => { removeEventListener('bj-outbox', onBox); removeEventListener('bj-synced', onSync); };
+    const onPay = () => openRef.current({ kind: 'paywall' });
+    addEventListener('bj-outbox', onBox); addEventListener('bj-synced', onSync); addEventListener('bj-paywall', onPay); void flushOutbox();
+    return () => { removeEventListener('bj-outbox', onBox); removeEventListener('bj-synced', onSync); removeEventListener('bj-paywall', onPay); };
   }, [toast]);
   useEffect(() => {
     if (!me) return;
@@ -214,7 +215,8 @@ export function App() {
   const [back, setBack] = useState('today'), [statsTab, setStatsTab] = useState<StatsTab | undefined>(), [studyTab, setStudyTab] = useState<'study' | 'quiz' | undefined>();
   const go = (name: string) => {
     if (name === 'add') { open({ kind: 'add' }); return; }
-    if (SECTIONS[name] && !can(sub, SECTIONS[name]!)) { open({ kind: 'paywall', focus: SECTION_NAME[name] }); return; }
+    // подписка кончилась — свои записи смотреть можно; не было подписки — сначала тарифы
+    if (SECTIONS[name] && !can(sub, SECTIONS[name]!) && !sub.ended) { open({ kind: 'paywall', focus: SECTION_NAME[name] }); return; }
     if ((name === 'goal' || name === 'stats') && !can(sub, name)) { open({ kind: 'paywall', focus: name === 'goal' ? 'Цель и прогноз' : 'Статистика' }); return; }
     if (name in SECTIONS) setBack(tab in SECTIONS ? back : tab);
     if (name === 'profile') setBack(tab === 'profile' ? back : tab);
@@ -254,6 +256,7 @@ export function App() {
 
   return <div className={`app ${wide ? 'wide' : ''}`}>
     {wide && <div className="brand"><i><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l1.6 6.4L20 12l-6.4 1.6L12 21l-1.6-7.4L4 12l6.4-2.6z" fill="currentColor" /></svg></i>Бортжурнал</div>}
+    {tab in SECTIONS && SECTIONS[tab] && sub.ended && !can(sub, SECTIONS[tab]!) && <button className="ro-bar" onClick={() => open({ kind: 'paywall', focus: SECTION_NAME[tab] })}><Icon name="file" />Только просмотр — Pro закончился. Продлить</button>}
     {queued > 0 && <button className="outbox-bar" onClick={() => void flushOutbox()}><Icon name="repeat" />Без сети: {queued} {queued % 10 === 1 && queued % 100 !== 11 ? 'запись ждёт' : 'записей ждут'} отправки — нажми, чтобы отправить сейчас</button>}
     <div className="screens">
       <section className="screen" data-pos={pos('today')} aria-hidden={tab !== 'today'}>

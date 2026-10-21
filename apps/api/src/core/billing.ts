@@ -12,7 +12,10 @@ import { entitlements } from './schema.js';
 
 const activePro = (userId: string) => and(eq(entitlements.userId, userId), eq(entitlements.module, 'pro'), lte(entitlements.startsAt, sql`now()`), or(isNull(entitlements.expiresAt), gt(entitlements.expiresAt, sql`now()`)));
 
+/** закрытая бета (BETA_PRO=1): у всех весь Pro бесплатно, экранов оплаты нет */
+export const betaOn = () => process.env.BETA_PRO === '1';
 export async function subscription(db: Tx, userId: string): Promise<Subscription> {
+  if (betaOn()) return { pro: true, source: 'beta', beta: true, expiresAt: null, daysLeft: null, plan: null, autoRenew: false, features: null };
   const rows = await db.select().from(entitlements).where(activePro(userId)).orderBy(desc(entitlements.expiresAt));
   // весь Pro важнее своего набора; платная или навсегда — важнее пробной
   const full = rows.filter(r => !r.features), best = full.find(r => r.source !== 'trial') ?? full[0] ?? rows[0];
@@ -35,6 +38,8 @@ export function requirePro(db: DB, feature?: PackKey) {
   return async (req: FastifyRequest, reply: FastifyReply) => {
     if (!req.userId) return reply.code(401).send({ error: 'Нужно войти.' });
     const s = await subscription(db, req.userId);
+    // подписка кончилась — свои записи можно смотреть (и выгрузить), но не добавлять
+    if (s.ended && req.method === 'GET') return;
     if (!(feature ? hasFeature(s, feature) : s.pro)) return reply.code(402).send({ error: 'Этот раздел — в Pro или в своём наборе. Открой «Подписку», чтобы попробовать.', pro: true, feature: feature ?? null });
   };
 }
@@ -51,7 +56,8 @@ export async function billingRoutes(app: FastifyInstance, { db }: { db: DB }) {
   });
 
   // имитация покупки: доступ на срок тарифа, автопродление включено. features — свой набор; пусто или все разделы — весь Pro
-  app.post('/api/billing/purchase', { preHandler: requireUser }, async req => {
+  app.post('/api/billing/purchase', { preHandler: requireUser }, async (req, reply) => {
+    if (betaOn()) return reply.code(409).send({ error: 'Сейчас бета — всё открыто бесплатно.' });
     const b = (req.body ?? {}) as { plan?: string; features?: unknown };
     const plan = String(b.plan ?? '') as PriceId;
     if (!PRICES[plan]) throw bad('Неизвестный тариф.');
