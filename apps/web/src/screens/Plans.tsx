@@ -45,23 +45,39 @@ function GoalForm({ g, kind, pkey, parents, onDone }: { g?: Goal; kind: PeriodKi
   </form>;
 }
 
+const WDF = ['воскресенье', 'понедельник', 'вторник', 'среда', 'четверг', 'пятница', 'суббота'];
+const dayTitle = (d: string, today: string) => { const dt = parseDay(d), name = `${dt.getUTCDate()} ${MONG[dt.getUTCMonth()]}`;
+  return d === today ? `Сегодня, ${name}` : d === addDays(today, 1) ? `Завтра, ${name}` : d === addDays(today, -1) ? `Вчера, ${name}` : `${WDF[dt.getUTCDay()]![0]!.toUpperCase()}${WDF[dt.getUTCDay()]!.slice(1)}, ${name}`; };
+
+/**
+ * Две вкладки: «Задачи» — то, что открывают каждый день (полоса недели, задачи дня с полем ввода прямо в списке,
+ * просроченные, без даты, заметки) и «Цели» — цели по периодам и календарь месяца.
+ */
 export function Plans({ today, sub, version, onAdd, onOpen, onPro, onChanged }: {
   today: string; sub: Subscription; version: number;
   onAdd: (day: string | null) => void; onOpen: (t: TaskFull) => void; onPro: (what: string) => void; onChanged: () => void;
 }) {
-  const pro = can(sub, 'plans');
-  const [kind, setKind] = useState<PeriodKind>('week'), [anchor, setAnchor] = useState(today), [day, setDay] = useState(today);
-  const [items, setItems] = useState<TaskFull[] | null>(null), [goals, setGoals] = useState<Goal[]>([]), [v, setV] = useState(0);
+  const pro = can(sub, 'plans'), toast = useToast();
+  const [mode, setMode] = useState<'tasks' | 'goals'>('tasks');
+  const [day, setDay] = useState(today), [kind, setKind] = useState<PeriodKind>('week'), [anchor, setAnchor] = useState(today);
+  const [items, setItems] = useState<TaskFull[] | null>(null), [overdue, setOverdue] = useState<TaskFull[]>([]), [goals, setGoals] = useState<Goal[]>([]), [weekGoals, setWeekGoals] = useState<Goal[]>([]), [v, setV] = useState(0);
   const [sheet, setSheet] = useState<null | { g?: Goal; kind: PeriodKind; key: string }>(null), [formParents, setFormParents] = useState<Goal[]>([]);
-  const [notes, setNotes] = useState<Note[]>([]), [noteText, setNoteText] = useState('');
-  const k = pro ? kind : 'week', key = periodKey(k, anchor), [from, to] = periodRange(k, key);
+  const [notes, setNotes] = useState<Note[]>([]), [noteText, setNoteText] = useState(''), [title, setTitle] = useState(''), [busy, setBusy] = useState(false);
+  const mon = mondayOf(day), sun = addDays(mon, 6);
+  const gKey = periodKey(kind, anchor), [gFrom, gTo] = periodRange(kind, gKey);
+  // задачи: неделя выбранного дня + без даты; цели: видимый период (или неделя — для сводки на вкладке задач)
+  const [from, to] = mode === 'goals' && kind !== 'week' ? [gFrom, gTo] : mode === 'goals' ? [gFrom, gTo] : [mon, sun];
   const load = useCallback(async () => {
     try { setItems((await api<{ items: TaskFull[] }>(`/api/plans/tasks?from=${from}&to=${to}`)).items); } catch { setItems([]); }
-    if (pro) api<{ items: Goal[] }>(`/api/plans/goals?from=${from}&to=${to}`).then(r => setGoals(r.items), () => setGoals([]));
     api<{ items: Note[] }>('/api/plans/notes').then(r => setNotes(r.items), () => {});
-  }, [from, to, pro]);
+    // просроченные: последние 60 дней, не сделаны, не из повтора (повторы не копятся)
+    api<{ items: TaskFull[] }>(`/api/plans/tasks?from=${addDays(today, -60)}&to=${addDays(today, -1)}`).then(r => setOverdue(r.items.filter(t => t.day && !t.done && !t.repeat)), () => {});
+    if (pro) {
+      api<{ items: Goal[] }>(`/api/plans/goals?from=${from}&to=${to}`).then(r => setGoals(r.items), () => setGoals([]));
+      api<{ items: Goal[] }>(`/api/plans/goals?from=${mon}&to=${sun}`).then(r => setWeekGoals(r.items.filter(g => g.period === 'week')), () => {});
+    }
+  }, [from, to, pro, today, mon, sun]);
   useEffect(() => { load(); }, [load, version, v]);
-  // родительская цель может лежать вне видимого периода (месяц для недели на стыке) — для формы берём по началу периода
   useEffect(() => {
     if (!sheet) return; const par = PERIOD_PARENT[sheet.kind]; if (!par) { setFormParents([]); return; }
     const start = periodRange(sheet.kind, sheet.key)[0];
@@ -73,34 +89,51 @@ export function Plans({ today, sub, version, onAdd, onOpen, onPro, onChanged }: 
   const toggleGoal = async (id: string) => { setGoals(gs => gs.map(g => g.id === id ? { ...g, done: !g.done } : g)); await api(`/api/plans/goals/${id}/toggle`, { method: 'POST' }).catch(() => {}); setV(x => x + 1); };
   const noteDone = async (n: Note) => { setNotes(ns => ns.map(x => x.id === n.id ? { ...x, done: !x.done } : x)); await api(`/api/plans/notes/${n.id}`, { method: 'PUT', body: { done: !n.done } }).catch(() => {}); };
   const noteDel = async (n: Note) => { setNotes(ns => ns.filter(x => x.id !== n.id)); await api(`/api/plans/notes/${n.id}`, { method: 'DELETE' }).catch(() => {}); };
+  const addTask = async (d: string | null) => {
+    const t = title.trim(); if (!t || busy) return; setBusy(true);
+    try { await api('/api/plans/tasks', { method: 'POST', body: { title: t, day: d } }); setTitle(''); buzz([8, 30, 8]); changed(); }
+    catch (e) { toast(e instanceof ApiError ? e.message : 'Не получилось', { err: true }); } finally { setBusy(false); }
+  };
+  const moveOverdue = async () => {
+    const list = overdue; setOverdue([]);
+    for (const t of list) await api(`/api/plans/tasks/${t.id}`, { method: 'PUT', body: { title: t.title, day: today, time: t.time, prio: t.prio, note: t.note ?? '' } }).catch(() => {});
+    toast(`Перенесено на сегодня: ${list.length}`); setDay(today); changed();
+  };
   const byId = new Map(goals.map(g => [g.id, g]));
   const goalsOf = (pk: PeriodKind, pkey: string) => goals.filter(g => g.period === pk && g.periodKey === pkey);
   const rows = (gs: Goal[]) => <div className="goals-l">{gs.map(g => <GoalRow key={g.id} g={g} parent={g.parentId ? byId.get(g.parentId) : undefined} onToggle={() => toggleGoal(g.id)} onOpen={() => setSheet({ g, kind: g.period, key: g.periodKey })} />)}</div>;
   const goalBlock = (pk: PeriodKind, pkey: string) => { const gs = goalsOf(pk, pkey); return <>
     {gs.length ? rows(gs) : <p className="hint" style={{ textAlign: 'left', margin: 2 }}>Целей на {pk === 'week' ? 'эту неделю' : periodLabel(pk, pkey).toLowerCase()} пока нет.</p>}
     <button className="add-row" onClick={() => setSheet({ kind: pk, key: pkey })}><Icon name="plus" />Цель на {PERIOD_ACC[pk]}</button></>; };
-  const go = (n: number) => { setAnchor(shiftPeriod(k, anchor, n)); if (k === 'week') setDay(addDays(day, 7 * n)); };
-  const open = (pk: PeriodKind, d: string) => { setKind(pk); setAnchor(d); if (pk === 'week') setDay(d); };
-  const isNow = key === periodKey(k, today);
+  const openGoals = (pk: PeriodKind, d: string) => { setMode('goals'); setKind(pk); setAnchor(d); };
 
-  const weekView = () => {
-    const mon = key, week = Array.from({ length: 7 }, (_, i) => addDays(mon, i)), dd = parseDay(day), list = ofDay(day), undated = ofDay(null);
-    const ups = pro ? (['month', 'quarter', 'year'] as const).flatMap(pk => goalsOf(pk, periodKey(pk, mon))) : [];
+  /* ---------- задачи ---------- */
+  const tasksView = () => {
+    const week = Array.from({ length: 7 }, (_, i) => addDays(mon, i)), list = ofDay(day), undated = ofDay(null), done = list.filter(t => t.done).length;
+    const wgDone = weekGoals.filter(g => g.progress >= 100).length;
     return <>
-      {pro && <section className="panel span-all"><div className="panel-h"><h2>Цели недели</h2></div>
-        {goalBlock('week', mon)}
-        {ups.length > 0 && <div className="goal-ups"><span>Большие цели</span>{ups.map(g => <button key={g.id} className="chip" onClick={() => open(g.period, periodRange(g.period, g.periodKey)[0])}>{PERIOD_NAMES[g.period]}: {g.title} <small>{g.progress}%</small></button>)}</div>}
-      </section>}
-      <div className="wk" role="tablist">{week.map((d, i) => { const n = ofDay(d), done = n.filter(t => t.done).length; return <button key={d} role="tab" aria-selected={d === day} className={`wk-d ${d === day ? 'on' : ''} ${d === today ? 'today' : ''}`} onClick={() => setDay(d)}>
-        <span>{d === today ? 'сег' : WD[i]}</span><b>{parseDay(d).getUTCDate()}</b><i>{n.length ? `${done}/${n.length}` : '·'}</i></button>; })}</div>
-      <section className="panel">
-        <div className="panel-h"><h2>{day === today ? 'Сегодня' : `${['вс', 'пн', 'вт', 'ср', 'чт', 'пт', 'сб'][dd.getUTCDay()]}, ${dd.getUTCDate()} ${MONG[dd.getUTCMonth()]}`}</h2><small>{list.length ? `${list.filter(t => t.done).length} из ${list.length}` : ''}</small></div>
-        {items === null ? <div className="skel" style={{ height: 90 }} /> : <Tasks tasks={list} onToggle={toggle} onOpen={id => { const t = list.find(x => x.id === id); if (t) onOpen(t); }} empty="На этот день задач нет." />}
-        <button className="add-row" onClick={() => onAdd(day)}><Icon name="plus" />Задача на этот день</button>
+      <div className="wk-bar">
+        <button className="nav" onClick={() => setDay(addDays(day, -7))} aria-label="Прошлая неделя"><Icon name="chevL" /></button>
+        <div className="wk" role="tablist">{week.map((d, i) => { const n = ofDay(d), dn = n.filter(t => t.done).length; return <button key={d} role="tab" aria-selected={d === day} className={`wk-d ${d === day ? 'on' : ''} ${d === today ? 'today' : ''}`} onClick={() => setDay(d)}>
+          <span>{d === today ? 'сег' : WD[i]}</span><b>{parseDay(d).getUTCDate()}</b><i className={n.length && dn === n.length ? 'all' : ''}>{n.length ? `${dn}/${n.length}` : '·'}</i></button>; })}</div>
+        <button className="nav" onClick={() => setDay(addDays(day, 7))} aria-label="Следующая неделя"><Icon name="chev" /></button>
+      </div>
+      {day === today && overdue.length > 0 && <div className="overdue"><span><b>Просрочено {overdue.length}</b> · {overdue.slice(0, 2).map(t => t.title).join(', ')}{overdue.length > 2 ? '…' : ''}</span><button className="btn-accent" onClick={moveOverdue}>На сегодня</button></div>}
+      <section className="panel day-panel">
+        <div className="panel-h"><h2 className="day-title">{dayTitle(day, today)}</h2><small>{list.length ? `${done} из ${list.length}` : ''}</small></div>
+        <form className="task-add" onSubmit={e => { e.preventDefault(); addTask(day); }}>
+          <input className="in" value={title} onChange={e => setTitle(e.target.value)} placeholder="Новая задача…" aria-label="Новая задача" enterKeyHint="done" />
+          <button type="button" className="more-btn" onClick={() => onAdd(day)} aria-label="Время, повтор, цель, заметка" title="Время, повтор, цель, заметка">•••</button>
+          <button className="primary" disabled={!title.trim() || busy} aria-label="Добавить"><Icon name="plus" /></button>
+        </form>
+        {items === null ? <div className="skel" style={{ height: 90 }} /> : <Tasks tasks={list} onToggle={toggle} onOpen={id => { const t = list.find(x => x.id === id); if (t) onOpen(t); }} empty={day === today ? 'На сегодня задач нет — добавь первую выше.' : 'На этот день задач нет.'} />}
       </section>
+      {pro && <button className="goal-sum" onClick={() => openGoals('week', day)}>
+        <span className="chip-ic" style={{ ['--c' as string]: 'var(--orange)' }}><Icon name="target" /></span>
+        <span className="mid"><b>Цели недели</b><small>{weekGoals.length ? `${wgDone} из ${weekGoals.length} выполнено · ${weekGoals.slice(0, 2).map(g => g.title).join(', ')}` : 'поставь 1–3 цели на неделю'}</small></span><Icon name="chev" className="ic chev" /></button>}
       <section className="panel">
         <div className="panel-h"><h2>Без даты</h2><small>{undated.length ? `${undated.length} ${plural(undated.length, 'задача', 'задачи', 'задач')}` : ''}</small></div>
-        <Tasks tasks={undated} onToggle={toggle} onOpen={id => { const t = undated.find(x => x.id === id); if (t) onOpen(t); }} empty="Сюда — то, что сделать когда-нибудь." />
+        <Tasks tasks={undated} onToggle={toggle} onOpen={id => { const t = undated.find(x => x.id === id); if (t) onOpen(t); }} empty="То, что сделать когда-нибудь." />
         <button className="add-row" onClick={() => onAdd(null)}><Icon name="plus" />Задача без даты</button>
       </section>
       <section className="panel">
@@ -112,52 +145,63 @@ export function Plans({ today, sub, version, onAdd, onOpen, onPro, onChanged }: 
           : <p className="hint" style={{ textAlign: 'left', margin: 2 }}>Мысли и идеи без срока. Можно надиктовать: «Записать» → «Голосом».</p>}
         <form className="task-add" style={{ marginTop: 8 }} onSubmit={async e => { e.preventDefault(); if (!noteText.trim()) return; await api('/api/plans/notes', { method: 'POST', body: { text: noteText } }).catch(() => {}); setNoteText(''); setV(x => x + 1); }}>
           <input className="in" value={noteText} onChange={e => setNoteText(e.target.value)} placeholder="Новая заметка…" enterKeyHint="done" />
-          <button className="primary" disabled={!noteText.trim()}><Icon name="plus" /></button>
+          <button className="primary" disabled={!noteText.trim()} aria-label="Добавить заметку"><Icon name="plus" /></button>
         </form>
       </section>
     </>;
   };
-  const monthView = () => {
-    const lead = (parseDay(from).getUTCDay() + 6) % 7, n = parseDay(to).getUTCDate();
-    const weeks: string[] = []; for (let d = mondayOf(from); d <= to; d = addDays(d, 7)) weeks.push(d);
-    const wg = weeks.flatMap(w => goalsOf('week', w));
-    return <>
-      <section className="panel"><div className="panel-h"><h2>Цели месяца</h2></div>{goalBlock('month', key)}</section>
-      <section className="panel"><div className="panel-h"><h2>Цели недель</h2></div>
-        {wg.length ? rows(wg) : <p className="hint" style={{ textAlign: 'left', margin: 2 }}>Цели недель ставят на вкладке «Неделя» — здесь они соберутся вместе.</p>}</section>
-      <section className="panel span-all"><div className="panel-h"><h2>Задачи по дням</h2><small>нажми на день — откроется неделя</small></div>
-        <div className="mcal">{WD.map(w => <span key={w} className="mcal-wd">{w}</span>)}{Array.from({ length: lead }, (_, i) => <span key={`p${i}`} className="mcal-c pad" />)}
-          {Array.from({ length: n }, (_, i) => { const d = addDays(from, i), list = ofDay(d), done = list.filter(t => t.done).length;
-            return <button key={d} className={`mcal-c ${d === today ? 'today' : ''} ${list.length && done === list.length ? 'all' : ''}`} onClick={() => open('week', d)} aria-label={`${i + 1}: ${list.length ? `${done} из ${list.length}` : 'задач нет'}`}>
-              <b>{i + 1}</b>{list.length > 0 && <><span className="mcal-dots">{list.slice(0, 4).map((t, j) => <i key={j} className={t.done ? 'on' : ''} />)}</span><small>{done}/{list.length}</small></>}</button>; })}</div>
-      </section>
-    </>;
-  };
-  const bigView = () => {
-    const subK: PeriodKind = k === 'quarter' ? 'month' : 'quarter';
-    const subs: string[] = []; for (let d = from; d <= to; d = shiftPeriod(subK, d, 1)) subs.push(periodKey(subK, d));
-    return <>
-      <section className="panel span-all"><div className="panel-h"><h2>Цели · {periodLabel(k, key)}</h2></div>{goalBlock(k, key)}</section>
+
+  /* ---------- цели ---------- */
+  const goalsView = () => {
+    if (!pro) return <button className="pro-card" onClick={() => onPro('Цели и повторы')}>
+      <span className="chip-ic" style={{ ['--c' as string]: 'var(--orange)' }}><Icon name="repeat" /></span>
+      <span className="mid"><b>Цели на неделю–год и повторяющиеся задачи</b><small>в Pro или в своём наборе «Цели и повторы»</small></span>
+      <span className="lock">PRO</span></button>;
+    const key = gKey, from2 = gFrom, to2 = gTo, isNow = key === periodKey(kind, today);
+    const nav = <div className="plan-bar">
+      <div className="seg-tabs" role="tablist">{PERIOD_KINDS.map(p => <button key={p} role="tab" aria-selected={kind === p} className={kind === p ? 'on' : ''} onClick={() => { setKind(p); buzz(6); }}>{PERIOD_NAMES[p]}</button>)}</div>
+      <div className="period-nav"><button className="nav" onClick={() => setAnchor(shiftPeriod(kind, anchor, -1))} aria-label="Назад"><Icon name="chevL" /></button><b>{periodLabel(kind, key)}</b><button className="nav" onClick={() => setAnchor(shiftPeriod(kind, anchor, 1))} aria-label="Вперёд"><Icon name="chev" /></button>
+        {!isNow && <button className="btn-accent" onClick={() => setAnchor(today)}>Сейчас</button>}</div>
+    </div>;
+    if (kind === 'week') {
+      const ups = (['month', 'quarter', 'year'] as const).flatMap(pk => goalsOf(pk, periodKey(pk, key)));
+      return <>{nav}
+        <section className="panel span-all"><div className="panel-h"><h2>Цели недели</h2></div>{goalBlock('week', key)}</section>
+        {ups.length > 0 && <section className="panel span-all"><div className="panel-h"><h2>Большие цели</h2></div>{rows(ups)}</section>}
+      </>;
+    }
+    if (kind === 'month') {
+      const lead = (parseDay(from2).getUTCDay() + 6) % 7, n = parseDay(to2).getUTCDate();
+      const weeks: string[] = []; for (let d = mondayOf(from2); d <= to2; d = addDays(d, 7)) weeks.push(d);
+      const wg = weeks.flatMap(w => goalsOf('week', w));
+      return <>{nav}
+        <section className="panel"><div className="panel-h"><h2>Цели месяца</h2></div>{goalBlock('month', key)}</section>
+        <section className="panel"><div className="panel-h"><h2>Цели недель</h2></div>{wg.length ? rows(wg) : <p className="hint" style={{ textAlign: 'left', margin: 2 }}>Цели недель ставят на вкладке «Неделя» — здесь они соберутся вместе.</p>}</section>
+        <section className="panel span-all"><div className="panel-h"><h2>Задачи по дням</h2><small>нажми на день — откроются его задачи</small></div>
+          <div className="mcal">{WD.map(w => <span key={w} className="mcal-wd">{w}</span>)}{Array.from({ length: lead }, (_, i) => <span key={`p${i}`} className="mcal-c pad" />)}
+            {Array.from({ length: n }, (_, i) => { const d = addDays(from2, i), list = ofDay(d), dn = list.filter(t => t.done).length;
+              return <button key={d} className={`mcal-c ${d === today ? 'today' : ''} ${list.length && dn === list.length ? 'all' : ''}`} onClick={() => { setDay(d); setMode('tasks'); }} aria-label={`${i + 1}: ${list.length ? `${dn} из ${list.length}` : 'задач нет'}`}>
+                <b>{i + 1}</b>{list.length > 0 && <><span className="mcal-dots">{list.slice(0, 4).map((t, j) => <i key={j} className={t.done ? 'on' : ''} />)}</span><small>{dn}/{list.length}</small></>}</button>; })}</div>
+        </section>
+      </>;
+    }
+    const subK: PeriodKind = kind === 'quarter' ? 'month' : 'quarter';
+    const subs: string[] = []; for (let d = from2; d <= to2; d = shiftPeriod(subK, d, 1)) subs.push(periodKey(subK, d));
+    return <>{nav}
+      <section className="panel span-all"><div className="panel-h"><h2>Цели · {periodLabel(kind, key)}</h2></div>{goalBlock(kind, key)}</section>
       <div className="plan-subs">{subs.map(sk => { const gs = goalsOf(subK, sk); return <section key={sk} className="panel"><div className="panel-h"><h2>{periodLabel(subK, sk)}</h2></div>
         {gs.length ? rows(gs) : <p className="hint" style={{ textAlign: 'left', margin: 2 }}>Целей нет.</p>}
-        <button className="link-btn" onClick={() => open(subK, periodRange(subK, sk)[0])}>Открыть {subK === 'month' ? 'месяц' : 'квартал'} ›</button></section>; })}</div>
+        <button className="link-btn" onClick={() => { setKind(subK); setAnchor(periodRange(subK, sk)[0]); }}>Открыть {subK === 'month' ? 'месяц' : 'квартал'} ›</button></section>; })}</div>
     </>;
   };
 
   return <div className="day plans-page">
     <header className="dayhead">
-      <button className="nav" onClick={() => go(-1)} aria-label="Назад"><Icon name="chevL" /></button>
-      <div className="daytitle"><span>планы · {PERIOD_NAMES[k].toLowerCase()}</span><b>{periodLabel(k, key)}</b></div>
-      <button className="nav" onClick={() => go(1)} aria-label="Вперёд"><Icon name="chev" /></button>
+      <div className="daytitle"><span>{mode === 'tasks' ? (mon <= today && today <= sun ? 'эта неделя' : periodLabel('week', mon)) : 'цели по периодам'}</span><b>Планы</b></div>
+      {mode === 'tasks' && day !== today && <button className="btn-accent" onClick={() => setDay(today)}>Сегодня</button>}
     </header>
-    {pro && <div className="st-bar plan-bar"><div className="seg-tabs" role="tablist">{PERIOD_KINDS.map(p => <button key={p} role="tab" aria-selected={k === p} className={k === p ? 'on' : ''} onClick={() => { setKind(p); buzz(6); }}>{PERIOD_NAMES[p]}</button>)}</div>
-      {!isNow && <button className="btn-accent" onClick={() => open(k, today)}>{NOW_BTN[k]}</button>}</div>}
-    {k === 'week' ? weekView() : k === 'month' ? monthView() : bigView()}
-    {!pro && <button className="pro-card" onClick={() => onPro('Цели и повторы')}>
-      <span className="chip-ic" style={{ ['--c' as string]: 'var(--orange)' }}><Icon name="repeat" /></span>
-      <span className="mid"><b>Цели на неделю–год и повторяющиеся задачи</b><small>в Pro или в своём наборе «Цели и повторы»</small></span>
-      <span className="lock">PRO</span>
-    </button>}
+    <div className="st-bar"><div className="seg-tabs" role="tablist">{([['tasks', 'Задачи'], ['goals', 'Цели']] as const).map(([m, n]) => <button key={m} role="tab" aria-selected={mode === m} className={mode === m ? 'on' : ''} onClick={() => { setMode(m); buzz(6); }}>{n}</button>)}</div></div>
+    {mode === 'tasks' ? tasksView() : goalsView()}
     <Sheet open={!!sheet} onClose={() => setSheet(null)} title={sheet?.g ? 'Цель' : sheet ? `Цель на ${PERIOD_ACC[sheet.kind]}` : ''}>
       {sheet && <GoalForm key={sheet.g?.id ?? `${sheet.kind}-${sheet.key}`} g={sheet.g} kind={sheet.kind} pkey={sheet.key} parents={formParents} onDone={() => { setSheet(null); changed(); }} />}
     </Sheet>

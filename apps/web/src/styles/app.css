@@ -1896,3 +1896,28 @@ a.btn-accent{text-decoration:none}
 .crash{margin:24px auto;max-width:480px;padding:20px;border-radius:var(--r3);background:var(--card);display:flex;flex-direction:column;gap:10px}
 .crash h2{margin:0;font:800 20px var(--display)}
 .crash p{margin:0;color:var(--text-2)}
+/* планы: задачи сначала */
+.wk-bar{display:flex;align-items:center;gap:4px}
+.wk-bar .wk{flex:1;min-width:0}
+.wk-bar .nav{flex:none;width:36px;height:52px;border-radius:12px;display:grid;place-items:center;color:var(--text-2)}
+.wk-bar .nav .ic{width:18px;height:18px}
+.wk-d i.all{color:var(--good);font-weight:700}
+.wk-d.on i.all{color:color-mix(in srgb,var(--on-navy) 85%,transparent)}
+.overdue{display:flex;align-items:center;gap:10px;padding:10px 12px 10px 14px;border-radius:var(--r2);background:color-mix(in srgb,var(--bad) 10%,var(--card));border:1px solid color-mix(in srgb,var(--bad) 30%,transparent)}
+.overdue span{flex:1;min-width:0;font-size:13.5px;line-height:1.35}
+.overdue b{color:var(--bad)}
+.day-panel .day-title{font:800 18px var(--display);letter-spacing:0;text-transform:none;color:var(--text)}
+.day-panel .task-add{margin-bottom:10px}
+.day-panel .task-add .primary{width:44px;height:40px;padding:0;justify-content:center}
+.goal-sum{display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:var(--r3);background:var(--card);box-shadow:var(--sh1);text-align:left;color:inherit}
+.goal-sum .mid{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.goal-sum .mid small{font-size:12.5px;color:var(--text-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.goal-sum .chev{width:18px;height:18px;color:var(--text-3)}
+.period-nav{display:flex;align-items:center;gap:6px;margin-top:8px}
+.period-nav b{font:800 17px var(--display);min-width:0}
+.period-nav .nav{width:40px;height:40px;border-radius:50%;display:grid;place-items:center;color:var(--text-2)}
+.plan-bar{display:flex;flex-direction:column;align-items:flex-start;gap:4px}
+.app.wide .plans-page>.wk-bar,.app.wide .plans-page>.overdue,.app.wide .plans-page>.goal-sum,.app.wide .plans-page>.st-bar{grid-column:1/-1}
+.app.wide .plans-page{grid-template-columns:1.25fr 1fr}
+.app.wide .plans-page>.goal-sum{grid-column:auto}
+.app.wide .plans-page>.day-panel{grid-row:span 3;align-self:start}
