@@ -22,11 +22,24 @@ export const users = pgTable('users', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   /** часовой пояс: смещение от UTC в минутах — по нему считаются «сегодня» и напоминания */
   tzOffset: smallint('tz_offset').notNull().default(0),
+  /** когда последний раз открывал журнал — для активности в админке (обновляется не чаще раза в 10 минут) */
+  lastSeenAt: timestamp('last_seen_at', { withTimezone: true }),
   deletedAt: timestamp('deleted_at', { withTimezone: true })
 }, t => [
   uniqueIndex('users_username_uq').on(sql`lower(${t.username})`),
   uniqueIndex('users_email_uq').on(sql`lower(${t.email})`).where(sql`${t.email} is not null`)
 ]);
+
+/** Отзывы из приложения: «Написать разработчику» */
+export const feedback = pgTable('feedback', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'set null' }),
+  text: text('text').notNull(),
+  /** экран, версия, устройство — чтобы понять контекст без расспросов */
+  context: jsonb('context').$type<Record<string, string>>().notNull().default({}),
+  done: boolean('done').notNull().default(false),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow()
+}, t => [index('feedback_created_idx').on(t.createdAt)]);
 
 /** Сколько раз за местный день человек обращался к ИИ — по видам (лимиты и расход) */
 export const aiUsage = pgTable('ai_usage', {

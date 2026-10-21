@@ -112,7 +112,7 @@ if (typeof window !== 'undefined') {
 
 export interface Subscription { pro: boolean; source: 'trial' | 'web' | 'apple' | 'google' | 'free' | 'beta' | null; expiresAt: string | null; daysLeft: number | null; plan: 'month' | 'year' | null; autoRenew: boolean; ended?: boolean; beta?: boolean; features?: import('@bortjournal/core').PackKey[] | null }
 export interface Profile { sex: string | null; age: number | null; heightCm: number | null; goal: string | null; pace?: string | null; targetKg: number | null; startWeightKg: number | null; settings: Record<string, any> }
-export interface Me { username: string; tzOffset: number; modules: string[]; subscription: Subscription; profile: Profile | null }
+export interface Me { admin?: boolean; username: string; tzOffset: number; modules: string[]; subscription: Subscription; profile: Profile | null }
 export interface PlanResult { kcal: number; protein: number; fat: number; carbs: number; weeklyKg: number; tdee: number; bmi: number; notes: string[]; weeks: number | null; water: number; steps: number }
 export interface TaskFull { id: string; title: string; day: string | null; time: string | null; done: boolean; prio: boolean; note: string | null; repeat: boolean; seriesId?: string | null; goalId?: string | null }
 export interface Goal { id: string; period: "week" | "month" | "quarter" | "year"; periodKey: string; title: string; note: string | null; done: boolean; parentId: string | null; progress: number; tasks: number; tasksDone: number; kids: number }

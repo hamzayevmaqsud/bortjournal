@@ -1878,3 +1878,17 @@ a.btn-accent{text-decoration:none}
 .legal-links{margin:6px 0 0;font-size:12.5px;color:var(--text-2);text-align:center;line-height:1.5}
 .legal-links a{color:var(--text-2);text-decoration:underline}
 .ai-consent p{margin:0;line-height:1.5}
+/* админка */
+.admin-page{display:flex;flex-direction:column;gap:12px;max-width:900px;margin:0 auto;width:100%}
+.fb-list,.ad-people{display:flex;flex-direction:column;gap:8px}
+.fb,.ad-p{padding:12px 14px;border-radius:var(--r2);background:var(--field);border:1px solid var(--line);display:flex;flex-direction:column;gap:6px}
+.fb.done{opacity:.55}
+.fb-head,.ad-p-head{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.fb-head span,.ad-p-head span{font-size:12px;color:var(--text-2)}
+.fb p{margin:0;white-space:pre-wrap;line-height:1.45}
+.fb-foot{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.fb-foot small,.ad-p small{font-size:12px;color:var(--text-3)}
+.ad-nums{display:flex;flex-wrap:wrap;gap:6px}
+.ad-nums span{display:inline-flex;align-items:baseline;gap:4px;padding:3px 8px;border-radius:999px;background:var(--card);font-size:12px;color:var(--text-2)}
+.ad-nums span b{font:800 13px var(--display);color:var(--text)}
+.ad-nums span.zero{opacity:.45}

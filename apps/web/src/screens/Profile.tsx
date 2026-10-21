@@ -79,9 +79,9 @@ function DeleteForm({ username, hasPassword, onDeleted }: { username: string; ha
   </form>;
 }
 
-export function Profile({ me, wide, onBack, onSaved, onRedo, onReminders, onPaywall, onLogout, onDeleted }: {
+export function Profile({ me, wide, onBack, onSaved, onRedo, onReminders, onFeedback, onPaywall, onLogout, onDeleted }: {
   me: Me; wide: boolean; onBack: () => void; onSaved: (s: Record<string, unknown>) => void; onRedo: () => void;
-  onReminders: () => void; onPaywall: () => void; onLogout: () => void; onDeleted: () => void;
+  onReminders: () => void; onFeedback?: () => void; onPaywall: () => void; onLogout: () => void; onDeleted: () => void;
 }) {
   const toast = useToast(), s = me.profile?.settings ?? {}, p = me.profile, sub = me.subscription;
   const [acc, setAcc] = useState<Account | null>(null), [devs, setDevs] = useState<Device[]>([]), [allDevs, setAllDevs] = useState(false), [sheet, setSheet] = useState<null | 'password' | 'delete' | 'voice'>(null);
@@ -165,6 +165,7 @@ export function Profile({ me, wide, onBack, onSaved, onRedo, onReminders, onPayw
     <section className="panel"><div className="panel-h"><h2>Данные</h2></div>
       <div className="pf-list">
         <label className="pf-row"><span className="mid"><b>ИИ-помощник</b><small>фото еды, голосовые записи и вопросы разбирает Google Gemini</small></span><input type="checkbox" className="switch" checked={!!s.aiConsent} onChange={async e => { try { const r = await api<{ settings: Record<string, unknown> }>('/api/profile/settings', { method: 'PUT', body: { aiConsent: e.target.checked } }); onSaved(r.settings); } catch { toast('Не получилось', { err: true }); } }} /></label>
+        {onFeedback && <button className="pf-row" onClick={onFeedback}><span className="mid"><b>Написать разработчику</b><small>отзыв, идея или ошибка — экран и устройство приложатся сами</small></span><Icon name="chev" className="ic chev" /></button>}
         <a className="pf-row" href="/privacy.html" target="_blank" rel="noopener"><span className="mid"><b>Конфиденциальность и условия</b><small>что храним, кому передаём, твои права</small></span><Icon name="chev" className="ic chev" /></a>
         <a className="pf-row" href="/api/export" download><span className="mid"><b>Выгрузить мои данные</b><small>всё, что записано, — одним файлом JSON</small></span><Icon name="chev" className="ic chev" /></a>
         <button className="pf-row" onClick={onLogout}><span className="mid"><b>Выйти</b><small>на этом устройстве</small></span><Icon name="chev" className="ic chev" /></button>

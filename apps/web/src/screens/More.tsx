@@ -42,7 +42,7 @@ export function ThemePick({ me, onSaved }: { me: Me; onSaved: (s: Record<string,
 export type MoreSummary = Partial<Record<string, string>>;
 // разделы, которые на компьютере уже есть в нижней панели — в «Ещё» их не дублируем
 const IN_DOCK = new Set(['goal', 'gym', 'study', 'budget', 'books', 'stats']);
-export function More({ me, wide = false, summary = {}, onPaywall, onPro, onSettings, onInstall, onLogout }: { me: Me; wide?: boolean; summary?: MoreSummary; onPaywall: (focus?: string) => void; onPro: (what: string) => void; onSettings: () => void; onInstall: () => void; onLogout: () => void; onSaved?: (s: Record<string, unknown>) => void }) {
+export function More({ me, wide = false, summary = {}, onPaywall, onPro, onSettings, onInstall, onLogout, onFeedback, onAdmin }: { me: Me; wide?: boolean; summary?: MoreSummary; onFeedback?: () => void; onAdmin?: () => void; onPaywall: (focus?: string) => void; onPro: (what: string) => void; onSettings: () => void; onInstall: () => void; onLogout: () => void; onSaved?: (s: Record<string, unknown>) => void }) {
   const s = me.profile?.settings ?? {}, sub = me.subscription, [pw, setPw] = useState(false);
   return <div className="day more-page">
     <header className="dayhead"><div className="daytitle"><span>ещё</span><b>{s.name || me.username}</b></div></header>
@@ -63,6 +63,8 @@ export function More({ me, wide = false, summary = {}, onPaywall, onPro, onSetti
       </button>; })}
     </div>
     <div className="rows">
+      {onFeedback && <button className="row" onClick={onFeedback}><span className="chip-ic" style={{ ['--c' as string]: 'var(--orange)' }}><Icon name="edit" /></span><span className="mid"><b>Написать разработчику</b><small>что понравилось, что мешает, где ошибка</small></span><Icon name="chev" className="ic chev" /></button>}
+      {me.admin && onAdmin && <button className="row" onClick={onAdmin}><span className="chip-ic" style={{ ['--c' as string]: 'var(--navy)' }}><Icon name="stats" /></span><span className="mid"><b>Админка</b><small>пользователи, активность, ИИ, отзывы</small></span><Icon name="chev" className="ic chev" /></button>}
       {!installed() && <button className="row" onClick={onInstall}><span className="chip-ic" style={{ ['--c' as string]: 'var(--water)' }}><Icon name="plus" /></span><span className="mid"><b>Установить на телефон</b><small>как приложение, с иконкой на экране</small></span><Icon name="chev" className="ic chev" /></button>}
       <button className="row" onClick={() => setPw(true)}><span className="chip-ic" style={{ ['--c' as string]: 'var(--orange)' }}><Icon name="edit" /></span><span className="mid"><b>Сменить пароль</b><small>другие устройства выйдут из аккаунта</small></span><Icon name="chev" className="ic chev" /></button>
       <a className="row" href="/api/export" download><span className="chip-ic" style={{ ['--c' as string]: 'var(--steps)' }}><Icon name="file" /></span><span className="mid"><b>Выгрузить мои данные</b><small>всё, что записано, — одним файлом JSON</small></span><Icon name="chev" className="ic chev" /></a>

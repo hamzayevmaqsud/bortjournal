@@ -32,13 +32,15 @@ import { takeAuthResult } from './lib/oauth';
 import { Reminders } from './components/Reminders';
 import { VoiceCapture } from './components/Voice';
 import { AiConsent } from './components/AiConsent';
+import { FeedbackForm } from './components/Feedback';
+import { Admin } from './screens/Admin';
 import { Stats, type StatsTab } from './screens/Stats';
 import { TodayWide } from './screens/TodayWide';
 import { useWide } from './lib/wide';
 import { applyTheme, type Theme } from './lib/theme';
 
 const TABS: Array<[string, string, string]> = [['today', 'today', 'Сегодня'], ['plans', 'plans', 'Планы'], ['add', 'plus', 'Записать'], ['food', 'food', 'Еда'], ['more', 'more', 'Ещё']];
-const ORDER = ['today', 'plans', 'food', 'study', 'gym', 'budget', 'books', 'goal', 'stats', 'more', 'profile'];
+const ORDER = ['today', 'plans', 'food', 'study', 'gym', 'budget', 'books', 'goal', 'stats', 'more', 'profile', 'admin'];
 // разделы, открываемые поверх вкладок (на телефоне — с кнопкой «назад»); платные — с ключом своего набора
 const SECTIONS: Record<string, string | null> = { goal: null, stats: null, study: 'study', gym: 'gym', budget: 'budget', books: 'books' };
 const SECTION_NAME: Record<string, string> = { study: 'Учёба', gym: 'Зал', budget: 'Бюджет', books: 'Книги' };
@@ -52,9 +54,9 @@ const ME = () => `/api/me?tz=${-new Date().getTimezoneOffset()}`;
 type SheetState =
   | { kind: 'none' } | { kind: 'add'; at?: string } | { kind: 'meal'; at?: string; meal?: Meal; day?: string } | { kind: 'drink'; at?: string; drink?: Drink; day?: string }
   | { kind: 'steps' } | { kind: 'weight' } | { kind: 'task'; day: string | null; task?: TaskFull }
-  | { kind: 'paywall'; focus?: string } | { kind: 'settings' } | { kind: 'install' } | { kind: 'reminders' } | { kind: 'voice' } | { kind: 'aiConsent'; then?: SheetState }
+  | { kind: 'paywall'; focus?: string } | { kind: 'settings' } | { kind: 'install' } | { kind: 'reminders' } | { kind: 'voice' } | { kind: 'aiConsent'; then?: SheetState } | { kind: 'feedback' }
   | { kind: 'search'; at?: string; day?: string } | { kind: 'ai'; at?: string; mode: 'photo' | 'text'; day?: string };
-const TITLES: Record<string, string> = { add: 'Записать', meal: 'Приём пищи', drink: 'Напиток', steps: 'Шаги за день', weight: 'Вес', task: 'Задача', paywall: '', settings: 'Профиль и нормы', install: 'На экран «Домой»', reminders: 'Напоминания', voice: 'Записать голосом', aiConsent: 'ИИ-помощник', search: 'Поиск еды', ai: 'Еда по фото или описанию' };
+const TITLES: Record<string, string> = { add: 'Записать', meal: 'Приём пищи', drink: 'Напиток', steps: 'Шаги за день', weight: 'Вес', task: 'Задача', paywall: '', settings: 'Профиль и нормы', install: 'На экран «Домой»', reminders: 'Напоминания', voice: 'Записать голосом', aiConsent: 'ИИ-помощник', feedback: 'Написать разработчику', search: 'Поиск еды', ai: 'Еда по фото или описанию' };
 
 export function App() {
   const toast = useToast(), wide = useWide();
@@ -222,8 +224,9 @@ export function App() {
     if (SECTIONS[name] && !can(sub, SECTIONS[name]!) && !sub.ended) { open({ kind: 'paywall', focus: SECTION_NAME[name] }); return; }
     if ((name === 'goal' || name === 'stats') && !can(sub, name)) { open({ kind: 'paywall', focus: name === 'goal' ? 'Цель и прогноз' : 'Статистика' }); return; }
     if (name in SECTIONS) setBack(tab in SECTIONS ? back : tab);
-    if (name === 'profile') setBack(tab === 'profile' ? back : tab);
+    if (name === 'profile' || name === 'admin') setBack(tab === name ? back : tab);
     setTab(name); showTabs(); buzz(6);
+    try { sessionStorage.setItem('bj-tab', name); } catch { /* без памяти */ }
   };
   goRef.current = go;
 
@@ -294,11 +297,14 @@ export function App() {
       </section>
       <section className="screen" data-pos={pos('profile')} aria-hidden={tab !== 'profile'}>
         {tab === 'profile' && <Profile me={me} wide={wide} onBack={() => setTab(back)} onSaved={st => { setMe(m => m && m.profile ? { ...m, profile: { ...m.profile, settings: st } } : m); setDays({}); if (day) loadDay(day); }}
-          onRedo={() => setRedo(true)} onReminders={() => open({ kind: 'reminders' })} onPaywall={() => open({ kind: 'paywall' })} onLogout={logout}
+          onRedo={() => setRedo(true)} onFeedback={() => open({ kind: 'feedback' })} onReminders={() => open({ kind: 'reminders' })} onPaywall={() => open({ kind: 'paywall' })} onLogout={logout}
           onDeleted={() => { toast('Аккаунт удалён'); setMe(null); setDays({}); setDay(null); setToday(null); setTab('today'); }} />}
       </section>
+      <section className="screen" data-pos={pos('admin')} aria-hidden={tab !== 'admin'}>
+        {tab === 'admin' && me.admin && <Admin wide={wide} onBack={() => setTab(back)} />}
+      </section>
       <section className="screen" data-pos={pos('more')} aria-hidden={tab !== 'more'}>
-        <More me={me} wide={wide} summary={moreSummary} onPro={pro} onSaved={st => setMe(m => m && m.profile ? { ...m, profile: { ...m.profile, settings: st } } : m)} onPaywall={focus => open({ kind: 'paywall', focus })} onSettings={() => go('profile')} onInstall={() => open({ kind: 'install' })}
+        <More me={me} wide={wide} summary={moreSummary} onFeedback={() => open({ kind: 'feedback' })} onAdmin={() => go('admin')} onPro={pro} onSaved={st => setMe(m => m && m.profile ? { ...m, profile: { ...m.profile, settings: st } } : m)} onPaywall={focus => open({ kind: 'paywall', focus })} onSettings={() => go('profile')} onInstall={() => open({ kind: 'install' })}
           onLogout={logout} />
       </section>
     </div>
@@ -338,6 +344,7 @@ export function App() {
       {sheet.kind === 'install' && <InstallHelp />}
       {sheet.kind === 'reminders' && <Reminders onInstall={() => open({ kind: 'install' })} />}
       {sheet.kind === 'aiConsent' && <AiConsent onDone={async ok => { if (!ok) { close(); return; } try { const r = await api<{ settings: Record<string, unknown> }>('/api/profile/settings', { method: 'PUT', body: { aiConsent: true } }); setMe(m => m && m.profile ? { ...m, profile: { ...m.profile, settings: r.settings } } : m); if (sheet.then) open(sheet.then); else { close(); toast('ИИ-помощник включён — повтори действие'); } } catch (e) { fail(e); } }} />}
+      {sheet.kind === 'feedback' && <FeedbackForm onDone={close} />}
       {sheet.kind === 'voice' && <VoiceCapture onDone={() => { setVersion(v => v + 1); if (day) loadDay(day); }} />}
       {sheet.kind === 'search' && day && <FoodSearch day={sheet.day ?? day} time={sheet.at} onDone={done} />}
       {sheet.kind === 'ai' && day && <FoodAi key={sheet.mode} day={sheet.day ?? day} time={sheet.at} mode={sheet.mode} onDone={done} />}

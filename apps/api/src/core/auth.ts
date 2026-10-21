@@ -13,6 +13,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type { DB } from '../db/index.js';
 import { startTrial, subscription } from './billing.js';
 import { modulesOf } from './entitlements.js';
+import { isAdminName } from './admin.js';
 import { authIdentities, profiles, sessions, users } from './schema.js';
 
 const scrypt = promisify(crypto.scrypt) as (pw: string, salt: string, len: number, opts: crypto.ScryptOptions) => Promise<Buffer>;
@@ -193,9 +194,10 @@ export async function authRoutes(app: FastifyInstance, { db }: { db: DB }) {
     // часовой пояс приходит с устройства: по нему считаются «сегодня», «сейчас» и напоминания
     const tz = Number((req.query as { tz?: string }).tz);
     if (Number.isInteger(tz) && Math.abs(tz) <= 840) await db.update(users).set({ tzOffset: tz }).where(and(eq(users.id, req.userId), sql`${users.tzOffset} <> ${tz}`));
-    const [u] = await db.select({ username: users.username, tzOffset: users.tzOffset }).from(users).where(eq(users.id, req.userId));
+    const [u] = await db.select({ username: users.username, tzOffset: users.tzOffset, seen: users.lastSeenAt }).from(users).where(eq(users.id, req.userId));
+    if (!u!.seen || Date.now() - u!.seen.getTime() > 10 * 60e3) await db.update(users).set({ lastSeenAt: new Date() }).where(eq(users.id, req.userId));
     const [p] = await db.select().from(profiles).where(eq(profiles.userId, req.userId));
-    return { username: u!.username, tzOffset: u!.tzOffset, modules: await modulesOf(db, req.userId), subscription: await subscription(db, req.userId), profile: p ?? null };
+    return { username: u!.username, tzOffset: u!.tzOffset, admin: isAdminName(u!.username), modules: await modulesOf(db, req.userId), subscription: await subscription(db, req.userId), profile: p ?? null };
   });
 }
 
