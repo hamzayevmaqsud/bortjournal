@@ -11,6 +11,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { addDays, isDay, localNow, parseDay } from '@bortjournal/core';
 import { recordEvent } from '../../core/events.js';
 import { aiEnabled, gemini } from '../../core/gemini.js';
+import { ConsentError, takeAi } from '../../core/ai-quota.js';
 import { bad, idParam, notFound, uid } from '../../core/http.js';
 import { profiles, users } from '../../core/schema.js';
 import { bearerOf, userByToken } from '../../core/tokens.js';
@@ -97,7 +98,11 @@ export async function captureRoutes(app: FastifyInstance, { db }: { db: DB }) {
     if (audio && audio.length > 7 * 1024 * 1024) throw bad('Запись слишком длинная — до минуты.');
     const mime = typeof b.mime === 'string' && /^audio\/[a-z0-9.+-]+(;.*)?$/i.test(b.mime) ? b.mime.split(';')[0]! : 'audio/mp4';
     const userId = uid(req), now = await nowOf(userId);
-    const p = await parsePhrase({ text, audio: audio ? { data: audio, mime } : undefined }, now);
+    // без согласия на ИИ или сверх лимита фраза не теряется — сохраняем заметкой как есть
+    let viaAi = aiEnabled(), why = '';
+    if (viaAi) try { await takeAi(db, userId, 'capture'); } catch (e) { viaAi = false; why = e instanceof ConsentError ? ' Чтобы журнал сам ставил задачи со временем, разреши ИИ-помощника в профиле.' : ` ${(e as Error).message}`; }
+    if (!viaAi && !text.trim()) throw bad(why.trim() || 'Распознавание голоса не настроено: на сервере нет ключа ИИ.');
+    const p = viaAi ? await parsePhrase({ text, audio: audio ? { data: audio, mime } : undefined }, now) : { heard: text.trim(), kind: 'note' as const, title: text.trim().slice(0, 500), day: null, time: null, details: null };
     const [prof] = await db.select({ s: profiles.settings }).from(profiles).where(eq(profiles.userId, userId));
     const lead = leadOf(prof?.s as Record<string, any>);
     if (p.kind === 'task') {
@@ -108,7 +113,7 @@ export async function captureRoutes(app: FastifyInstance, { db }: { db: DB }) {
         message: `Задача «${t!.title}» — ${when}.${t!.time && lead ? ` Напомню за ${lead} минут.` : ''}` });
     }
     const [n] = await db.insert(notes).values({ userId, text: p.details ? `${p.title}\n${p.details}` : p.title, source: audio || req.headers.authorization ? 'voice' : 'manual' }).returning();
-    return reply.code(201).send({ kind: 'note', heard: p.heard, note: { id: n!.id, text: n!.text }, message: `Заметка записана: «${n!.text.slice(0, 80)}».` });
+    return reply.code(201).send({ kind: 'note', heard: p.heard, note: { id: n!.id, text: n!.text }, message: `Заметка записана: «${n!.text.slice(0, 80)}».${why}` });
   });
 
   /* ---------- заметки ---------- */

@@ -28,6 +28,14 @@ export const users = pgTable('users', {
   uniqueIndex('users_email_uq').on(sql`lower(${t.email})`).where(sql`${t.email} is not null`)
 ]);
 
+/** Сколько раз за местный день человек обращался к ИИ — по видам (лимиты и расход) */
+export const aiUsage = pgTable('ai_usage', {
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  day: date('day', { mode: 'string' }).notNull(),
+  kind: text('kind').notNull(),
+  count: integer('count').notNull().default(0)
+}, t => [primaryKey({ columns: [t.userId, t.day, t.kind] })]);
+
 /**
  * Личные ключи для внешних клиентов: «Команды» на iPhone (голосовая запись) и подписка календаря.
  * В базе — только sha256 ключа; сам ключ показывается один раз при создании.

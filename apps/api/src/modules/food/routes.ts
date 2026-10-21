@@ -3,7 +3,8 @@ import { DRINKS } from '@bortjournal/core';
 import { bad, dayParam, guard, hmParam, idParam, notFound, uid } from '../../core/http.js';
 import type { DB } from '../../db/index.js';
 import { addDrink, addMeal, dayFood, deleteEntry, myFoods, updateDrink, updateMeal, type MealInput } from './service.js';
-import { aiEnabled, recognizeFood, takeQuota } from './ai.js';
+import { aiEnabled, recognizeFood } from './ai.js';
+import { takeAi } from '../../core/ai-quota.js';
 import { requireUser } from '../../core/auth.js';
 import { requireFeature } from '../../core/billing.js';
 import { searchCatalog } from './catalog.js';
@@ -71,7 +72,7 @@ export async function foodRoutes(app: FastifyInstance, { db }: { db: DB }) {
       if (!/^image\/(jpeg|png|webp)$/.test(mime)) throw bad('Нужна картинка JPEG, PNG или WebP.');
       if (image.length < 100 || image.length > 11e6) throw bad('Фото пустое или слишком большое.');
     } else if (note.length < 2) throw bad('Опиши, что съел, или добавь фото.');
-    if (!takeQuota(uid(req), new Date().toISOString().slice(0, 10))) return reply.code(429).send({ error: 'На сегодня лимит распознаваний исчерпан.' });
+    await takeAi(db, uid(req), 'food');
     return recognizeFood({ image, mime, note, scale: String(b.scale ?? ''), answers: (Array.isArray(b.answers) ? b.answers : []).slice(0, 8).map(a => String(a).slice(0, 200)) });
   });
 

@@ -61,6 +61,7 @@ export async function profileRoutes(app: FastifyInstance, { db }: { db: DB }) {
     if (typeof b.onboarded === 'boolean') s.onboarded = b.onboarded;
     if (typeof b.checklistDone === 'boolean') s.checklistDone = b.checklistDone;
     if (typeof b.remindSeen === 'boolean') s.remindSeen = b.remindSeen;
+    if (typeof b.aiConsent === 'boolean') s.aiConsent = b.aiConsent;
     if (b.fat !== undefined) s.fat = Math.round(num(b.fat, 0, 300, 'Жиры'));
     if (b.carbs !== undefined) s.carbs = Math.round(num(b.carbs, 0, 800, 'Углеводы'));
     if (b.study !== undefined) s.study = Math.round(num(b.study, 0, 600, 'Учёба в день'));

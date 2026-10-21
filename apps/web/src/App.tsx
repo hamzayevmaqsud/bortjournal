@@ -31,6 +31,7 @@ import { Profile } from './screens/Profile';
 import { takeAuthResult } from './lib/oauth';
 import { Reminders } from './components/Reminders';
 import { VoiceCapture } from './components/Voice';
+import { AiConsent } from './components/AiConsent';
 import { Stats, type StatsTab } from './screens/Stats';
 import { TodayWide } from './screens/TodayWide';
 import { useWide } from './lib/wide';
@@ -51,9 +52,9 @@ const ME = () => `/api/me?tz=${-new Date().getTimezoneOffset()}`;
 type SheetState =
   | { kind: 'none' } | { kind: 'add'; at?: string } | { kind: 'meal'; at?: string; meal?: Meal; day?: string } | { kind: 'drink'; at?: string; drink?: Drink; day?: string }
   | { kind: 'steps' } | { kind: 'weight' } | { kind: 'task'; day: string | null; task?: TaskFull }
-  | { kind: 'paywall'; focus?: string } | { kind: 'settings' } | { kind: 'install' } | { kind: 'reminders' } | { kind: 'voice' }
+  | { kind: 'paywall'; focus?: string } | { kind: 'settings' } | { kind: 'install' } | { kind: 'reminders' } | { kind: 'voice' } | { kind: 'aiConsent'; then?: SheetState }
   | { kind: 'search'; at?: string; day?: string } | { kind: 'ai'; at?: string; mode: 'photo' | 'text'; day?: string };
-const TITLES: Record<string, string> = { add: 'Записать', meal: 'Приём пищи', drink: 'Напиток', steps: 'Шаги за день', weight: 'Вес', task: 'Задача', paywall: '', settings: 'Профиль и нормы', install: 'На экран «Домой»', reminders: 'Напоминания', voice: 'Записать голосом', search: 'Поиск еды', ai: 'Еда по фото или описанию' };
+const TITLES: Record<string, string> = { add: 'Записать', meal: 'Приём пищи', drink: 'Напиток', steps: 'Шаги за день', weight: 'Вес', task: 'Задача', paywall: '', settings: 'Профиль и нормы', install: 'На экран «Домой»', reminders: 'Напоминания', voice: 'Записать голосом', aiConsent: 'ИИ-помощник', search: 'Поиск еды', ai: 'Еда по фото или описанию' };
 
 export function App() {
   const toast = useToast(), wide = useWide();
@@ -154,8 +155,10 @@ export function App() {
     const onBox = () => { const n = pendingCount(); if (n > last) toast('Нет связи — запись сохранена на телефоне и уйдёт, когда появится сеть'); last = n; setQueued(n); };
     const onSync = (e: Event) => { const { sent, dropped } = (e as CustomEvent<{ sent: number; dropped: number }>).detail; if (sent) toast(`Отправлено записей: ${sent}`); if (dropped) toast(`Сервер не принял записей: ${dropped}`, { err: true }); setDays({}); sync.current(); };
     const onPay = () => openRef.current({ kind: 'paywall' });
+    const onConsent = () => openRef.current({ kind: 'aiConsent' });
+    addEventListener('bj-consent', onConsent);
     addEventListener('bj-outbox', onBox); addEventListener('bj-synced', onSync); addEventListener('bj-paywall', onPay); void flushOutbox();
-    return () => { removeEventListener('bj-outbox', onBox); removeEventListener('bj-synced', onSync); removeEventListener('bj-paywall', onPay); };
+    return () => { removeEventListener('bj-outbox', onBox); removeEventListener('bj-synced', onSync); removeEventListener('bj-paywall', onPay); removeEventListener('bj-consent', onConsent); };
   }, [toast]);
   useEffect(() => {
     if (!me) return;
@@ -210,7 +213,7 @@ export function App() {
     'Напоминания': () => ({ kind: 'reminders' }),
     'Поиск еды': (at, d) => ({ kind: 'search', at, day: d }), 'Поиск по базе продуктов': (at, d) => ({ kind: 'search', at, day: d }),
   };
-  const pro = (what: string, at?: string, inDay?: string) => { if (!can(sub, what)) { open({ kind: 'paywall', focus: what }); return; } if (PRO_OPEN[what]) { open(PRO_OPEN[what]!(at, inDay)); return; } if (PRO_TABS[what]) { close(); const [t, st] = PRO_TABS[what]!.split(':'); if (t === 'study') setStudyTab(st as 'study' | 'quiz'); else setStatsTab(st as StatsTab | undefined); go(t!); return; } close(); toast(`«${what}» скоро появится`); };
+  const pro = (what: string, at?: string, inDay?: string) => { if (!can(sub, what)) { open({ kind: 'paywall', focus: what }); return; } if (PRO_OPEN[what]) { const next = PRO_OPEN[what]!(at, inDay); if ((next.kind === 'ai') && !me?.profile?.settings?.aiConsent) { open({ kind: 'aiConsent', then: next }); return; } open(next); return; } if (PRO_TABS[what]) { close(); const [t, st] = PRO_TABS[what]!.split(':'); if (t === 'study') setStudyTab(st as 'study' | 'quiz'); else setStatsTab(st as StatsTab | undefined); go(t!); return; } close(); toast(`«${what}» скоро появится`); };
   const setSub = (s: Subscription) => { setMe(m => m ? { ...m, subscription: s } : m); setDays({}); if (day) loadDay(day); };
   const [back, setBack] = useState('today'), [statsTab, setStatsTab] = useState<StatsTab | undefined>(), [studyTab, setStudyTab] = useState<'study' | 'quiz' | undefined>();
   const go = (name: string) => {
@@ -334,6 +337,7 @@ export function App() {
       {sheet.kind === 'settings' && <SettingsForm me={me} onDone={s => { setMe(m => m && m.profile ? { ...m, profile: { ...m.profile, settings: s } } : m); done(); setDays({}); }} onRedo={() => { close(); setRedo(true); }} />}
       {sheet.kind === 'install' && <InstallHelp />}
       {sheet.kind === 'reminders' && <Reminders onInstall={() => open({ kind: 'install' })} />}
+      {sheet.kind === 'aiConsent' && <AiConsent onDone={async ok => { if (!ok) { close(); return; } try { const r = await api<{ settings: Record<string, unknown> }>('/api/profile/settings', { method: 'PUT', body: { aiConsent: true } }); setMe(m => m && m.profile ? { ...m, profile: { ...m.profile, settings: r.settings } } : m); if (sheet.then) open(sheet.then); else { close(); toast('ИИ-помощник включён — повтори действие'); } } catch (e) { fail(e); } }} />}
       {sheet.kind === 'voice' && <VoiceCapture onDone={() => { setVersion(v => v + 1); if (day) loadDay(day); }} />}
       {sheet.kind === 'search' && day && <FoodSearch day={sheet.day ?? day} time={sheet.at} onDone={done} />}
       {sheet.kind === 'ai' && day && <FoodAi key={sheet.mode} day={sheet.day ?? day} time={sheet.at} mode={sheet.mode} onDone={done} />}

@@ -68,6 +68,7 @@ beforeAll(async () => {
   conn = await freshDb();
   const [u] = await conn.db.insert(s.users).values({ username: 'student', passwordHash: await hashPassword('secret12'), tzOffset: 240 }).returning();
   await grantFree(conn.db, u!.id); await grant(conn.db, u!.id, 'pro', 'free');
+  await conn.db.insert(s.profiles).values({ userId: u!.id, settings: { aiConsent: true } });
   app = await buildApp({ db: conn.db, serveWeb: false });
   cookie = String((await app.inject({ method: 'POST', url: '/api/auth/login', headers: H, payload: { username: 'student', password: 'secret12' } })).headers['set-cookie']).split(';')[0]!;
 }, 60000);

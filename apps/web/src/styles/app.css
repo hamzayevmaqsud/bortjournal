@@ -1875,3 +1875,6 @@ a.btn-accent{text-decoration:none}
 .pf-track{flex-direction:column;align-items:stretch}
 .ro-bar{position:absolute;z-index:24;left:50%;transform:translateX(-50%);top:calc(8px + env(safe-area-inset-top,0px));display:inline-flex;align-items:center;gap:8px;max-width:calc(100% - 24px);padding:8px 14px;border-radius:999px;background:var(--fill-orange);color:#fff;font-size:12.5px;font-weight:700;box-shadow:var(--sh2)}
 .ro-bar .ic{width:15px;height:15px}
+.legal-links{margin:6px 0 0;font-size:12.5px;color:var(--text-2);text-align:center;line-height:1.5}
+.legal-links a{color:var(--text-2);text-decoration:underline}
+.ai-consent p{margin:0;line-height:1.5}

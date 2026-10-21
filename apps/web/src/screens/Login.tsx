@@ -40,5 +40,6 @@ export function Login({ onDone, onForgot }: { onDone: () => void; onForgot?: () 
       <div className="err" role="alert">{err}</div>
       <button type="submit" disabled={busy}>{busy ? (up ? 'Создаю…' : 'Вхожу…') : up ? 'Создать аккаунт' : 'Войти'}</button>
     </form>
+    <p className="legal-links">Продолжая, ты принимаешь <a href="/terms.html" target="_blank" rel="noopener">условия</a> и <a href="/privacy.html" target="_blank" rel="noopener">политику конфиденциальности</a>.</p>
   </main>;
 }

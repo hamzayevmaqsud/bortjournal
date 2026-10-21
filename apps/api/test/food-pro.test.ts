@@ -18,6 +18,7 @@ beforeAll(async () => {
     const [u] = await conn.db.insert(s.users).values({ username: name, passwordHash: await hashPassword('secret12'), tzOffset: 240 }).returning();
     await grantFree(conn.db, u!.id);
     if (pro) await grant(conn.db, u!.id, 'pro', 'free');
+    await conn.db.insert(s.profiles).values({ userId: u!.id, settings: { aiConsent: true } });
   }
   app = await buildApp({ db: conn.db, serveWeb: false });
   for (const name of ['pro', 'free']) cookies[name] = String((await app.inject({ method: 'POST', url: '/api/auth/login', headers: H, payload: { username: name, password: 'secret12' } })).headers['set-cookie']).split(';')[0]!;

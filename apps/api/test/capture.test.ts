@@ -28,7 +28,7 @@ beforeAll(async () => {
   conn = await freshDb();
   const [u] = await conn.db.insert(s.users).values({ username: 'voice', passwordHash: await hashPassword('secret12'), tzOffset: TZ }).returning();
   userId = u!.id; await grantFree(conn.db, userId);
-  await conn.db.insert(s.profiles).values({ userId, heightCm: 180, settings: {} });
+  await conn.db.insert(s.profiles).values({ userId, heightCm: 180, settings: { aiConsent: true } });
   app = await buildApp({ db: conn.db, serveWeb: false });
   cookie = String((await app.inject({ method: 'POST', url: '/api/auth/login', headers: H, payload: { username: 'voice', password: 'secret12' } })).headers['set-cookie']).split(';')[0]!;
 }, 60000);
@@ -113,5 +113,26 @@ describe('календарь', () => {
     expect(ics).toContain('DTSTART:20261022T053000Z');
     expect(ics.split('\r\n').every(l => Buffer.byteLength(l) <= 75)).toBe(true);
     expect(ics.match(/BEGIN:VALARM/g)).toBeNull(); // сделанная — без напоминания, без времени — тоже
+  });
+});
+
+describe('согласие и лимиты ИИ', () => {
+  it('без согласия фраза сохраняется заметкой, ИИ не вызывается; лимит считается по дню', async () => {
+    await conn.db.update(s.profiles).set({ settings: {} });
+    reply = { heard: 'x', kind: 'task', title: 'Не должно', day: null, time: '10:00' };
+    const r = (await req('POST', '/api/plans/capture', { text: 'завтра в 10 стоматолог' })).json();
+    expect(r).toMatchObject({ kind: 'note', note: { text: 'завтра в 10 стоматолог' } });
+    expect(r.message).toMatch(/разреши ИИ-помощника/);
+    const q = (await req('GET', '/api/ai/quota')).json();
+    expect(q).toMatchObject({ consent: false, kinds: { capture: { limit: 60 } } });
+    const used = q.kinds.capture.used;
+    expect((await req('PUT', '/api/profile/settings', { aiConsent: true })).json().settings.aiConsent).toBe(true);
+    process.env.AI_LIMIT_CAPTURE = String(used + 1);
+    reply = { heard: 'встреча', kind: 'task', title: 'Встреча', day: null, time: '23:59' };
+    expect((await req('POST', '/api/plans/capture', { text: 'встреча в 23:59' })).json().kind).toBe('task');
+    const over = (await req('POST', '/api/plans/capture', { text: 'ещё одна' })).json();
+    expect(over.kind).toBe('note'); expect(over.message).toMatch(/лимит/);
+    expect((await req('GET', '/api/ai/quota')).json().kinds.capture).toMatchObject({ used: used + 1, left: 0 });
+    delete process.env.AI_LIMIT_CAPTURE;
   });
 });

@@ -14,6 +14,7 @@ import { bad, dayParam, HttpError, hmParam, idParam, notFound, uid } from '../..
 import { users } from '../../core/schema.js';
 import type { DB, Tx } from '../../db/index.js';
 import { obsFor } from './obsidian.js';
+import { takeAi } from '../../core/ai-quota.js';
 import { answer, answersByDay, isRunning, present, queueOf, removeSrsOf, startQuestions } from './mc.js';
 import { extractFile, extractLink, MAX_FILE, MAX_TEXT } from './extract.js';
 import { materials, questions, quizzes, studySessions, studyTime } from './schema.js';
@@ -174,6 +175,7 @@ export async function studyRoutes(app: FastifyInstance, { db }: { db: DB }) {
     await db.update(materials).set({ quiz: on, updatedAt: new Date() }).where(eq(materials.id, m.id));
     if (on && (m.quizStatus === 'none' || m.quizStatus === 'error' || (m.quizStatus === 'working' && !isRunning(m.id)))) {
       if (!aiEnabled()) throw new HttpError(503, 'Вопросы составляет ИИ, а на сервере нет его ключа.');
+      await takeAi(db, userId, 'questions');
       await db.update(materials).set({ quizStatus: 'working', quizError: null }).where(eq(materials.id, m.id));
       startQuestions(db, m.id, log);
     }
@@ -234,6 +236,7 @@ export async function studyRoutes(app: FastifyInstance, { db }: { db: DB }) {
   app.post('/obsidian/cheatsheet', { preHandler }, async (req, reply) => {
     const o = await obsOr404(req, reply); if (!o) return;
     if (!aiEnabled()) return reply.code(503).send({ error: 'Нет ключа ИИ.' });
+    await takeAi(db, uid(req), 'cheatsheet');
     return o.cheatsheet(String((req.body as any)?.noteId ?? ''));
   });
   app.get('/obsidian/cheatsheet', { preHandler }, async (req, reply) => { const o = await obsOr404(req, reply); if (!o) return; return o.readCheat(String((req.query as any).id ?? '')); });

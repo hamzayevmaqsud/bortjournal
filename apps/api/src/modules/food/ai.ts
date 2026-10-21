@@ -50,13 +50,6 @@ export interface AiInput { image: string | null; mime: string; note: string; sca
 
 const clamp = (v: unknown, max: number) => Math.max(0, Math.min(max, Math.round((Number(v) || 0) * 2) / 2));
 
-// счётчик на человека за сутки (в памяти процесса — для мягкого лимита этого достаточно)
-const used = new Map<string, number>();
-export function takeQuota(userId: string, day: string) {
-  for (const k of used.keys()) if (!k.endsWith(day)) used.delete(k);
-  const k = `${userId}:${day}`, n = (used.get(k) ?? 0) + 1; used.set(k, n);
-  return n <= Number(process.env.PHOTO_DAILY_LIMIT ?? 60);
-}
 
 export async function recognizeFood({ image, mime, note, scale, answers }: AiInput): Promise<AiResult> {
   const text = [PROMPT, SCALES[scale] ?? 'Эталона размера в кадре нет.', image ? '' : 'Фото нет — только текстовое описание.',

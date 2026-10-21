@@ -73,6 +73,8 @@ export async function api<T>(path: string, opts: { method?: string; body?: unkno
   }
   const data = await r.json().catch(() => ({}));
   // раздел закрыт подпиской — приложение откроет тарифы
+  // нужно согласие на ИИ — приложение покажет экран согласия
+  if (r.status === 428) dispatchEvent(new Event('bj-consent'));
   if (r.status === 402) dispatchEvent(new CustomEvent('bj-paywall', { detail: (data as { feature?: string }).feature ?? null }));
   if (!r.ok) throw new ApiError(r.status, (data as { error?: string }).error ?? `Ошибка ${r.status}`);
   if (method === 'GET') remember(path, data); else if (!path.startsWith('/api/auth/') && pendingCount()) void flushOutbox();

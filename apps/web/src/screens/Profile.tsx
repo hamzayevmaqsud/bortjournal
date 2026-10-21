@@ -164,6 +164,8 @@ export function Profile({ me, wide, onBack, onSaved, onRedo, onReminders, onPayw
 
     <section className="panel"><div className="panel-h"><h2>Данные</h2></div>
       <div className="pf-list">
+        <label className="pf-row"><span className="mid"><b>ИИ-помощник</b><small>фото еды, голосовые записи и вопросы разбирает Google Gemini</small></span><input type="checkbox" className="switch" checked={!!s.aiConsent} onChange={async e => { try { const r = await api<{ settings: Record<string, unknown> }>('/api/profile/settings', { method: 'PUT', body: { aiConsent: e.target.checked } }); onSaved(r.settings); } catch { toast('Не получилось', { err: true }); } }} /></label>
+        <a className="pf-row" href="/privacy.html" target="_blank" rel="noopener"><span className="mid"><b>Конфиденциальность и условия</b><small>что храним, кому передаём, твои права</small></span><Icon name="chev" className="ic chev" /></a>
         <a className="pf-row" href="/api/export" download><span className="mid"><b>Выгрузить мои данные</b><small>всё, что записано, — одним файлом JSON</small></span><Icon name="chev" className="ic chev" /></a>
         <button className="pf-row" onClick={onLogout}><span className="mid"><b>Выйти</b><small>на этом устройстве</small></span><Icon name="chev" className="ic chev" /></button>
         <button className="pf-row pf-danger" onClick={() => setSheet('delete')}><span className="mid"><b>Удалить аккаунт</b><small>вместе со всеми записями, без возврата</small></span><Icon name="chev" className="ic chev" /></button>
