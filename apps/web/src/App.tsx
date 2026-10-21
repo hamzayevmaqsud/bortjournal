@@ -30,6 +30,7 @@ import { Study } from './screens/Study';
 import { Profile } from './screens/Profile';
 import { takeAuthResult } from './lib/oauth';
 import { Reminders } from './components/Reminders';
+import { VoiceCapture } from './components/Voice';
 import { Stats, type StatsTab } from './screens/Stats';
 import { TodayWide } from './screens/TodayWide';
 import { useWide } from './lib/wide';
@@ -50,18 +51,18 @@ const ME = () => `/api/me?tz=${-new Date().getTimezoneOffset()}`;
 type SheetState =
   | { kind: 'none' } | { kind: 'add'; at?: string } | { kind: 'meal'; at?: string; meal?: Meal; day?: string } | { kind: 'drink'; at?: string; drink?: Drink; day?: string }
   | { kind: 'steps' } | { kind: 'weight' } | { kind: 'task'; day: string | null; task?: TaskFull }
-  | { kind: 'paywall'; focus?: string } | { kind: 'settings' } | { kind: 'install' } | { kind: 'reminders' }
+  | { kind: 'paywall'; focus?: string } | { kind: 'settings' } | { kind: 'install' } | { kind: 'reminders' } | { kind: 'voice' }
   | { kind: 'search'; at?: string; day?: string } | { kind: 'ai'; at?: string; mode: 'photo' | 'text'; day?: string };
-const TITLES: Record<string, string> = { add: 'Записать', meal: 'Приём пищи', drink: 'Напиток', steps: 'Шаги за день', weight: 'Вес', task: 'Задача', paywall: '', settings: 'Профиль и нормы', install: 'На экран «Домой»', reminders: 'Напоминания', search: 'Поиск еды', ai: 'Еда по фото или описанию' };
+const TITLES: Record<string, string> = { add: 'Записать', meal: 'Приём пищи', drink: 'Напиток', steps: 'Шаги за день', weight: 'Вес', task: 'Задача', paywall: '', settings: 'Профиль и нормы', install: 'На экран «Домой»', reminders: 'Напоминания', voice: 'Записать голосом', search: 'Поиск еды', ai: 'Еда по фото или описанию' };
 
 export function App() {
   const toast = useToast(), wide = useWide();
   // телефон: панель разделов уезжает вниз вместе с прокруткой (на столько же пикселей), листаешь вверх — так же выезжает;
   // когда прокрутка остановилась, панель плавно доезжает до ближайшего положения. Стиль пишем прямо в элемент — без перерисовки React
-  const tabsRef = useRef<HTMLElement>(null), shift = useRef(0), goRef = useRef<(name: string) => void>(() => {});
+  const tabsRef = useRef<HTMLElement>(null), shift = useRef(0), goRef = useRef<(name: string) => void>(() => {}), openRef = useRef<(s: SheetState) => void>(() => {});
   // уведомление ведёт в раздел: «/#plans» при открытии или сообщение от service worker, если окно уже открыто
   useEffect(() => {
-    const nav = (h: string) => { if (ORDER.includes(h)) { goRef.current(h); history.replaceState(null, '', location.pathname); } };
+    const nav = (h: string) => { if (h === 'voice') { openRef.current({ kind: 'voice' }); history.replaceState(null, '', location.pathname); return; } if (ORDER.includes(h)) { goRef.current(h); history.replaceState(null, '', location.pathname); } };
     const onMsg = (e: MessageEvent) => { if (typeof e.data?.nav === 'string') nav(e.data.nav); };
     const onHash = () => nav(location.hash.slice(1));
     navigator.serviceWorker?.addEventListener('message', onMsg); addEventListener('hashchange', onHash);
@@ -86,7 +87,7 @@ export function App() {
   }, [wide, showTabs]);
   const [me, setMe] = useState<Me | null | undefined>(undefined), [redo, setRedo] = useState(false);
   const ready = !!me?.profile?.heightCm;
-  useEffect(() => { const h = location.hash.slice(1); if (ready && ORDER.includes(h)) { goRef.current(h); history.replaceState(null, '', location.pathname); } }, [ready]);
+  useEffect(() => { const h = location.hash.slice(1); if (!ready) return; if (h === 'voice') { openRef.current({ kind: 'voice' }); history.replaceState(null, '', location.pathname); } else if (ORDER.includes(h)) { goRef.current(h); history.replaceState(null, '', location.pathname); } }, [ready]);
   // вернулись после привязки Google или Apple из профиля — сказать, что вышло, и открыть профиль
   useEffect(() => { if (!ready) return; const r = takeAuthResult(); if (!r) return; toast(r.error ?? r.ok!, r.error ? { err: true } : undefined); goRef.current('profile'); }, [ready]); // eslint-disable-line react-hooks/exhaustive-deps
   const [tab, setTab] = useState('today');
@@ -98,6 +99,7 @@ export function App() {
   const sub: Subscription = me?.subscription ?? { pro: false, source: null, expiresAt: null, daysLeft: null, plan: null, autoRenew: false };
 
   const open = (s: SheetState) => { setSheet(s); setSheetOpen(true); };
+  openRef.current = open;
   const close = useCallback(() => setSheetOpen(false), []);
   const fail = useCallback((e: unknown) => {
     if (e instanceof ApiError && e.status === 401) { setMe(null); return; }
@@ -288,6 +290,7 @@ export function App() {
           <button className="bigt" style={{ background: 'var(--food)' }} onClick={() => open({ kind: 'meal', at: sheet.at })}><span className="chip-ic"><Icon name="food" /></span><b>Приём пищи</b><small>калории и БЖУ вручную</small></button>
           <button className="bigt" style={{ background: 'var(--navy)' }} onClick={() => pro('Фото и описание еды', sheet.at)}><span className="chip-ic"><Icon name="camera" /></span><b>Фото еды</b><small>калории посчитает ИИ</small>{!can(sub, 'food') && <span className="lock">PRO</span>}</button>
         </div>
+        <button className="voice-row" onClick={() => open({ kind: 'voice' })}><span className="chip-ic" style={{ ['--c' as string]: 'var(--orange)' }}><Icon name="mic" /></span><span className="mid"><b>Голосом</b><small>задача с напоминанием или заметка — скажи, ИИ разберёт</small></span><Icon name="chev" className="ic chev" /></button>
         <div className="water">
           <span className="chip-ic" style={{ ['--c' as string]: 'var(--water)' }}><Icon name="drop" /></span>
           <span className="mid"><b>Вода</b><small>{fmt1((foodPart?.waterMl ?? 0) / 1000)} из {fmt1((foodPart?.norm.water ?? 2000) / 1000)} л</small></span>
@@ -311,6 +314,7 @@ export function App() {
       {sheet.kind === 'settings' && <SettingsForm me={me} onDone={s => { setMe(m => m && m.profile ? { ...m, profile: { ...m.profile, settings: s } } : m); done(); setDays({}); }} onRedo={() => { close(); setRedo(true); }} />}
       {sheet.kind === 'install' && <InstallHelp />}
       {sheet.kind === 'reminders' && <Reminders onInstall={() => open({ kind: 'install' })} />}
+      {sheet.kind === 'voice' && <VoiceCapture onDone={() => { setVersion(v => v + 1); if (day) loadDay(day); }} />}
       {sheet.kind === 'search' && day && <FoodSearch day={sheet.day ?? day} time={sheet.at} onDone={done} />}
       {sheet.kind === 'ai' && day && <FoodAi key={sheet.mode} day={sheet.day ?? day} time={sheet.at} mode={sheet.mode} onDone={done} />}
     </Sheet>

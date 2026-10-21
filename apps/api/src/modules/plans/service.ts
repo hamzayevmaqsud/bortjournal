@@ -6,6 +6,7 @@ import type { DayContext, Nudge } from '../../core/module.js';
 import type { DB, Tx } from '../../db/index.js';
 import { goals, tasks } from './schema.js';
 import { goalRoutes, localToday, skipSeriesDay, syncSeries } from './goals.js';
+import { captureRoutes, leadOf } from './capture.js';
 
 export async function plansToday({ db, userId, day, now }: DayContext) {
   await syncSeries(db, userId, now.day);
@@ -25,6 +26,7 @@ const pub = (t: typeof tasks.$inferSelect) => ({ id: t.id, title: t.title, day: 
 export async function plansRoutes(app: FastifyInstance, { db }: { db: DB }) {
   const preHandler = guard(db, 'base');
   await goalRoutes(app, { db });
+  await captureRoutes(app, { db });
   // цель задачи — только своя; без своей цели поле просто сбрасывается
   const goalOf = async (userId: string, v: unknown) => {
     if (typeof v !== 'string' || !/^[0-9a-f-]{36}$/i.test(v)) return null;
@@ -83,8 +85,10 @@ export async function plansTotals(db: Tx, userId: string) {
 
 const hmMin = (s: string | null | undefined) => { const m = /^(\d{1,2}):(\d{2})/.exec(s ?? ''); return m ? +m[1]! * 60 + +m[2]! : null; };
 /** задачи со временем: напомнить в это время, если ещё не сделаны */
-export async function plansRemind({ db, userId, now }: DayContext & { min: number }): Promise<Nudge[]> {
+/** задачи со временем: напомнить за N минут (по умолчанию 15, настраивается в «Напоминаниях»), если ещё не сделаны */
+export async function plansRemind({ db, userId, now, settings }: DayContext & { min: number }): Promise<Nudge[]> {
   await syncSeries(db, userId, now.day);
+  const lead = leadOf(settings);
   const ts = await db.select({ id: tasks.id, title: tasks.title, time: tasks.time }).from(tasks).where(and(eq(tasks.userId, userId), eq(tasks.day, now.day), eq(tasks.done, false)));
-  return ts.filter(t => t.time).map(t => ({ key: `tasks:${t.id}`, kind: 'tasks', title: `Задача в ${t.time!.slice(0, 5)}`, body: t.title, url: '/#plans', at: hmMin(t.time)! }));
+  return ts.filter(t => t.time).map(t => ({ key: `tasks:${t.id}`, kind: 'tasks', title: lead ? `Через ${lead} мин: ${t.title}` : `Задача в ${t.time!.slice(0, 5)}`, body: lead ? `В ${t.time!.slice(0, 5)} — ${t.title}` : t.title, url: '/#plans', at: Math.max(0, hmMin(t.time)! - lead) }));
 }

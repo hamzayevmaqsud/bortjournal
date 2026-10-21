@@ -14,6 +14,7 @@ import { Sheet } from '../components/Sheet';
 import { Tasks } from '../components/Tasks';
 import { useToast } from '../components/Toasts';
 
+interface Note { id: string; text: string; source: string; done: boolean; createdAt: string }
 const WD = ['пн', 'вт', 'ср', 'чт', 'пт', 'сб', 'вс'];
 const NOW_BTN: Record<PeriodKind, string> = { week: 'К этой неделе', month: 'К этому месяцу', quarter: 'К этому кварталу', year: 'К этому году' };
 const PH: Record<PeriodKind, string> = { week: 'Например: дочитать раздел и ответить на вопросы', month: 'Например: закончить проект и написать отчёт', quarter: 'Например: выйти на 10 000 шагов каждый день', year: 'Например: сдать сертификацию' };
@@ -52,10 +53,12 @@ export function Plans({ today, sub, version, onAdd, onOpen, onPro, onChanged }: 
   const [kind, setKind] = useState<PeriodKind>('week'), [anchor, setAnchor] = useState(today), [day, setDay] = useState(today);
   const [items, setItems] = useState<TaskFull[] | null>(null), [goals, setGoals] = useState<Goal[]>([]), [v, setV] = useState(0);
   const [sheet, setSheet] = useState<null | { g?: Goal; kind: PeriodKind; key: string }>(null), [formParents, setFormParents] = useState<Goal[]>([]);
+  const [notes, setNotes] = useState<Note[]>([]), [noteText, setNoteText] = useState('');
   const k = pro ? kind : 'week', key = periodKey(k, anchor), [from, to] = periodRange(k, key);
   const load = useCallback(async () => {
     try { setItems((await api<{ items: TaskFull[] }>(`/api/plans/tasks?from=${from}&to=${to}`)).items); } catch { setItems([]); }
     if (pro) api<{ items: Goal[] }>(`/api/plans/goals?from=${from}&to=${to}`).then(r => setGoals(r.items), () => setGoals([]));
+    api<{ items: Note[] }>('/api/plans/notes').then(r => setNotes(r.items), () => {});
   }, [from, to, pro]);
   useEffect(() => { load(); }, [load, version, v]);
   // родительская цель может лежать вне видимого периода (месяц для недели на стыке) — для формы берём по началу периода
@@ -68,6 +71,8 @@ export function Plans({ today, sub, version, onAdd, onOpen, onPro, onChanged }: 
   const ofDay = (d: string | null) => (items ?? []).filter(t => t.day === d);
   const toggle = async (id: string) => { setItems(xs => xs?.map(t => t.id === id ? { ...t, done: !t.done } : t) ?? xs); await api(`/api/plans/tasks/${id}/toggle`, { method: 'POST' }).catch(() => {}); changed(); };
   const toggleGoal = async (id: string) => { setGoals(gs => gs.map(g => g.id === id ? { ...g, done: !g.done } : g)); await api(`/api/plans/goals/${id}/toggle`, { method: 'POST' }).catch(() => {}); setV(x => x + 1); };
+  const noteDone = async (n: Note) => { setNotes(ns => ns.map(x => x.id === n.id ? { ...x, done: !x.done } : x)); await api(`/api/plans/notes/${n.id}`, { method: 'PUT', body: { done: !n.done } }).catch(() => {}); };
+  const noteDel = async (n: Note) => { setNotes(ns => ns.filter(x => x.id !== n.id)); await api(`/api/plans/notes/${n.id}`, { method: 'DELETE' }).catch(() => {}); };
   const byId = new Map(goals.map(g => [g.id, g]));
   const goalsOf = (pk: PeriodKind, pkey: string) => goals.filter(g => g.period === pk && g.periodKey === pkey);
   const rows = (gs: Goal[]) => <div className="goals-l">{gs.map(g => <GoalRow key={g.id} g={g} parent={g.parentId ? byId.get(g.parentId) : undefined} onToggle={() => toggleGoal(g.id)} onOpen={() => setSheet({ g, kind: g.period, key: g.periodKey })} />)}</div>;
@@ -97,6 +102,18 @@ export function Plans({ today, sub, version, onAdd, onOpen, onPro, onChanged }: 
         <div className="panel-h"><h2>Без даты</h2><small>{undated.length ? `${undated.length} ${plural(undated.length, 'задача', 'задачи', 'задач')}` : ''}</small></div>
         <Tasks tasks={undated} onToggle={toggle} onOpen={id => { const t = undated.find(x => x.id === id); if (t) onOpen(t); }} empty="Сюда — то, что сделать когда-нибудь." />
         <button className="add-row" onClick={() => onAdd(null)}><Icon name="plus" />Задача без даты</button>
+      </section>
+      <section className="panel">
+        <div className="panel-h"><h2>Заметки</h2><small>{notes.filter(n => !n.done).length || ''}</small></div>
+        {notes.length ? <div className="notes-l">{notes.map(n => <div key={n.id} className={`note-r ${n.done ? 'done' : ''}`}>
+          <button className={`cbx ${n.done ? 'on' : ''}`} aria-label={n.done ? 'Вернуть' : 'Готово'} onClick={() => noteDone(n)}><Icon name="check" className="" /></button>
+          <span className="note-t">{n.source === 'voice' && <Icon name="mic" className="ic note-mic" />}{n.text}</span>
+          <button className="ico" aria-label="Удалить заметку" onClick={() => noteDel(n)}><Icon name="trash" /></button></div>)}</div>
+          : <p className="hint" style={{ textAlign: 'left', margin: 2 }}>Мысли и идеи без срока. Можно надиктовать: «Записать» → «Голосом».</p>}
+        <form className="task-add" style={{ marginTop: 8 }} onSubmit={async e => { e.preventDefault(); if (!noteText.trim()) return; await api('/api/plans/notes', { method: 'POST', body: { text: noteText } }).catch(() => {}); setNoteText(''); setV(x => x + 1); }}>
+          <input className="in" value={noteText} onChange={e => setNoteText(e.target.value)} placeholder="Новая заметка…" enterKeyHint="done" />
+          <button className="primary" disabled={!noteText.trim()}><Icon name="plus" /></button>
+        </form>
       </section>
     </>;
   };

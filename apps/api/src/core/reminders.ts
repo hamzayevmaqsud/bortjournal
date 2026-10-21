@@ -19,7 +19,7 @@ import { activeDays } from './today.js';
 
 /** виды напоминаний — их можно выключить по отдельности */
 export const REMIND_KINDS = ['water', 'food', 'tasks', 'gym', 'quiz', 'streak', 'review'] as const;
-export type RemindSettings = { off?: boolean } & Partial<Record<(typeof REMIND_KINDS)[number], boolean>>;
+export type RemindSettings = { off?: boolean; lead?: number } & Partial<Record<(typeof REMIND_KINDS)[number], boolean>>;
 const WINDOW = 30;
 const plural = (n: number, a: string, b: string, c: string) => { const m = Math.abs(n) % 100, k = m % 10; return m > 10 && m < 20 ? c : k > 1 && k < 5 ? b : k === 1 ? a : c; };
 
@@ -86,7 +86,7 @@ export async function reminderRoutes(app: FastifyInstance, { db }: { db: DB }) {
   const view = async (userId: string) => {
     const R: RemindSettings = (await settingsOf(userId)).remind ?? {};
     const [c] = await db.select({ n: sql<number>`count(*)::int` }).from(pushSubscriptions).where(eq(pushSubscriptions.userId, userId));
-    return { key: vapid().publicKey, devices: c?.n ?? 0, off: !!R.off, kinds: Object.fromEntries(REMIND_KINDS.map(k => [k, R[k] !== false])) };
+    return { key: vapid().publicKey, devices: c?.n ?? 0, off: !!R.off, lead: Number.isFinite(Number(R.lead)) && R.lead !== undefined ? Number(R.lead) : 15, kinds: Object.fromEntries(REMIND_KINDS.map(k => [k, R[k] !== false])) };
   };
   app.get('/api/push', { preHandler: requireUser }, async req => view(uid(req)));
   app.post('/api/push/subscribe', { preHandler: requireUser }, async req => {
@@ -104,6 +104,7 @@ export async function reminderRoutes(app: FastifyInstance, { db }: { db: DB }) {
   app.put('/api/push/settings', { preHandler: requireUser }, async req => {
     const b = (req.body ?? {}) as Record<string, unknown>, s = await settingsOf(uid(req)), R: RemindSettings = { ...(s.remind ?? {}) };
     if (typeof b.off === 'boolean') R.off = b.off;
+    if (b.lead !== undefined) { const l = Math.round(Number(b.lead)); if (!(l >= 0 && l <= 120)) throw bad('За сколько минут напоминать: от 0 до 120.'); R.lead = l; }
     for (const k of REMIND_KINDS) if (typeof (b.kinds as any)?.[k] === 'boolean') R[k] = (b.kinds as any)[k];
     await db.update(profiles).set({ settings: { ...s, remind: R } }).where(eq(profiles.userId, uid(req)));
     return view(uid(req));

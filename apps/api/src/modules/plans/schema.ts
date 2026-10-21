@@ -52,3 +52,13 @@ export const tasks = pgTable('plan_tasks', {
   /** один повтор серии в день — защита от дублей между устройствами */
   uniqueIndex('plan_tasks_series_day_uq').on(t.seriesId, t.day).where(sql`${t.seriesId} is not null`)
 ]);
+
+/** Заметки: короткие записи без даты (голосом или руками) — во «Входящих» в «Планах» */
+export const notes = pgTable('plan_notes', {
+  id: id(), userId: owner(),
+  text: text('text').notNull(),
+  /** voice — продиктовано, manual — написано */
+  source: text('source').notNull().default('manual'),
+  done: boolean('done').notNull().default(false),
+  createdAt: createdAt()
+}, t => [index('plan_notes_user_idx').on(t.userId, t.createdAt)]);

@@ -28,6 +28,20 @@ export const users = pgTable('users', {
   uniqueIndex('users_email_uq').on(sql`lower(${t.email})`).where(sql`${t.email} is not null`)
 ]);
 
+/**
+ * Личные ключи для внешних клиентов: «Команды» на iPhone (голосовая запись) и подписка календаря.
+ * В базе — только sha256 ключа; сам ключ показывается один раз при создании.
+ */
+export const apiTokens = pgTable('api_tokens', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  /** capture — запись голосом, calendar — подписка календаря */
+  kind: text('kind').notNull(),
+  tokenHash: text('token_hash').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  lastUsedAt: timestamp('last_used_at', { withTimezone: true })
+}, t => [uniqueIndex('api_tokens_hash_uq').on(t.tokenHash), uniqueIndex('api_tokens_user_kind_uq').on(t.userId, t.kind)]);
+
 /** Способы входа кроме пароля: Google и Apple. subject — постоянный id человека у провайдера */
 export const authIdentities = pgTable('auth_identities', {
   id: uuid('id').primaryKey().defaultRandom(),

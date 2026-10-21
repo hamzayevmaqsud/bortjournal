@@ -10,7 +10,7 @@ import { useToast } from './Toasts';
 const KINDS: Array<[string, string, string]> = [
   ['water', 'Вода', 'если отстаёшь от нормы — не чаще раза в 2,5 часа, с 10 до 21'],
   ['food', 'Еда', 'в 13:30, если сегодня ещё ничего не записано'],
-  ['tasks', 'Задачи', 'в указанное у задачи время'],
+  ['tasks', 'Задачи', 'заранее, до времени задачи — выбери ниже'],
   ['gym', 'Тренировка', 'по плану тренировок, в его время'],
   ['quiz', 'Вопросы дня', 'в 10:00, если есть что повторить'],
   ['streak', 'Серия', 'в 21:00, если сегодня пусто, а серия идёт'],
@@ -21,7 +21,7 @@ const ios = () => /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.pla
 const supported = () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
 const keyBytes = (b64: string) => { const s = atob(b64.replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((b64.length + 3) % 4)); return Uint8Array.from(s, c => c.charCodeAt(0)); };
 
-interface View { key: string; devices: number; off: boolean; kinds: Record<string, boolean> }
+interface View { key: string; devices: number; off: boolean; lead: number; kinds: Record<string, boolean> }
 
 export function Reminders({ onInstall }: { onInstall: () => void }) {
   const toast = useToast(), [v, setV] = useState<View | null>(null), [here, setHere] = useState<PushSubscription | null>(null), [busy, setBusy] = useState(false);
@@ -67,6 +67,7 @@ export function Reminders({ onInstall }: { onInstall: () => void }) {
       {KINDS.map(([k, n, d]) => <label key={k} className={`rem-row ${v.off ? 'dim' : ''}`}><span className="mid"><b>{n}</b><small>{d}</small></span>
         <input type="checkbox" className="switch" disabled={v.off} checked={v.kinds[k] ?? true} onChange={e => save({ kinds: { [k]: e.target.checked } })} /></label>)}
     </div>
+    <div className="fld"><span>О задаче со временем — напомнить за</span><div className="chips">{[0, 5, 10, 15, 30, 60].map(m => <button key={m} type="button" className={`chip ${v.lead === m ? 'on' : ''}`} onClick={() => save({ lead: m })}>{m ? `${m} мин` : 'в само время'}</button>)}</div></div>
     <p className="card-note">Напоминания приходят по твоему местному времени и не повторяются: каждое — не больше раза в день. Если есть что-то ко времени, вода подождёт.</p>
   </div>;
 }

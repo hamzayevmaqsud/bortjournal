@@ -1776,3 +1776,44 @@ a.btn-accent{text-decoration:none}
 .quiz-head{display:flex;align-items:center;gap:12px}
 .quiz-head .wbar{flex:1;height:8px}
 @media (max-width:420px){.add3-b{padding:12px 4px}.mc-q{font-size:17px}}
+/* голос и заметки */
+.voice-row{display:flex;align-items:center;gap:12px;width:100%;padding:12px 14px;margin-bottom:10px;border-radius:var(--r2);background:var(--field);border:1.5px solid var(--line-2);text-align:left;color:inherit}
+.voice-row .mid{flex:1;display:flex;flex-direction:column;gap:2px}
+.voice-row .mid small{font-size:12px;color:var(--text-2)}
+.voice-row .chev{width:18px;height:18px;color:var(--text-3)}
+.voice{align-items:stretch}
+.voice-btn{display:flex;flex-direction:column;align-items:center;gap:6px;padding:26px 16px;border-radius:var(--r3);background:var(--orange);color:#fff;transition:transform .2s var(--spring),background .2s}
+.voice-btn .ic{width:40px;height:40px;stroke-width:2}
+.voice-btn b{font:800 18px var(--display)}
+.voice-btn small{opacity:.85;font-size:12.5px}
+.voice-btn.rec{background:var(--bad);animation:voice-pulse 1.4s ease-in-out infinite}
+.voice-btn:active{transform:scale(.97)}
+@keyframes voice-pulse{0%,100%{box-shadow:0 0 0 0 color-mix(in srgb,var(--bad) 45%,transparent)}50%{box-shadow:0 0 0 14px color-mix(in srgb,var(--bad) 0%,transparent)}}
+@media (prefers-reduced-motion:reduce){.voice-btn.rec{animation:none}}
+.voice-text{display:flex;gap:8px}
+.voice-text .in{flex:1}
+.voice-text .primary{width:auto;padding:0 16px;display:grid;place-items:center}
+.voice-res{display:flex;gap:12px;align-items:flex-start;padding:12px 14px;border-radius:var(--r2);background:var(--field);border:1px solid var(--line)}
+.voice-res .mid{display:flex;flex-direction:column;gap:3px}
+.voice-res small{font-size:12px;color:var(--text-3)}
+.notes-l{display:flex;flex-direction:column;gap:6px}
+.note-r{display:flex;align-items:flex-start;gap:10px;padding:10px 12px;border-radius:var(--r2);background:var(--field);border:1px solid var(--line)}
+.note-r .cbx.on{background:var(--good);border-color:var(--good)}
+.note-r .cbx.on svg{stroke-dashoffset:0}
+.note-t{flex:1;white-space:pre-wrap;line-height:1.4;padding-top:2px}
+.note-r.done .note-t{color:var(--text-3);text-decoration:line-through}
+.note-mic{width:14px;height:14px;color:var(--orange);vertical-align:-2px;margin-right:6px}
+.note-r .ico{flex:none}
+.vs{gap:18px}
+.vs-block{display:flex;flex-direction:column;gap:10px}
+.vs-block h3{display:flex;align-items:center;gap:8px;margin:0;font:800 16px var(--display)}
+.vs-block h3 .ic{width:20px;height:20px;color:var(--orange)}
+.vs-state{flex:1;min-width:160px;font-size:13px;color:var(--text-2)}
+.vs-key{display:flex;align-items:center;gap:8px;padding:10px 12px;border-radius:var(--r2);background:var(--field);border:1px solid var(--line)}
+.vs-key code,.vs-url code{flex:1;min-width:0;overflow-wrap:anywhere;font-size:12.5px}
+.vs-url{display:flex;align-items:center;gap:6px;margin-top:4px;padding:6px 8px;border-radius:10px;background:var(--field);border:1px solid var(--line)}
+.vs-warn{margin:0;font-size:12.5px;color:var(--bad)}
+.vs-steps li{margin-bottom:6px;line-height:1.45}
+.vs-cal{display:flex;align-items:center;justify-content:center;gap:8px;text-decoration:none}
+.vs-cal .ic{width:18px;height:18px}
+.voice-res .mid b{white-space:normal;overflow:visible;text-overflow:clip;line-height:1.35}
