@@ -12,93 +12,133 @@ import { ThemeToggle } from '../components/ThemeToggle';
 
 // 23 постера по кругу оттенков (собираются из Documents/Lumi/login page): 240 и 400 px — показываем не крупнее
 const N = 23;
-const PHONE = typeof matchMedia !== 'undefined' && matchMedia('(max-width: 899px)').matches;
-const PER = 11;                         // секунд на постер при обычной скорости — у всех лент одна скорость
+const PER = 11;                         // секунд на постер — у всех лент одна скорость
 const LETTERS = 4;                      // L, U, M, I — карточки логотипа (public/lumi/logo)
+const PHONE_Q = '(max-width: 899px)';
+const isPhone = () => typeof matchMedia !== 'undefined' && matchMedia(PHONE_Q).matches;
 const posterSet = (k: number) => `/lumi/posters/${k}-240.webp 240w, /lumi/posters/${k}-400.webp 400w, /lumi/posters/${k}-560.webp 560w`;
 const letterSet = (k: number) => `/lumi/logo/${k}-240.webp 240w, /lumi/logo/${k}.webp 306w`;
-const SIZES = '(min-width: 900px) clamp(170px, 15vw, 280px), 88px';
-/** ширина ленты (CSS px) — как в стилях .lw-track img */
-const laneW = () => Math.min(280, Math.max(170, innerWidth * 0.15)) + 16;
-/** лент столько, чтобы наклонная стена закрыла весь экран (на телефоне — одна лента) */
-const laneCount = () => PHONE ? 1 : Math.max(6, Math.min(14, Math.ceil(innerWidth * 1.35 / laneW()) + 1));
+const SIZES = '(min-width: 900px) clamp(150px, 13.5vw, 280px), 88px';
+const cardW = () => Math.min(280, Math.max(150, innerWidth * 0.135));   // как .lw-track img
+const laneW = () => cardW() + 16;
+const laneCount = (phone: boolean) => phone ? 1 : Math.max(6, Math.min(16, Math.ceil(innerWidth * 1.35 / laneW()) + 1));
+// буквы стоят не по линейке: чуть разная высота и наклон — слово читается, но выглядит положенным рукой
+const LETTER_DY = [0, -16, 10, -6], LETTER_ROT = [-1.2, 0.8, -0.5, 1];
+const GAP = [0, 6, 2, 8, 4];           // зазор между постерами немного разный у соседних лент
 
 type Item = { letter: number } | { poster: number };
-/** постеры по лентам: соседние по цвету — в разных лентах; короткая лента повторяется, чтобы быть длиннее экрана */
-const lanesOf = (n: number): Item[][] => Array.from({ length: n }, (_, c) => {
-  const own: Item[] = Array.from({ length: N }, (_, k) => k + 1).filter(k => (k - 1) % n === c).map(poster => ({ poster }));
-  let lane = own.length ? own : [{ poster: (c % N) + 1 }];
-  while (lane.length < (PHONE ? 10 : 6)) lane = [...lane, ...own];
-  return lane;
-});
+/** постеры по лентам: соседние по цвету — в разных лентах; лента длиннее экрана с запасом на наклон */
+const lanesOf = (n: number, phone: boolean): Item[][] => {
+  const min = phone ? 10 : Math.ceil(innerHeight * 1.5 / (cardW() * 1308 / 736)) + 1;
+  return Array.from({ length: n }, (_, c) => {
+    const own: Item[] = Array.from({ length: N }, (_, k) => k + 1).filter(k => (k - 1) % n === c).map(poster => ({ poster }));
+    let lane = own; while (lane.length < min) lane = [...lane, ...own];
+    return lane;
+  });
+};
 
 /**
  * Стена: наклонные ленты постеров на весь экран, и в ней с первого кадра стоит слово LUMI — четыре карточки логотипа
- * в одном ряду, левее формы. Потом ленты едут (соседние — навстречу), буквы расходятся и проезжают по кругу.
- * Движение — своим циклом (requestAnimationFrame): колёсико мыши разгоняет ленту (вниз — вперёд, вверх — назад),
- * разгон гаснет. Анимация не останавливается.
+ * в соседних лентах, посередине свободного места слева от формы. Потом ленты едут (соседние — навстречу), буквы расходятся.
+ * Движение — своим циклом (requestAnimationFrame). Колёсико (и тачпад, и горизонтальное) плавно разгоняет ленту:
+ * вниз — вперёд, вверх — назад; разгон гаснет. Анимация не останавливается, при изменении окна лента не сбрасывается.
  */
 function PosterWall() {
-  const box = useRef<HTMLDivElement>(null), [n, setN] = useState(laneCount);
-  // в каких лентах буквы: четыре соседние ленты, центр ряда — посередине свободного места слева от формы
-  const [letterAt, setLetterAt] = useState<number[] | null>(PHONE ? [0] : null);
-  useEffect(() => { const f = () => { setN(laneCount()); if (!PHONE) setLetterAt(null); }; addEventListener('resize', f); return () => removeEventListener('resize', f); }, []);
-  const lanes = lanesOf(n).map((lane, c): Item[] => {
-    if (PHONE) return [...Array.from({ length: LETTERS }, (_, k) => ({ letter: k + 1 })), ...lane];
+  const box = useRef<HTMLDivElement>(null);
+  const [phone, setPhone] = useState(isPhone), [n, setN] = useState(() => laneCount(isPhone()));
+  const [letterAt, setLetterAt] = useState<number[] | null>(() => (isPhone() ? [0] : null));
+  const saved = useRef<number[] | null>(null);       // где были ленты (доля цикла) — чтобы после изменения окна продолжить, а не начать заново
+  useEffect(() => {
+    const mq = matchMedia(PHONE_Q); let id = 0;
+    const apply = () => { const ph = mq.matches, nn = laneCount(ph); setPhone(ph); setN(prev => { if (prev !== nn) setLetterAt(ph ? [0] : null); return nn; }); };
+    const onResize = () => { clearTimeout(id); id = window.setTimeout(apply, 200); };
+    const onMq = () => { setLetterAt(mq.matches ? [0] : null); saved.current = null; apply(); };
+    addEventListener('resize', onResize); mq.addEventListener('change', onMq);
+    return () => { clearTimeout(id); removeEventListener('resize', onResize); mq.removeEventListener('change', onMq); };
+  }, []);
+  const lanes = lanesOf(n, phone).map((lane, c): Item[] => {
+    if (phone) return [...Array.from({ length: LETTERS }, (_, k) => ({ letter: k + 1 })), ...lane];
     const at = letterAt?.indexOf(c) ?? -1;
     return at >= 0 ? [{ letter: at + 1 }, ...lane] : lane;
   });
+
+  // какие ленты несут буквы: четыре соседние, центр ряда — у 48% свободного места, и чтобы I не наезжала на форму
   useLayoutEffect(() => {
-    if (PHONE || letterAt) return;
+    if (phone || letterAt) return;
     const root = box.current; if (!root) return;
     const card = document.querySelector('.lw-scene .login')?.getBoundingClientRect();
-    const free = card ? card.left : innerWidth * 0.62, target = free / 2, y = innerHeight / 2;
-    // центр каждой ленты на высоте середины экрана (стена наклонена — берём точку ленты на этой высоте)
+    const free = card ? card.left : innerWidth * 0.62, target = free * 0.48, y = innerHeight / 2, half = cardW() / 2;
     const xs = [...root.querySelectorAll<HTMLElement>('.lw-col')].map(col => { const r = col.getBoundingClientRect(); return r.left + r.width / 2 + Math.tan(6 * Math.PI / 180) * (y - (r.top + r.height / 2)); });
-    let best = 0, bestD = Infinity;
-    for (let c = 0; c + LETTERS <= xs.length; c++) { const mid = (xs[c]! + xs[c + LETTERS - 1]!) / 2, d = Math.abs(mid - target); if (d < bestD) { bestD = d; best = c; } }
+    let best = 0, bestScore = Infinity;
+    for (let c = 0; c + LETTERS <= xs.length; c++) {
+      const l = xs[c]! - half, r = xs[c + LETTERS - 1]! + half;
+      const overflow = Math.max(0, 16 - l) + Math.max(0, r - (free - 40));   // вылет за левый край или под форму
+      const score = overflow * 10 + Math.abs((l + r) / 2 - target);
+      if (score < bestScore) { bestScore = score; best = c; }
+    }
     setLetterAt(Array.from({ length: LETTERS }, (_, k) => best + k));
-  }, [n, letterAt]);
+  }, [n, letterAt, phone]);
+
+  // расстановка — до первого кадра (без мигания): буквы в ряд посередине, остальные ленты вразнобой
+  const tracksRef = useRef<Array<{ el: HTMLElement; len: number; pos: number; dir: number }>>([]);
+  useLayoutEffect(() => {
+    const root = box.current; if (!root || !letterAt) return;
+    const prev = saved.current; saved.current = null;
+    tracksRef.current = [...root.querySelectorAll<HTMLElement>('.lw-track')].map((el, c) => {
+      const first = el.firstElementChild as HTMLElement, cs = getComputedStyle(first);
+      // точная длина копии: размер карточки (дробный) × число + отступы — без скачка в полпикселя на стыке
+      let len = 0; for (const img of [...el.children].slice(0, lanes[c]!.length) as HTMLElement[]) { const st = getComputedStyle(img); len += phone ? parseFloat(st.width) + parseFloat(st.marginRight) : parseFloat(st.height) + parseFloat(st.marginBottom); }
+      void cs;
+      const view = phone ? root.clientWidth : (el.parentElement as HTMLElement).clientHeight;
+      let pos: number;
+      const letter = el.querySelector<HTMLElement>('.letter');
+      if (prev && prev[c] !== undefined) pos = prev[c]! * len;
+      else if (phone && letter) { const ls = el.querySelectorAll<HTMLElement>('.letter'), last = ls[LETTERS - 1]!; pos = letter.offsetLeft - (view - (last.offsetLeft + last.offsetWidth - letter.offsetLeft)) / 2; }
+      else if (letter) { const k = Number(letter.dataset.k); pos = letter.offsetTop + letter.offsetHeight / 2 - view / 2 + LETTER_DY[k]!; }
+      else pos = len * ((c * 0.37) % 1);
+      pos = ((pos % len) + len) % len;
+      el.style.transform = phone ? `translate3d(${-pos}px,0,0)` : `translate3d(0,${-pos}px,0)`;
+      return { el, len, pos, dir: c % 2 ? -1 : 1 };
+    });
+    root.dataset.resumed = prev ? '1' : '';
+  }, [letterAt, n, phone]); // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => {
     const root = box.current; if (!root || !letterAt) return;
-    const tracks = [...root.querySelectorAll<HTMLElement>('.lw-track')].map((el, c) => ({ el, n: lanes[c]!.length, len: 0, pos: 0, dir: c % 2 ? -1 : 1 }));
-    const view = PHONE ? root.clientWidth : root.clientHeight;
-    tracks.forEach((t, c) => {
-      t.len = (PHONE ? t.el.scrollWidth : t.el.scrollHeight) / 2;
-      const letter = t.el.querySelector<HTMLElement>('.letter');
-      if (PHONE && letter) {        // телефон: L U M I по центру ленты
-        const ls = t.el.querySelectorAll<HTMLElement>('.letter'), lastL = ls[LETTERS - 1]!;
-        t.pos = letter.offsetLeft - (view - (lastL.offsetLeft + lastL.offsetWidth - letter.offsetLeft)) / 2;
-      } else if (letter) t.pos = letter.offsetTop - (view - letter.offsetHeight) / 2;   // буквы — в одном ряду посередине
-      else t.pos = t.len * ((c * 0.37) % 1);                                              // остальные ленты — вразнобой
-      t.pos = ((t.pos % t.len) + t.len) % t.len;
-      t.el.style.transform = PHONE ? `translate3d(${-t.pos}px,0,0)` : `translate3d(0,${-t.pos}px,0)`;
-    });
-    let boost = 0, last = performance.now(), raf = 0;
-    const born = performance.now() + 900;   // первые мгновения LUMI читается целиком, потом ленты плавно трогаются
+    const tracks = tracksRef.current, per = tracks.map((_, c) => lanes[c]!.length * PER);
+    let boost = 0, target = 0, last = performance.now(), raf = 0;
+    const born = root.dataset.resumed ? -1e9 : performance.now() + 900;   // при первом показе LUMI читается, потом ленты трогаются
     const tick = (now: number) => {
       const dt = Math.min(0.05, (now - last) / 1000); last = now;
-      boost *= Math.pow(0.15, dt);
+      boost += (target - boost) * (1 - Math.pow(0.002, dt));   // разгон набирается плавно, без рывка
+      target *= Math.pow(0.15, dt);
       const g = Math.max(0, Math.min(1, (now - born) / 2200)), ease = g * g * (3 - 2 * g);
-      for (const t of tracks) {
-        if (!t.len) continue;
-        const v = t.len / (t.n * PER) * (ease + boost) * t.dir;
-        t.pos = ((t.pos + v * dt) % t.len + t.len) % t.len;
-        t.el.style.transform = PHONE ? `translate3d(${-t.pos}px,0,0)` : `translate3d(0,${-t.pos}px,0)`;
-      }
+      tracks.forEach((t, c) => {
+        if (!t.len) return;
+        t.pos = ((t.pos + t.len / per[c]! * (ease + boost) * t.dir * dt) % t.len + t.len) % t.len;
+        t.el.style.transform = phone ? `translate3d(${-t.pos}px,0,0)` : `translate3d(0,${-t.pos}px,0)`;
+      });
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
     const scene = root.closest('.login-scene') ?? root;
-    const wheel = (e: Event) => { const d = (e as WheelEvent).deltaY; boost = Math.max(-14, Math.min(14, boost + Math.sign(d) * Math.min(Math.abs(d), 160) / 40)); };
+    const wheel = (ev: Event) => {
+      const e = ev as WheelEvent, raw = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+      const d = raw * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? innerHeight : 1);   // строки (Firefox) и страницы — в пиксели
+      target = Math.max(-14, Math.min(14, target + Math.sign(d) * Math.min(Math.abs(d), 160) / 40));
+    };
     scene.addEventListener('wheel', wheel, { passive: true });
-    return () => { cancelAnimationFrame(raf); scene.removeEventListener('wheel', wheel); };
-  }, [letterAt, n]); // eslint-disable-line react-hooks/exhaustive-deps
+    return () => {
+      cancelAnimationFrame(raf); scene.removeEventListener('wheel', wheel);
+      saved.current = tracks.map(t => (t.len ? t.pos / t.len : 0));   // продолжить с того же места
+    };
+  }, [letterAt, n, phone]); // eslint-disable-line react-hooks/exhaustive-deps
+
   return <aside className="lw" aria-hidden="true" ref={box}>
-    <div className="lw-wall">{lanes.map((lane, c) => <div key={`${n}-${c}`} className="lw-col">
+    <div className="lw-wall">{lanes.map((lane, c) => <div key={`${phone}-${n}-${c}`} className="lw-col" style={{ ['--g' as string]: `${GAP[c % GAP.length]}px` }}>
       <div className="lw-track">
         {[...lane, ...lane].map((it, k) => 'letter' in it
-          ? <img key={k} className="letter" srcSet={letterSet(it.letter)} sizes={SIZES} src={`/lumi/logo/${it.letter}.webp`} alt="" decoding="async" />
+          ? <img key={k} className="letter" data-k={it.letter - 1} style={{ ['--r' as string]: `${LETTER_ROT[it.letter - 1]}deg` }} srcSet={letterSet(it.letter)} sizes={SIZES} src={`/lumi/logo/${it.letter}.webp`} alt="" decoding="async" fetchPriority="high" />
           : <img key={k} srcSet={posterSet(it.poster)} sizes={SIZES} src={`/lumi/posters/${it.poster}-400.webp`} alt="" decoding="async" />)}
       </div>
     </div>)}</div>
