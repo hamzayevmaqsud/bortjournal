@@ -44,6 +44,14 @@ export async function takeReadyDraft(db: Tx, userId: string, id: string) {
   return row ?? null;
 }
 
+/** ответы на уточнения: только у разобранного черновика; он возвращается в очередь. null — нет такого, 'busy' — не разобран */
+export async function answerDraft(db: Tx, userId: string, id: string, answers: string[]) {
+  const [row] = await db.update(drafts).set({ answers, state: 'queued', attempts: 0, nextAt: sql`now()`, error: null })
+    .where(and(owned(userId, id), eq(drafts.state, 'ready'))).returning();
+  if (row) return draftView(row);
+  return (await db.select({ id: drafts.id }).from(drafts).where(owned(userId, id))).length ? 'busy' as const : null;
+}
+
 export async function createDraft(db: Tx, userId: string, v: DraftInput) {
   const [row] = await db.insert(drafts).values({ userId, ...v }).returning();
   return draftView(row!);

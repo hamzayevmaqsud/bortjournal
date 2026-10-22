@@ -4,7 +4,7 @@ import { bad, dayParam, guard, hmParam, HttpError, idParam, notFound, uid } from
 import type { DB } from '../../db/index.js';
 import { addDrink, addMeal, dayFood, deleteEntry, myFoods, updateDrink, updateMeal, type MealInput } from './service.js';
 import { aiEnabled, recognizeFood } from './ai.js';
-import { createDraft, deleteDraft, getDraft, listDrafts, takeReadyDraft } from './drafts.js';
+import { answerDraft, createDraft, deleteDraft, getDraft, listDrafts, takeReadyDraft } from './drafts.js';
 import { takeAi } from '../../core/ai-quota.js';
 import { requireUser } from '../../core/auth.js';
 import { requireFeature } from '../../core/billing.js';
@@ -97,6 +97,13 @@ export async function foodRoutes(app: FastifyInstance, { db }: { db: DB }) {
   });
   app.get('/drafts', { preHandler: pro }, async req => ({ items: await listDrafts(db, uid(req)) }));
   app.get('/drafts/:id', { preHandler: pro }, async (req, reply) => (await getDraft(db, uid(req), idParam((req.params as any).id))) ?? notFound(reply));
+  app.post('/drafts/:id/answers', { preHandler: pro }, async (req, reply) => {
+    const raw = (req.body as { answers?: unknown } | undefined)?.answers, answers = (Array.isArray(raw) ? raw : []).slice(0, 8).map(a => String(a).slice(0, 200)).filter(Boolean);
+    if (!answers.length) throw bad('Нужен хотя бы один ответ.');
+    const r = await answerDraft(db, uid(req), idParam((req.params as any).id), answers);
+    if (r === 'busy') return reply.code(409).send({ error: 'Фото ещё разбирается — ответить можно, когда разбор готов.' });
+    return r ?? notFound(reply);
+  });
   app.delete('/drafts/:id', { preHandler: pro }, async (req, reply) => (await deleteDraft(db, uid(req), idParam((req.params as any).id))) ? { ok: true } : notFound(reply));
 
   app.delete('/entries/:id', { preHandler }, async (req, reply) => {
