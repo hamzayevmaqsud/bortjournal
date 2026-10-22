@@ -15,61 +15,95 @@ const N = 23;
 const srcSet = (k: number) => `/lumi/posters/${k}-240.webp 240w, /lumi/posters/${k}-400.webp 400w`;
 const SIZES = '(min-width: 900px) 200px, 80px';
 const PHONE = typeof matchMedia !== 'undefined' && matchMedia('(max-width: 899px)').matches;
-const PER = 11;                        // секунд на постер при обычной скорости — у всех колонок одна скорость
-const START = [0.3, 0.55, 0.12, 0.8, 0.4, 0.68, 0.2];
-
-/** сколько колонок нужно, чтобы стена заполнила левую часть экрана (на телефоне — одна лента) */
-const colCount = () => {
-  if (PHONE) return 1;
-  const w = innerWidth, poster = Math.min(200, Math.max(150, w * 0.13)) + 10;
-  return Math.max(3, Math.min(8, Math.ceil((w - 440 - 80) * 1.2 / poster)));
-};
-/** постеры по колонкам: соседние по цвету — в разных колонках; короткая колонка повторяется, чтобы лента была длиннее экрана */
-const lay = (cols: number) => Array.from({ length: cols }, (_, c) => {
-  const own = Array.from({ length: N }, (_, k) => k + 1).filter(k => (k - 1) % cols === c);
-  let col = own; while (col.length < (PHONE ? 7 : 6)) col = [...col, ...own];
-  return col;
-});
+const PER = 11;                         // секунд на постер при обычной скорости — у всех полос одна скорость
+const LETTERS = 4;                      // L, U, M, I — карточки логотипа (public/lumi/logo)
+const letterSrc = (k: number) => ({ srcSet: `/lumi/logo/${k}-240.webp 240w, /lumi/logo/${k}.webp 306w`, src: `/lumi/logo/${k}.webp` });
 
 /**
- * Стена постеров. Движение — своим циклом (requestAnimationFrame), а не CSS: так колёсико мыши может разгонять ленту
- * без рывков. Колесо вниз — быстрее вперёд, вверх — назад; разгон плавно гаснет до обычной скорости. Анимация не останавливается.
+ * Полосы стены. Компьютер: 4 вертикальные полосы, у каждой первая карточка — буква логотипа, дальше свои постеры.
+ * Телефон: одна горизонтальная лента — сначала L U M I, потом постеры. Короткая полоса повторяется, чтобы быть длиннее экрана.
  */
-function PosterWall() {
-  const box = useRef<HTMLDivElement>(null), [cols, setCols] = useState(colCount);
-  useEffect(() => { const f = () => setCols(colCount()); addEventListener('resize', f); return () => removeEventListener('resize', f); }, []);
-  const lists = lay(cols);
+type Item = { letter: number } | { poster: number };
+const lay = (): Item[][] => {
+  if (PHONE) {
+    const posters: Item[] = Array.from({ length: N }, (_, k) => ({ poster: k + 1 }));
+    return [[...Array.from({ length: LETTERS }, (_, k) => ({ letter: k + 1 })), ...posters.slice(0, 10)]];
+  }
+  return Array.from({ length: LETTERS }, (_, c) => {
+    const own: Item[] = Array.from({ length: N }, (_, k) => k + 1).filter(k => (k - 1) % LETTERS === c).map(poster => ({ poster }));
+    let col = own; while (col.length < 7) col = [...col, ...own];
+    return [{ letter: c + 1 }, ...col];
+  });
+};
+
+/**
+ * Стена постеров с заставкой: сначала четыре карточки собраны в логотип LUMI по центру, потом разъезжаются в полосы,
+ * постеры проявляются, лента набирает ход. Движение — своим циклом (requestAnimationFrame), не CSS: колёсико мыши
+ * разгоняет ленту без рывков (вниз — вперёд, вверх — назад, разгон гаснет). Анимация не останавливается.
+ */
+function PosterWall({ onReady }: { onReady: () => void }) {
+  const box = useRef<HTMLDivElement>(null), [phase, setPhase] = useState<'logo' | 'opening' | 'open'>('logo');
+  const lists = lay();
   useEffect(() => {
     const root = box.current; if (!root) return;
-    const tracks = [...root.querySelectorAll<HTMLElement>('.wall-track')].map((el, c) => ({ el, n: lists[c]!.length, len: 0, pos: -1, dir: c % 2 ? -1 : 1, start: START[c % START.length]! }));
-    const measure = () => tracks.forEach(t => {
+    const tracks = [...root.querySelectorAll<HTMLElement>('.wall-track')].map((el, c) => ({ el, col: el.parentElement as HTMLElement, n: lists[c]!.length, len: 0, pos: 0, dir: c % 2 ? -1 : 1 }));
+    // старт: буквы (первая копия) стоят в одну линию посередине стены
+    const place = () => tracks.forEach(t => {
       t.len = (PHONE ? t.el.scrollWidth : t.el.scrollHeight) / 2;
-      if (t.pos < 0) t.pos = t.len * t.start;
+      const first = t.el.querySelector<HTMLElement>('.letter')!, view = PHONE ? root.clientWidth : root.clientHeight;
+      if (PHONE) { const lastL = t.el.querySelectorAll<HTMLElement>('.letter')[LETTERS - 1]!; const span = lastL.offsetLeft + lastL.offsetWidth - first.offsetLeft; t.pos = first.offsetLeft - (view - span) / 2; }
+      else t.pos = first.offsetTop - (view - first.offsetHeight) / 2;
+      t.pos = ((t.pos % t.len) + t.len) % t.len;
+      t.el.style.transform = PHONE ? `translate3d(${-t.pos}px,0,0)` : `translate3d(0,${-t.pos}px,0)`;
     });
-    measure();
-    let boost = 0, last = performance.now(), raf = 0;
+    place();
+    // заставка на компьютере: полосы сдвинуты к центру вплотную и увеличены — буквы складываются в слово
+    if (!PHONE) {
+      const centers = tracks.map(t => { const r = t.col.getBoundingClientRect(); return r.left + r.width / 2; });
+      const w = tracks[0]!.col.getBoundingClientRect().width, h = w * 1308 / 736;
+      const scale = Math.max(1, Math.min(1.6, root.clientHeight * 0.58 / h)), mid = innerWidth / 2;  // логотип — по центру всего экрана
+      // увеличиваем вокруг строки букв (середина стены), а не вокруг центра длинной полосы
+      const oy = root.clientHeight / 2 - (tracks[0]!.col.getBoundingClientRect().top - root.getBoundingClientRect().top);
+      // начальное положение — сразу, без плавного перехода; переход включается только для раскрытия
+      tracks.forEach((t, c) => { t.col.style.transition = 'none'; t.col.style.transformOrigin = `50% ${oy}px`; t.col.style.transform = `translateX(${mid + (c - (LETTERS - 1) / 2) * w * scale - centers[c]!}px) scale(${scale})`; });
+      void root.offsetHeight;
+      tracks.forEach(t => { t.col.style.transition = ''; });
+    }
+    let boost = 0, last = performance.now(), raf = 0, go = 0, started = 0;
     const tick = (now: number) => {
       const dt = Math.min(0.05, (now - last) / 1000); last = now;
-      boost *= Math.pow(0.15, dt);                         // разгон гаснет примерно за 2 секунды
+      boost *= Math.pow(0.15, dt);
+      if (started) go = Math.min(1, (now - started) / 1800);   // после раскрытия лента плавно набирает ход
+      const ease = go * go * (3 - 2 * go);
       for (const t of tracks) {
         if (!t.len) continue;
-        const v = t.len / (t.n * PER) * (1 + boost) * t.dir;  // пикселей в секунду
+        const v = t.len / (t.n * PER) * (ease + boost) * t.dir;
         t.pos = ((t.pos + v * dt) % t.len + t.len) % t.len;
         t.el.style.transform = PHONE ? `translate3d(${-t.pos}px,0,0)` : `translate3d(0,${-t.pos}px,0)`;
       }
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
+    // через мгновение — раскрытие: полосы разъезжаются, постеры проявляются, появляется форма
+    const open = setTimeout(() => {
+      setPhase('opening'); onReady();
+      setTimeout(() => setPhase('open'), 1250);  // пока полосы разъезжаются, стена не обрезает логотип
+      tracks.forEach(t => { t.col.style.transform = ''; });
+      started = performance.now() + 500;
+    }, 1100);
     const scene = root.closest('.login-scene') ?? root;
     const wheel = (e: Event) => { const d = (e as WheelEvent).deltaY; boost = Math.max(-14, Math.min(14, boost + Math.sign(d) * Math.min(Math.abs(d), 160) / 40)); };
     scene.addEventListener('wheel', wheel, { passive: true });
-    addEventListener('resize', measure);
-    return () => { cancelAnimationFrame(raf); scene.removeEventListener('wheel', wheel); removeEventListener('resize', measure); };
-  }, [cols]); // eslint-disable-line react-hooks/exhaustive-deps
-  return <aside className="login-art" aria-hidden="true" ref={box}>
-    <div className="wall">{lists.map((col, c) => <div key={`${cols}-${c}`} className={`wall-col c${c}`}>
-      <div className="wall-track" style={PHONE ? undefined : { marginTop: -(240 + (c % 3) * 70) }}>
-        {[...col, ...col].map((n, k) => <img key={k} srcSet={srcSet(n)} sizes={SIZES} src={`/lumi/posters/${n}-400.webp`} alt="" decoding="async" />)}
+    const resize = () => tracks.forEach(t => { t.len = (PHONE ? t.el.scrollWidth : t.el.scrollHeight) / 2; });
+    addEventListener('resize', resize);
+    return () => { clearTimeout(open); cancelAnimationFrame(raf); scene.removeEventListener('wheel', wheel); removeEventListener('resize', resize); };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  return <aside className={`login-art wall4 ${phase}`} aria-hidden="true" ref={box}>
+    <div className="wall">{lists.map((col, c) => <div key={c} className={`wall-col c${c}`}>
+      <div className="wall-track">
+        {[...col, ...col].map((it, k) => 'letter' in it
+          ? <img key={k} className="letter" {...letterSrc(it.letter)} sizes={PHONE ? '80px' : '220px'} alt="" decoding="async" />
+          : <img key={k} srcSet={srcSet(it.poster)} sizes={SIZES} src={`/lumi/posters/${it.poster}-400.webp`} alt="" decoding="async" />)}
       </div>
     </div>)}</div>
   </aside>;
@@ -83,7 +117,7 @@ export function Login({ onDone }: { onDone: () => void }) {
   const [mode, setMode] = useState<'in' | 'up'>(() => (new URLSearchParams(location.search).get('mode') === 'signup' || !seen() ? 'up' : 'in'));
   const [show, setShow] = useState(false), [u, setU] = useState(''), [p, setP] = useState(''), [mail, setMail] = useState(''), [err, setErr] = useState(() => takeAuthResult()?.error ?? ''), [busy, setBusy] = useState(false);
   const pv = useProviders(), any = pv.google || pv.apple, [forgot, setForgot] = useState(false), [sent, setSent] = useState('');
-  const pass = useRef<HTMLInputElement>(null), title = useRef<HTMLHeadingElement>(null), first = useRef(true);
+  const pass = useRef<HTMLInputElement>(null), title = useRef<HTMLHeadingElement>(null), first = useRef(true), [shown, setShown] = useState(false);
   // смена экрана (вход ↔ новый пароль) — фокус на заголовок, а не в никуда
   useEffect(() => { if (first.current) { first.current = false; return; } title.current?.focus(); }, [forgot]);
 
@@ -145,7 +179,7 @@ export function Login({ onDone }: { onDone: () => void }) {
   </>; })();
 
   return <div className="login-scene">
-    <PosterWall />
-    <main className="login"><ThemeToggle className="in-card" />{card}{legal}</main>
+    <PosterWall onReady={() => setShown(true)} />
+    <main className={`login ${shown ? 'shown' : 'hidden'}`}><ThemeToggle className="in-card" />{card}{legal}</main>
   </div>;
 }
