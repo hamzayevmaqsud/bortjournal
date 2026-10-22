@@ -83,7 +83,8 @@ function DayView({ day, today, sub, version, onAddMeal, onAddDrink, onMeal, onDr
       <div className="card-head"><h2>{live ? 'Сегодня' : human(day)}</h2></div>
       <div className="summary">
         <div className="summary-ring"><Meter v={t.kcal} max={norm.kcal} color="var(--c-kcal)" size={150} sw={13} />
-          <div className="summary-k"><b>{fmt(shownKcal)}</b> / {fmt(norm.kcal)} ккал</div><Chip v={st} /></div>
+          <div className="summary-k"><b>{fmt(shownKcal)}</b> / {fmt(norm.kcal)} ккал</div><Chip v={st} />
+          {!!t.draft?.kcal && <small className="summary-draft">в т. ч. {fmt(t.draft.kcal)} ккал по фото — ждут подтверждения</small>}</div>
         <div className="summary-bars">
           <SBar name="Белки" v={t.protein} norm={norm.protein} unit="г" color="var(--c-prot)" />
           <SBar name="Жиры" v={t.fat} norm={norm.fat} unit="г" color="var(--c-fat)" />

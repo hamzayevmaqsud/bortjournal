@@ -7,7 +7,7 @@
 import { can } from './lib/features';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { addDays } from '@bortjournal/core';
-import { api, ApiError, flushOutbox, forgetLocal, fromCache, pendingCount, setOwner, type Drink, type FoodDay, type Meal, type Me, type Subscription, type TaskFull, type Today as TodayData } from './lib/api';
+import { api, ApiError, flushOutbox, forgetLocal, fromCache, pendingCount, setOwner, type Drink, type FoodDay, type FoodDraft, draftPending, type Meal, type Me, type Subscription, type TaskFull, type Today as TodayData } from './lib/api';
 import { fmt, fmt1, plural } from './lib/format';
 import { buzz } from './lib/motion';
 import { DrinkForm, MealForm, NumberForm, TaskForm } from './components/Forms';
@@ -58,8 +58,8 @@ type SheetState =
   | { kind: 'none' } | { kind: 'add'; at?: string } | { kind: 'meal'; at?: string; meal?: Meal; day?: string } | { kind: 'drink'; at?: string; drink?: Drink; day?: string }
   | { kind: 'steps' } | { kind: 'weight' } | { kind: 'task'; day: string | null; task?: TaskFull }
   | { kind: 'paywall'; focus?: string } | { kind: 'settings' } | { kind: 'install' } | { kind: 'reminders' } | { kind: 'voice' } | { kind: 'aiConsent'; then?: SheetState } | { kind: 'feedback' }
-  | { kind: 'search'; at?: string; day?: string } | { kind: 'ai'; at?: string; mode: 'photo' | 'text'; day?: string };
-const TITLES: Record<string, string> = { add: 'Записать', meal: 'Приём пищи', drink: 'Напиток', steps: 'Шаги за день', weight: 'Вес', task: 'Задача', paywall: '', settings: 'Профиль и нормы', install: 'На экран «Домой»', reminders: 'Напоминания', voice: 'Записать голосом', aiConsent: 'ИИ-помощник', feedback: 'Написать разработчику', search: 'Поиск еды', ai: 'Еда по фото или описанию' };
+  | { kind: 'search'; at?: string; day?: string } | { kind: 'ai'; at?: string; mode: 'photo' | 'text'; day?: string } | { kind: 'draft'; id: string };
+const TITLES: Record<string, string> = { add: 'Записать', meal: 'Приём пищи', drink: 'Напиток', steps: 'Шаги за день', weight: 'Вес', task: 'Задача', paywall: '', settings: 'Профиль и нормы', install: 'На экран «Домой»', reminders: 'Напоминания', voice: 'Записать голосом', aiConsent: 'ИИ-помощник', feedback: 'Написать разработчику', search: 'Поиск еды', ai: 'Еда по фото или описанию', draft: 'Проверь приём пищи' };
 
 export function App() {
   const toast = useToast(), wide = useWide();
@@ -68,7 +68,7 @@ export function App() {
   const tabsRef = useRef<HTMLElement>(null), shift = useRef(0), goRef = useRef<(name: string) => void>(() => {}), openRef = useRef<(s: SheetState) => void>(() => {});
   // уведомление ведёт в раздел: «/#plans» при открытии или сообщение от service worker, если окно уже открыто
   useEffect(() => {
-    const nav = (h: string) => { if (h === 'voice') { openRef.current({ kind: 'voice' }); history.replaceState(null, '', location.pathname); return; } if (ORDER.includes(h)) { goRef.current(h); history.replaceState(null, '', location.pathname); } };
+    const nav = (h: string) => { const dm = /^food\?draft=([0-9a-f-]{36})$/.exec(h); if (dm) { goRef.current('food'); openRef.current({ kind: 'draft', id: dm[1]! }); history.replaceState(null, '', location.pathname); return; } if (h === 'voice') { openRef.current({ kind: 'voice' }); history.replaceState(null, '', location.pathname); return; } if (ORDER.includes(h)) { goRef.current(h); history.replaceState(null, '', location.pathname); } };
     const onMsg = (e: MessageEvent) => { if (typeof e.data?.nav === 'string') nav(e.data.nav); };
     const onHash = () => nav(location.hash.slice(1));
     navigator.serviceWorker?.addEventListener('message', onMsg); addEventListener('hashchange', onHash);
@@ -95,7 +95,7 @@ export function App() {
   const ready = !!me?.profile?.heightCm;
   // ссылка для нового пароля: /#reset=…
   const [resetToken, setResetToken] = useState(() => /^#reset=([\w-]{20,})$/.exec(location.hash)?.[1] ?? '');
-  useEffect(() => { const h = location.hash.slice(1); if (!ready) return; if (h === 'voice') { openRef.current({ kind: 'voice' }); history.replaceState(null, '', location.pathname); } else if (ORDER.includes(h)) { goRef.current(h); history.replaceState(null, '', location.pathname); } }, [ready]);
+  useEffect(() => { const h = location.hash.slice(1); if (!ready) return; const dm = /^food\?draft=([0-9a-f-]{36})$/.exec(h); if (dm) { goRef.current('food'); openRef.current({ kind: 'draft', id: dm[1]! }); history.replaceState(null, '', location.pathname); } else if (h === 'voice') { openRef.current({ kind: 'voice' }); history.replaceState(null, '', location.pathname); } else if (ORDER.includes(h)) { goRef.current(h); history.replaceState(null, '', location.pathname); } }, [ready]);
   // вернулись после привязки Google или Apple из профиля — сказать, что вышло, и открыть профиль
   useEffect(() => { if (!ready) return; const r = takeAuthResult(); if (!r) return; toast(r.error ?? r.ok!, r.error ? { err: true } : undefined); goRef.current('profile'); }, [ready]); // eslint-disable-line react-hooks/exhaustive-deps
   const [tab, setTab] = useState('today');
@@ -178,6 +178,25 @@ export function App() {
     document.addEventListener('visibilitychange', tick); addEventListener('focus', tick);
     return () => { clearInterval(id); document.removeEventListener('visibilitychange', tick); removeEventListener('focus', tick); };
   }, [me?.username]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // фото еды в фоне: черновики приёма. Пока что-то разбирается — спрашиваем чаще; разобралось — сообщаем внутри журнала
+  const [drafts, setDrafts] = useState<FoodDraft[]>([]), seenDrafts = useRef(new Map<string, string>());
+  const loadDrafts = useCallback(async () => {
+    if (!me || !can(sub, 'food')) { setDrafts([]); return; }
+    try {
+      const list = (await api<{ items: FoodDraft[] }>('/api/food/drafts')).items;
+      for (const d of list) {
+        const was = seenDrafts.current.get(d.id);
+        if (was && was !== d.state && d.state === 'ready') { toast(d.questions.length ? 'Фото разобрано, есть вопрос' : 'Фото разобрано — проверь и сохрани', { undo: () => openRef.current({ kind: 'draft', id: d.id }), undoLabel: 'Открыть' }); refresh(); }
+        if (was && was !== d.state && d.state === 'failed') toast('Не получилось разобрать фото', { err: true, undo: () => openRef.current({ kind: 'draft', id: d.id }), undoLabel: 'Открыть' });
+      }
+      seenDrafts.current = new Map(list.map(d => [d.id, d.state]));
+      setDrafts(list);
+    } catch { /* сеть — попробуем в следующий раз */ }
+  }, [me?.username, sub.pro, sub.plan]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { void loadDrafts(); const on = () => { void loadDrafts(); }; addEventListener('bj-drafts', on); addEventListener('focus', on); return () => { removeEventListener('bj-drafts', on); removeEventListener('focus', on); }; }, [loadDrafts]);
+  const draftsBusy = drafts.some(draftPending);
+  useEffect(() => { const id = setInterval(() => { if (document.visibilityState === 'visible') void loadDrafts(); }, draftsBusy ? 4000 : 15000); return () => clearInterval(id); }, [draftsBusy, loadDrafts]);
 
   const goDay = useCallback((dir: number) => {
     setStill(false);
@@ -273,6 +292,12 @@ export function App() {
   return <div className={`app ${wide ? 'wide' : ''}`}>
     {wide && <div className="brand"><i><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l1.6 6.4L20 12l-6.4 1.6L12 21l-1.6-7.4L4 12l6.4-2.6z" fill="currentColor" /></svg></i>Бортжурнал</div>}
     {tab in SECTIONS && SECTIONS[tab] && sub.ended && !can(sub, SECTIONS[tab]!) && <button className="ro-bar" onClick={() => open({ kind: 'paywall', focus: SECTION_NAME[tab] })}><Icon name="file" />Только просмотр — Pro закончился. Продлить</button>}
+    {queued === 0 && drafts.length > 0 && (() => {
+      const ready = drafts.filter(d => d.state === 'ready'), failed = drafts.filter(d => d.state === 'failed'), busy = drafts.filter(draftPending);
+      const first = ready[0] ?? failed[0] ?? busy[0]!;
+      const text = ready.length ? `Фото разобрано${ready.length > 1 ? ` (${ready.length})` : ''} — проверь и сохрани` : failed.length ? 'Фото не разобралось — открыть' : `Фото разбирается${busy.length > 1 ? ` (${busy.length})` : ''}…`;
+      return <button className={`outbox-bar drafts-bar ${ready.length ? 'ready' : ''}`} onClick={() => open({ kind: 'draft', id: first.id })}><Icon name={ready.length ? 'check' : 'camera'} />{text}</button>;
+    })()}
     {queued > 0 && <button className="outbox-bar" onClick={() => void flushOutbox()}><Icon name="repeat" />Без сети: {queued} {queued % 10 === 1 && queued % 100 !== 11 ? 'запись ждёт' : 'записей ждут'} отправки — нажми, чтобы отправить сейчас</button>}
     <div className="screens">
       <section className="screen" data-pos={pos('today')} aria-hidden={tab !== 'today'}>
@@ -383,6 +408,7 @@ export function App() {
       {sheet.kind === 'voice' && <VoiceCapture onDone={() => { setVersion(v => v + 1); if (day) loadDay(day); }} />}
       {sheet.kind === 'search' && day && <FoodSearch day={sheet.day ?? day} time={sheet.at} onDone={done} />}
       {sheet.kind === 'ai' && day && <FoodAi key={sheet.mode} day={sheet.day ?? day} time={sheet.at} mode={sheet.mode} onDone={done} />}
+      {sheet.kind === 'draft' && day && <FoodAi key={sheet.id} day={day} mode="photo" draftId={sheet.id} onDone={done} />}
       </Boundary>
     </Sheet>
   </div>;

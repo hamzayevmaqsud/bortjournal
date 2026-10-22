@@ -145,5 +145,15 @@ export interface Today {
 export interface FoodDay {
   meals: Meal[];
   drinks: Drink[];
-  totals: { kcal: number; protein: number; fat: number; carbs: number; waterMl: number };
+  /** черновики приёма: фото еды в разборе или ждёт подтверждения */
+  drafts?: FoodDraft[];
+  /** draft — предварительная часть итогов (калории неподтверждённых фото) */
+  totals: { kcal: number; protein: number; fat: number; carbs: number; waterMl: number; draft?: { kcal: number; protein: number; fat: number; carbs: number } };
 }
+export interface FoodDraftItem { name: string; grams: number; kcal: number; protein: number; fat: number; carbs: number; fiber: number; sugar: number; salt: number; confidence: string; source: string }
+/** черновик приёма: queued и working — разбирается, ready — ждёт подтверждения, failed — не удался */
+export interface FoodDraft {
+  id: string; state: 'queued' | 'working' | 'ready' | 'failed'; day: string; time: string | null; slot: string | null; note: string; scale: string;
+  isFood: boolean | null; items: FoodDraftItem[]; questions: Array<{ text: string; options: string[] }>; comment: string; error: string | null; attempts: number;
+}
+export const draftPending = (d: FoodDraft) => d.state === 'queued' || d.state === 'working';

@@ -3,7 +3,7 @@
  * Результат ИИ — черновик: веса правятся, калории и БЖУ пересчитываются пропорционально, на уточнения можно ответить.
  */
 import { useEffect, useRef, useState } from 'react';
-import { api, ApiError } from '../lib/api';
+import { api, ApiError, draftPending, type FoodDraft } from '../lib/api';
 import { fmt, fmt1 } from '../lib/format';
 import { buzz } from '../lib/motion';
 import { Icon } from './Icon';
@@ -79,14 +79,25 @@ async function shrink(file: File): Promise<{ b64: string; mime: string; url: str
   return { b64: data.slice(data.indexOf(',') + 1), mime: 'image/jpeg', url };
 }
 
-export function FoodAi({ day, time, mode: start, onDone }: { day: string; time?: string; mode: 'photo' | 'text'; onDone: () => void }) {
+/** фото уходит в фон: черновик приёма разбирает сервер, а мы сообщим, когда готово. draftId — открыть черновик на проверку */
+export function FoodAi({ day, time, mode: start, draftId, onDone }: { day: string; time?: string; mode: 'photo' | 'text'; draftId?: string; onDone: () => void }) {
   const toast = useToast(), file = useRef<HTMLInputElement>(null), cam = useRef<HTMLInputElement>(null);
   const [mode, setMode] = useState(start), [photo, setPhoto] = useState<{ b64: string; mime: string; url: string } | null>(null);
   const [note, setNote] = useState(''), [scale, setScale] = useState(''), [t, setT] = useState(time ?? nowHm());
   const [stage, setStage] = useState<'setup' | 'loading' | 'review'>('setup'), [err, setErr] = useState('');
   const [rows, setRows] = useState<Row[]>([]), [qs, setQs] = useState<Array<{ text: string; options: string[] }>>([]), [ans, setAns] = useState<Record<number, string>>({});
-  const [comment, setComment] = useState(''), [busy, setBusy] = useState(false);
+  const [comment, setComment] = useState(''), [busy, setBusy] = useState(false), [draft, setDraft] = useState<FoodDraft | null>(null);
   useEffect(() => () => { if (photo) URL.revokeObjectURL(photo.url); }, [photo]);
+  // открыли черновик (из полосы сверху или из уведомления): готовый — сразу на проверку
+  useEffect(() => {
+    if (!draftId) return;
+    setStage('loading');
+    api<FoodDraft>(`/api/food/drafts/${draftId}`).then(d => {
+      setDraft(d); setMode('photo'); setT(d.time ?? nowHm());
+      if (d.state === 'ready') { setRows(d.items.map(it => ({ name: it.name, grams: String(it.grams), base: it }))); setQs(d.questions); setAns({}); setComment(d.comment); setStage('review'); }
+      else setStage('setup');
+    }, e => { setStage('setup'); setErr(e instanceof ApiError && e.status === 404 ? 'Этого фото уже нет: его подтвердили или удалили.' : 'Не получилось открыть фото.'); });
+  }, [draftId]);
 
   const pickFile = async (f: File | undefined) => { if (!f) return; try { setPhoto(await shrink(f)); setErr(''); } catch { setErr('Не получилось открыть фото. Попробуй JPEG или PNG.'); } };
   // строка пересчитывается от исходной оценки ИИ пропорционально весу
@@ -94,14 +105,27 @@ export function FoodAi({ day, time, mode: start, onDone }: { day: string; time?:
   const tot = rows.reduce((a, r) => { const c = calc(r); return { kcal: a.kcal + c.kcal, protein: a.protein + c.protein, fat: a.fat + c.fat, carbs: a.carbs + c.carbs, g: a.g + num(r.grams) }; }, { kcal: 0, protein: 0, fat: 0, carbs: 0, g: 0 });
 
   const go = async () => {
-    if (mode === 'photo' && !photo) { setErr('Добавь фото.'); return; }
-    if (mode === 'text' && note.trim().length < 2) { setErr('Напиши, что съел.'); return; }
+    // у черновика фото уже на сервере — проверять нечего
+    if (!draft && mode === 'photo' && !photo) { setErr('Добавь фото.'); return; }
+    if (!draft && mode === 'text' && note.trim().length < 2) { setErr('Напиши, что съел.'); return; }
     const answers = qs.map((q, i) => ans[i] ? `${q.text} — ${ans[i]}` : '').filter(Boolean);
     // ручные правки весов при пересчёте отдаём модели как факт
     if (stage === 'review') for (const r of rows) if (num(r.grams) !== r.base.grams) answers.push(`Вес исправлен: ${r.name} — ${fmt(num(r.grams))} г`);
     const prev = stage; setStage('loading'); setErr('');
+    // черновик: ответы уходят в фон, сервер пересчитает и пришлёт уведомление
+    if (draft) {
+      try { await api(`/api/food/drafts/${draft.id}/answers`, { method: 'POST', body: { answers } }); toast('Пересчитываю с ответами — сообщу, когда будет готово'); dispatchEvent(new Event('bj-drafts')); onDone(); }
+      catch (e) { setStage(prev); setErr(e instanceof ApiError ? e.message : 'Сервер недоступен.'); }
+      return;
+    }
+    // фото: в фон — черновик приёма, можно сразу заниматься своими делами
+    if (mode === 'photo') {
+      try { await api('/api/food/drafts', { method: 'POST', body: { image: photo?.b64, mime: photo?.mime, note, scale, day, time: t } }); buzz([8, 30, 8]); toast('Фото разбирается — сообщу, когда будет готово'); dispatchEvent(new Event('bj-drafts')); onDone(); }
+      catch (e) { setStage('setup'); setErr(e instanceof ApiError ? e.message : 'Сервер недоступен.'); }
+      return;
+    }
     try {
-      const out = await api<{ isFood: boolean; items: AiItem[]; questions: typeof qs; comment: string }>('/api/food/recognize', { method: 'POST', body: { image: mode === 'photo' ? photo?.b64 : null, mime: photo?.mime, note, scale, answers } });
+      const out = await api<{ isFood: boolean; items: AiItem[]; questions: typeof qs; comment: string }>('/api/food/recognize', { method: 'POST', body: { image: null, note, scale, answers } }); // фото ушло в фон выше — сюда доходит только описание текстом
       if (!out.isFood) { setStage('setup'); setErr(out.comment || (mode === 'text' ? 'Не понял, что за еда. Опиши подробнее.' : 'На фото не видно еды.')); return; }
       setRows(out.items.map(it => ({ name: it.name, grams: String(it.grams), base: it }))); setQs(answers.length ? [] : out.questions); setAns({}); setComment(out.comment); setStage('review'); buzz([8, 30, 8]);
     } catch (e) { setStage(prev === 'review' ? 'review' : 'setup'); setErr(e instanceof ApiError ? e.message : 'Сервер недоступен.'); }
@@ -110,10 +134,21 @@ export function FoodAi({ day, time, mode: start, onDone }: { day: string; time?:
     const items = rows.filter(r => r.name.trim()).map(r => ({ name: `${r.name.trim()}${num(r.grams) ? `, ${fmt(num(r.grams))} г` : ''}`, ...calc(r) }));
     if (!items.length) { setErr('Нечего записывать.'); return; }
     setBusy(true);
-    try { await api('/api/food/meals/batch', { method: 'POST', body: { day, time: t, source: mode === 'photo' ? 'photo' : 'text', items } }); buzz([8, 30, 8]); toast(`Записано: ${items.length} ${items.length === 1 ? 'позиция' : items.length < 5 ? 'позиции' : 'позиций'}, ${fmt(tot.kcal)} ккал`); onDone(); }
+    try { await api('/api/food/meals/batch', { method: 'POST', body: { day, time: t, source: mode === 'photo' ? 'photo' : 'text', items, ...(draft ? { draftId: draft.id } : {}) } }); if (draft) dispatchEvent(new Event('bj-drafts')); buzz([8, 30, 8]); toast(`Записано: ${items.length} ${items.length === 1 ? 'позиция' : items.length < 5 ? 'позиции' : 'позиций'}, ${fmt(tot.kcal)} ккал`); onDone(); }
     catch (e) { toast(e instanceof ApiError ? e.message : 'Не получилось записать', { err: true }); } finally { setBusy(false); }
   };
   const loading = stage === 'loading';
+  const dropDraft = async () => { if (!draft) return; setBusy(true); try { await api(`/api/food/drafts/${draft.id}`, { method: 'DELETE' }); toast('Фото удалено'); dispatchEvent(new Event('bj-drafts')); onDone(); } catch (e) { setErr(e instanceof ApiError ? e.message : 'Не получилось удалить'); } finally { setBusy(false); } };
+  const retryDraft = async () => { if (!draft) return; setBusy(true); try { await api(`/api/food/drafts/${draft.id}/retry`, { method: 'POST' }); toast('Пробую ещё раз — сообщу, когда будет готово'); dispatchEvent(new Event('bj-drafts')); onDone(); } catch (e) { setErr(e instanceof ApiError ? e.message : 'Не получилось'); } finally { setBusy(false); } };
+
+  // черновик не готов: ещё разбирается или не удался
+  if (draft && draft.state !== 'ready' && stage !== 'loading') return <div className="form">
+    {draftPending(draft) ? <p className="ai-comment">Фото ещё разбирается. Можно закрыть — сообщу, когда будет готово.</p>
+      : <p className="form-err">{draft.error || 'Разобрать фото не получилось.'}</p>}
+    {err && <p className="form-err">{err}</p>}
+    <div className="ob-nav"><button type="button" className="ghost" disabled={busy} onClick={dropDraft}>Удалить</button>
+      {draft.state === 'failed' ? <button className="primary" disabled={busy} onClick={retryDraft}>Повторить</button> : <button className="primary" onClick={onDone}>Закрыть</button>}</div>
+  </div>;
 
   if (stage === 'review') return <div className="form">
     <div className="ai-top">{photo && mode === 'photo' && <img className="ai-img sm" src={photo.url} alt="Фото еды" />}
@@ -128,9 +163,10 @@ export function FoodAi({ day, time, mode: start, onDone }: { day: string; time?:
       <button type="button" className="ai-x" onClick={() => setRows(rs => rs.filter((_, j) => j !== i))} aria-label="Убрать">×</button>
     </div>; })}</div>
     <p className="hint" style={{ textAlign: 'left', margin: 0 }}>Проверь вес порций: поменяешь граммы — калории и БЖУ пересчитаются.</p>
-    <label className="fld"><span>Время</span><input className="in" type="time" value={t} onChange={e => setT(e.target.value)} style={{ width: 'auto' }} /></label>
+    {draft ? <p className="hint" style={{ textAlign: 'left', margin: 0 }}>Время приёма — когда сделано фото: {draft.time ?? 'без времени'}.</p>
+      : <label className="fld"><span>Время</span><input className="in" type="time" value={t} onChange={e => setT(e.target.value)} style={{ width: 'auto' }} /></label>}
     {err && <p className="form-err">{err}</p>}
-    <div className="ob-nav"><button type="button" className="ghost" onClick={() => setStage('setup')}>{mode === 'photo' ? 'Другое фото' : 'Изменить'}</button><button className="primary" disabled={busy || !rows.length} onClick={save}>Согласен, записать</button></div>
+    <div className="ob-nav">{draft ? <button type="button" className="ghost" disabled={busy} onClick={dropDraft}>Удалить</button> : <button type="button" className="ghost" onClick={() => setStage('setup')}>{mode === 'photo' ? 'Другое фото' : 'Изменить'}</button>}<button className="primary" disabled={busy || !rows.length} onClick={save}>Согласен, записать</button></div>
   </div>;
 
   return <div className="form">
@@ -150,6 +186,7 @@ export function FoodAi({ day, time, mode: start, onDone }: { day: string; time?:
       <p className="hint" style={{ textAlign: 'left', margin: 0 }}>Пиши как удобно, через запятую. Укажешь граммы — посчитает точнее, не укажешь — возьмёт обычную порцию.</p>
     </>}
     {err && <p className="form-err">{err}</p>}
-    <button className="primary" disabled={loading} onClick={go}>{loading ? <span className="spin" aria-label="Считаю" /> : mode === 'photo' ? 'Распознать' : 'Посчитать'}</button>
+    <button className="primary" disabled={loading} onClick={go}>{loading ? <span className="spin" aria-label="Считаю" /> : mode === 'photo' ? 'Отправить на разбор' : 'Посчитать'}</button>
+    {mode === 'photo' && <p className="hint" style={{ margin: 0 }}>Фото разберётся в фоне: можно сразу записывать воду или закрыть журнал. Пришлю уведомление.</p>}
   </div>;
 }
