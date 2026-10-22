@@ -18,10 +18,13 @@ const PHONE_Q = '(max-width: 899px)';
 const isPhone = () => typeof matchMedia !== 'undefined' && matchMedia(PHONE_Q).matches;
 const posterSet = (k: number) => `/lumi/posters/${k}-240.webp 240w, /lumi/posters/${k}-400.webp 400w, /lumi/posters/${k}-560.webp 560w`;
 const letterSet = (k: number) => `/lumi/logo/${k}-240.webp 240w, /lumi/logo/${k}.webp 306w`;
-const SIZES = '(min-width: 900px) clamp(150px, 13.5vw, 280px), 88px';
-const cardW = () => Math.min(280, Math.max(150, innerWidth * 0.135));   // как .lw-track img
-const laneW = () => cardW() + 16;
-const laneCount = (phone: boolean) => phone ? 1 : Math.max(6, Math.min(16, Math.ceil(innerWidth * 1.35 / laneW()) + 1));
+/** форма справа: ширина и отступ — как в стилях (.lw-scene .login) */
+const formW = () => Math.min(600, Math.max(460, innerWidth * 0.34)), formRight = () => Math.min(110, Math.max(24, innerWidth * 0.05));
+/** место слева от формы, где стоит стена */
+export const wallFree = () => innerWidth - formW() - formRight() - 40;
+/** ширина постера: четыре ленты занимают свободное место (с зазорами), не уже 150 и не шире 330 px */
+const cardW = () => Math.round(Math.min(330, Math.max(150, (wallFree() - 3 * 18) / 4 * 0.9)));
+const laneCount = (phone: boolean) => phone ? 1 : LETTERS;
 // буквы стоят не по линейке: чуть разная высота и наклон — слово читается, но выглядит положенным рукой
 const LETTER_DY = [0, -16, 10, -6], LETTER_ROT = [-1.2, 0.8, -0.5, 1];
 const GAP = [0, 6, 2, 8, 4];           // зазор между постерами немного разный у соседних лент
@@ -29,7 +32,7 @@ const GAP = [0, 6, 2, 8, 4];           // зазор между постерам
 type Item = { letter: number } | { poster: number };
 /** постеры по лентам: соседние по цвету — в разных лентах; лента длиннее экрана с запасом на наклон */
 const lanesOf = (n: number, phone: boolean): Item[][] => {
-  const min = phone ? 10 : Math.ceil(innerHeight * 1.5 / (cardW() * 1308 / 736)) + 1;
+  const min = phone ? 10 : Math.ceil(innerHeight * 1.5 / (cardW() * 1308 / 736)) + 2;
   return Array.from({ length: n }, (_, c) => {
     const own: Item[] = Array.from({ length: N }, (_, k) => k + 1).filter(k => (k - 1) % n === c).map(poster => ({ poster }));
     let lane = own; while (lane.length < min) lane = [...lane, ...own];
@@ -46,13 +49,14 @@ const lanesOf = (n: number, phone: boolean): Item[][] => {
 function PosterWall() {
   const box = useRef<HTMLDivElement>(null);
   const [phone, setPhone] = useState(isPhone), [n, setN] = useState(() => laneCount(isPhone()));
-  const [letterAt, setLetterAt] = useState<number[] | null>(() => (isPhone() ? [0] : null));
+  const [letterAt, setLetterAt] = useState<number[] | null>(() => (isPhone() ? [0] : [0, 1, 2, 3]));
+  const [w, setW] = useState(cardW);
   const saved = useRef<number[] | null>(null);       // где были ленты (доля цикла) — чтобы после изменения окна продолжить, а не начать заново
   useEffect(() => {
     const mq = matchMedia(PHONE_Q); let id = 0;
-    const apply = () => { const ph = mq.matches, nn = laneCount(ph); setPhone(ph); setN(prev => { if (prev !== nn) setLetterAt(ph ? [0] : null); return nn; }); };
+    const apply = () => { const ph = mq.matches; setPhone(ph); setN(laneCount(ph)); setW(cardW()); };
     const onResize = () => { clearTimeout(id); id = window.setTimeout(apply, 200); };
-    const onMq = () => { setLetterAt(mq.matches ? [0] : null); saved.current = null; apply(); };
+    const onMq = () => { setLetterAt(mq.matches ? [0] : [0, 1, 2, 3]); saved.current = null; apply(); };
     addEventListener('resize', onResize); mq.addEventListener('change', onMq);
     return () => { clearTimeout(id); removeEventListener('resize', onResize); mq.removeEventListener('change', onMq); };
   }, []);
@@ -62,22 +66,6 @@ function PosterWall() {
     return at >= 0 ? [{ letter: at + 1 }, ...lane] : lane;
   });
 
-  // какие ленты несут буквы: четыре соседние, центр ряда — у 48% свободного места, и чтобы I не наезжала на форму
-  useLayoutEffect(() => {
-    if (phone || letterAt) return;
-    const root = box.current; if (!root) return;
-    const card = document.querySelector('.lw-scene .login')?.getBoundingClientRect();
-    const free = card ? card.left : innerWidth * 0.62, target = free * 0.48, y = innerHeight / 2, half = cardW() / 2;
-    const xs = [...root.querySelectorAll<HTMLElement>('.lw-col')].map(col => { const r = col.getBoundingClientRect(); return r.left + r.width / 2 + Math.tan(6 * Math.PI / 180) * (y - (r.top + r.height / 2)); });
-    let best = 0, bestScore = Infinity;
-    for (let c = 0; c + LETTERS <= xs.length; c++) {
-      const l = xs[c]! - half, r = xs[c + LETTERS - 1]! + half;
-      const overflow = Math.max(0, 16 - l) + Math.max(0, r - (free - 40));   // вылет за левый край или под форму
-      const score = overflow * 10 + Math.abs((l + r) / 2 - target);
-      if (score < bestScore) { bestScore = score; best = c; }
-    }
-    setLetterAt(Array.from({ length: LETTERS }, (_, k) => best + k));
-  }, [n, letterAt, phone]);
 
   // расстановка — до первого кадра (без мигания): буквы в ряд посередине, остальные ленты вразнобой
   const tracksRef = useRef<Array<{ el: HTMLElement; len: number; pos: number; dir: number }>>([]);
@@ -101,7 +89,7 @@ function PosterWall() {
       return { el, len, pos, dir: c % 2 ? -1 : 1 };
     });
     root.dataset.resumed = prev ? '1' : '';
-  }, [letterAt, n, phone]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [letterAt, n, phone, w]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const root = box.current; if (!root || !letterAt) return;
@@ -132,14 +120,15 @@ function PosterWall() {
       cancelAnimationFrame(raf); scene.removeEventListener('wheel', wheel);
       saved.current = tracks.map(t => (t.len ? t.pos / t.len : 0));   // продолжить с того же места
     };
-  }, [letterAt, n, phone]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [letterAt, n, phone, w]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  return <aside className="lw" aria-hidden="true" ref={box}>
+  const sizes = phone ? '88px' : `${w}px`;
+  return <aside className="lw" aria-hidden="true" ref={box} style={phone ? undefined : { ['--w' as string]: `${w}px`, ['--free' as string]: `${Math.round(wallFree())}px` }}>
     <div className="lw-wall">{lanes.map((lane, c) => <div key={`${phone}-${n}-${c}`} className="lw-col" style={{ ['--g' as string]: `${GAP[c % GAP.length]}px` }}>
       <div className="lw-track">
         {[...lane, ...lane].map((it, k) => 'letter' in it
-          ? <img key={k} className="letter" data-k={it.letter - 1} style={{ ['--r' as string]: `${LETTER_ROT[it.letter - 1]}deg` }} srcSet={letterSet(it.letter)} sizes={SIZES} src={`/lumi/logo/${it.letter}.webp`} alt="" decoding="async" fetchPriority="high" />
-          : <img key={k} srcSet={posterSet(it.poster)} sizes={SIZES} src={`/lumi/posters/${it.poster}-400.webp`} alt="" decoding="async" />)}
+          ? <img key={k} className="letter" data-k={it.letter - 1} style={{ ['--r' as string]: `${LETTER_ROT[it.letter - 1]}deg` }} srcSet={letterSet(it.letter)} sizes={sizes} src={`/lumi/logo/${it.letter}.webp`} alt="" decoding="async" fetchPriority="high" />
+          : <img key={k} srcSet={posterSet(it.poster)} sizes={sizes} src={`/lumi/posters/${it.poster}-400.webp`} alt="" decoding="async" />)}
       </div>
     </div>)}</div>
   </aside>;
@@ -175,7 +164,7 @@ export function Login({ onDone }: { onDone: () => void }) {
     <button type="button" className="forgot" style={{ alignSelf: 'center' }} onClick={() => { setForgot(false); setSent(''); setErr(''); }}>← Ко входу</button>
   </> : (() => { const up = mode === 'up'; return <>
     {brand}
-    <h1 ref={title} tabIndex={-1}>{up ? 'Зажжём твой первый день' : 'С возвращением'}</h1>
+    <h1 ref={title} tabIndex={-1}>{up ? 'Зажжём твой первый день' : 'С\u00a0возвращением'}</h1>
     <p>{up ? `Еда, вода, задачи и статистика — бесплатно навсегда. Остальное — ${TRIAL_DAYS} дней Pro.` : 'Маяк горит — твой день на месте.'}</p>
     {any && <div className="pv-btns">
       {pv.apple && <a className="pv-btn pv-apple" href={startUrl('apple')}><AppleMark />{up ? 'Создать через Apple' : 'Войти через Apple'}</a>}
