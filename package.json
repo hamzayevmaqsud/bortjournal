@@ -11,6 +11,8 @@
   "scripts": {
     "start": "node server.js",
     "api:dev": "npm run dev -w @bortjournal/api",
+    "worker": "npm run worker -w @bortjournal/api",
+    "worker:dev": "npm run worker:dev -w @bortjournal/api",
     "db:generate": "npm run db:generate -w @bortjournal/api",
     "db:migrate": "npm run db:migrate -w @bortjournal/api",
     "import:legacy": "npm run import:legacy -w @bortjournal/api",
