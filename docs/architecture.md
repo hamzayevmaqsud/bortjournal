@@ -16,7 +16,7 @@ docs/           этот файл
 
 | Модуль | Таблицы |
 |---|---|
-| food   | food_meals, food_drinks, food_user_foods, food_meal_sets |
+| food   | food_meals, food_drinks, food_user_foods, food_meal_sets, food_drafts |
 | gym    | gym_workouts → gym_workout_exercises → gym_workout_sets, gym_user_exercises, gym_plans, gym_live |
 | study  | study_sessions, study_srs, study_quizzes, study_time |
 | budget | budget_settings, budget_entries |

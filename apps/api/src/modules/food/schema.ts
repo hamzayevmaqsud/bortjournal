@@ -63,6 +63,8 @@ export const mealSets = pgTable('food_meal_sets', {
  * Черновик приёма: фото еды, которое разбирает воркер. Таблица одновременно и очередь (ADR-0002):
  * queued → working → ready | failed. Фото хранится, пока черновик не подтверждён или не удалён.
  */
+/** в очереди → разбирается → готов | не удался */
+export type DraftState = 'queued' | 'working' | 'ready' | 'failed';
 export const drafts = pgTable('food_drafts', {
   id: id(), userId: owner(),
   /** день и время фото — станут днём и временем приёма */
@@ -74,8 +76,7 @@ export const drafts = pgTable('food_drafts', {
   note: text('note').notNull().default(''),
   scale: text('scale').notNull().default(''),
   answers: jsonb('answers').$type<string[]>().notNull().default([]),
-  /** queued | working | ready | failed */
-  state: text('state').notNull().default('queued'),
+  state: text('state').$type<DraftState>().notNull().default('queued'),
   attempts: integer('attempts').notNull().default(0),
   nextAt: timestamp('next_at', { withTimezone: true }).notNull().defaultNow(),
   startedAt: timestamp('started_at', { withTimezone: true }),

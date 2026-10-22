@@ -88,7 +88,7 @@ export function FoodAi({ day, time, mode: start, draftId, onDone }: { day: strin
   const [rows, setRows] = useState<Row[]>([]), [qs, setQs] = useState<Array<{ text: string; options: string[] }>>([]), [ans, setAns] = useState<Record<number, string>>({});
   const [comment, setComment] = useState(''), [busy, setBusy] = useState(false), [draft, setDraft] = useState<FoodDraft | null>(null);
   useEffect(() => () => { if (photo) URL.revokeObjectURL(photo.url); }, [photo]);
-  // открыли черновик (из полосы сверху или из уведомления): готовый — сразу на проверку
+  // открыли черновик (из полосы сверху или из напоминания): готовый — сразу на проверку
   useEffect(() => {
     if (!draftId) return;
     setStage('loading');
@@ -112,7 +112,7 @@ export function FoodAi({ day, time, mode: start, draftId, onDone }: { day: strin
     // ручные правки весов при пересчёте отдаём модели как факт
     if (stage === 'review') for (const r of rows) if (num(r.grams) !== r.base.grams) answers.push(`Вес исправлен: ${r.name} — ${fmt(num(r.grams))} г`);
     const prev = stage; setStage('loading'); setErr('');
-    // черновик: ответы уходят в фон, сервер пересчитает и пришлёт уведомление
+    // черновик: ответы уходят в фон, сервер пересчитает и пришлёт напоминание
     if (draft) {
       try { await api(`/api/food/drafts/${draft.id}/answers`, { method: 'POST', body: { answers } }); toast('Пересчитываю с ответами — сообщу, когда будет готово'); dispatchEvent(new Event('bj-drafts')); onDone(); }
       catch (e) { setStage(prev); setErr(e instanceof ApiError ? e.message : 'Сервер недоступен.'); }
@@ -187,6 +187,6 @@ export function FoodAi({ day, time, mode: start, draftId, onDone }: { day: strin
     </>}
     {err && <p className="form-err">{err}</p>}
     <button className="primary" disabled={loading} onClick={go}>{loading ? <span className="spin" aria-label="Считаю" /> : mode === 'photo' ? 'Отправить на разбор' : 'Посчитать'}</button>
-    {mode === 'photo' && <p className="hint" style={{ margin: 0 }}>Фото разберётся в фоне: можно сразу записывать воду или закрыть журнал. Пришлю уведомление.</p>}
+    {mode === 'photo' && <p className="hint" style={{ margin: 0 }}>Фото разберётся в фоне: можно сразу записывать воду или закрыть журнал. Пришлю напоминание, когда будет готово.</p>}
   </div>;
 }

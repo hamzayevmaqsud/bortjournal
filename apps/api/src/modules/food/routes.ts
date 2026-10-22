@@ -50,7 +50,7 @@ export async function foodRoutes(app: FastifyInstance, { db }: { db: DB }) {
       // подтверждение черновика приёма: день и время — как у фото, черновик забирается в той же транзакции
       const from = draftId ? await takeReadyDraft(tx, uid(req), draftId) : null;
       if (draftId && !from) throw new HttpError(404, 'Черновик не найден или ещё не разобран.');
-      const list = items.map(it => mealBody({ ...(it as object), day: from?.day ?? b.day, time: from ? from.time : b.time, slot: b.slot, source: from ? 'photo' : b.source }));
+      const list = items.map(it => mealBody({ ...(it as object), day: from?.day ?? b.day, time: from ? from.time : b.time, slot: from?.slot ?? b.slot, source: from ? 'photo' : b.source }));
       const out = []; for (const m of list) out.push(await addMeal(tx, uid(req), m)); return out;
     });
     return reply.code(201).send({ items: rows });
@@ -101,13 +101,13 @@ export async function foodRoutes(app: FastifyInstance, { db }: { db: DB }) {
     const raw = (req.body as { answers?: unknown } | undefined)?.answers, answers = (Array.isArray(raw) ? raw : []).slice(0, 8).map(a => String(a).slice(0, 200)).filter(Boolean);
     if (!answers.length) throw bad('Нужен хотя бы один ответ.');
     const r = await answerDraft(db, uid(req), idParam((req.params as any).id), answers);
-    if (r === 'busy') return reply.code(409).send({ error: 'Фото ещё разбирается — ответить можно, когда разбор готов.' });
-    return r ?? notFound(reply);
+    if (r.ok) return r.draft;
+    return r.reason === 'missing' ? notFound(reply) : reply.code(409).send({ error: 'Фото ещё разбирается — ответить можно, когда разбор готов.' });
   });
   app.post('/drafts/:id/retry', { preHandler: pro }, async (req, reply) => {
     const r = await retryDraft(db, uid(req), idParam((req.params as any).id));
-    if (r === 'busy') return reply.code(409).send({ error: 'Повторить можно только неудавшийся разбор.' });
-    return r ?? notFound(reply);
+    if (r.ok) return r.draft;
+    return r.reason === 'missing' ? notFound(reply) : reply.code(409).send({ error: 'Повторить можно только неудавшийся разбор.' });
   });
   app.delete('/drafts/:id', { preHandler: pro }, async (req, reply) => (await deleteDraft(db, uid(req), idParam((req.params as any).id))) ? { ok: true } : notFound(reply));
 

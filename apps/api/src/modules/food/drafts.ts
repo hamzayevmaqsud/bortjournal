@@ -6,7 +6,7 @@ import { and, asc, eq, gte, lte, sql } from 'drizzle-orm';
 import type { DB, Tx } from '../../db/index.js';
 import { pushToUser } from '../../core/push.js';
 import { recognizeFood, type AiResult } from './ai.js';
-import { drafts } from './schema.js';
+import { drafts, type DraftState } from './schema.js';
 
 type Draft = typeof drafts.$inferSelect;
 export interface DraftInput { day: string; time: string | null; slot: string | null; image: string; mime: string; note: string; scale: string }
@@ -18,47 +18,51 @@ export function draftView(d: Draft) {
     isFood: r?.isFood ?? null, items: r?.items ?? [], questions: r?.questions ?? [], comment: r?.comment ?? '', error: d.error, attempts: d.attempts, createdAt: d.createdAt };
 }
 
-type Sum = { kcal: number; protein: number; fat: number; carbs: number };
-const ZERO: Sum = { kcal: 0, protein: 0, fat: 0, carbs: 0 };
-/** предварительные калории и БЖУ черновика: только у разобранного (ready) */
-export function draftSum(d: Pick<Draft, 'state' | 'result'>): Sum {
-  if (d.state !== 'ready' || !d.result?.isFood) return { ...ZERO };
-  return (d.result.items as Array<Partial<Sum>>).reduce<Sum>((a, it) => ({ kcal: a.kcal + (Number(it.kcal) || 0), protein: a.protein + (Number(it.protein) || 0), fat: a.fat + (Number(it.fat) || 0), carbs: a.carbs + (Number(it.carbs) || 0) }), { ...ZERO });
+/** калории и БЖУ — то, что черновик добавляет к итогам дня */
+export type Macros = { kcal: number; protein: number; fat: number; carbs: number };
+export const ZERO: Macros = { kcal: 0, protein: 0, fat: 0, carbs: 0 };
+export const addMacros = (a: Macros, b: Partial<Macros>): Macros => ({ kcal: a.kcal + (Number(b.kcal) || 0), protein: a.protein + (Number(b.protein) || 0), fat: a.fat + (Number(b.fat) || 0), carbs: a.carbs + (Number(b.carbs) || 0) });
+/** предварительные калории и БЖУ черновика: по последнему разбору, в том числе пока идёт пересчёт после ответа на уточнение */
+export function draftMacros(d: Pick<Draft, 'result'>): Macros {
+  return d.result?.isFood ? (d.result.items as Array<Partial<Macros>>).reduce(addMacros, { ...ZERO }) : { ...ZERO };
 }
+/** черновик уже разобран и что-то добавляет к дню — в статистике он считается приёмом */
+export const draftCounts = (d: Pick<Draft, 'result'>) => !!d.result?.isFood;
 const owned = (userId: string, id: string) => and(eq(drafts.userId, userId), eq(drafts.id, id));
 
 /** черновики дня (для дня еды и итогов) */
 export async function dayDrafts(db: Tx, userId: string, day: string) {
   return db.select().from(drafts).where(and(eq(drafts.userId, userId), eq(drafts.day, day))).orderBy(sql`${drafts.time} nulls last`, asc(drafts.createdAt));
 }
+/** дни с черновиками — для серии: фото, ждущее подтверждения, уже запись */
+export async function draftDays(db: Tx, userId: string, since: string) {
+  return (await db.selectDistinct({ day: drafts.day }).from(drafts).where(and(eq(drafts.userId, userId), gte(drafts.day, since)))).map(r => r.day);
+}
 /** черновики за период — для дневных рядов статистики */
 export async function rangeDrafts(db: Tx, userId: string, from: string, to: string) {
-  return db.select({ day: drafts.day, state: drafts.state, result: drafts.result }).from(drafts).where(and(eq(drafts.userId, userId), gte(drafts.day, from), lte(drafts.day, to)));
+  return db.select({ day: drafts.day, result: drafts.result }).from(drafts).where(and(eq(drafts.userId, userId), gte(drafts.day, from), lte(drafts.day, to)));
 }
 export async function deleteDraft(db: Tx, userId: string, id: string) {
   return (await db.delete(drafts).where(owned(userId, id)).returning({ id: drafts.id })).length > 0;
 }
 /** подтверждение: черновик забирается (удаляется вместе с фото) и отдаёт день и время фото. Только разобранный */
 export async function takeReadyDraft(db: Tx, userId: string, id: string) {
-  const [row] = await db.delete(drafts).where(and(owned(userId, id), eq(drafts.state, 'ready'))).returning({ day: drafts.day, time: drafts.time });
+  const [row] = await db.delete(drafts).where(and(owned(userId, id), eq(drafts.state, 'ready'))).returning({ day: drafts.day, time: drafts.time, slot: drafts.slot });
   return row ?? null;
 }
 
-/** ответы на уточнения: только у разобранного черновика; он возвращается в очередь. null — нет такого, 'busy' — не разобран */
-export async function answerDraft(db: Tx, userId: string, id: string, answers: string[]) {
-  const [row] = await db.update(drafts).set({ answers, state: 'queued', attempts: 0, nextAt: sql`now()`, error: null })
-    .where(and(owned(userId, id), eq(drafts.state, 'ready'))).returning();
-  if (row) return draftView(row);
-  return (await db.select({ id: drafts.id }).from(drafts).where(owned(userId, id))).length ? 'busy' as const : null;
+/** перевести черновик в очередь, если он в состоянии from. Результат: черновик, «нет такого» или «не в том состоянии» */
+type Requeue = { ok: true; draft: ReturnType<typeof draftView> } | { ok: false; reason: 'missing' | 'wrong-state' };
+async function requeue(db: Tx, userId: string, id: string, from: DraftState, set: Partial<typeof drafts.$inferInsert> = {}): Promise<Requeue> {
+  const [row] = await db.update(drafts).set({ ...set, state: 'queued', attempts: 0, nextAt: sql`now()`, error: null })
+    .where(and(owned(userId, id), eq(drafts.state, from))).returning();
+  if (row) return { ok: true, draft: draftView(row) };
+  return { ok: false, reason: (await db.select({ id: drafts.id }).from(drafts).where(owned(userId, id))).length ? 'wrong-state' : 'missing' };
 }
-
-/** «Повторить»: только неудавшийся черновик, попытки с нуля, лимит ИИ не тратится. null — нет такого, 'busy' — не неудавшийся */
-export async function retryDraft(db: Tx, userId: string, id: string) {
-  const [row] = await db.update(drafts).set({ state: 'queued', attempts: 0, nextAt: sql`now()`, error: null })
-    .where(and(owned(userId, id), eq(drafts.state, 'failed'))).returning();
-  if (row) return draftView(row);
-  return (await db.select({ id: drafts.id }).from(drafts).where(owned(userId, id))).length ? 'busy' as const : null;
-}
+/** ответы на уточнения: только у разобранного черновика; пересчёт идёт в фоне */
+export const answerDraft = (db: Tx, userId: string, id: string, answers: string[]) => requeue(db, userId, id, 'ready', { answers });
+/** «Повторить»: только неудавшийся черновик, попытки с нуля, лимит ИИ не тратится */
+export const retryDraft = (db: Tx, userId: string, id: string) => requeue(db, userId, id, 'failed');
 
 export async function createDraft(db: Tx, userId: string, v: DraftInput) {
   const [row] = await db.insert(drafts).values({ userId, ...v }).returning();
@@ -96,7 +100,7 @@ const retryable = (e: unknown) => { const st = (e as { upstream?: number }).upst
 
 /** напоминание «Фото разобрано»: что нашлось и сколько калорий, а если есть вопрос — сам вопрос */
 async function notifyReady(db: DB, d: Draft, r: AiResult) {
-  const kcal = Math.round(draftSum({ state: 'ready', result: r }).kcal), names = r.items.map(i => i.name).slice(0, 3).join(', ');
+  const kcal = Math.round(draftMacros({ result: r }).kcal), names = r.items.map(i => i.name).slice(0, 3).join(', ');
   const q = r.questions[0];
   await pushToUser(db, d.userId, {
     title: q ? 'Фото разобрано, есть вопрос' : 'Фото разобрано',
