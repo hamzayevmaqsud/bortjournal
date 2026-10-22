@@ -7,6 +7,9 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { eq } from 'drizzle-orm';
+import type { Tx } from '../db/index.js';
+import { pushSubscriptions } from './schema.js';
 
 const b64u = (buf: Buffer | Uint8Array) => Buffer.from(buf).toString('base64url');
 const unb64u = (s: string) => Buffer.from(String(s), 'base64url');
@@ -70,4 +73,18 @@ export async function sendPush(sub: { endpoint: string; p256dh: string; auth: st
     headers: { Authorization: vapidHeader(v, sub.endpoint, process.env.PUSH_SUBJECT || 'mailto:bortjournal@localhost'), TTL: '3600', 'Content-Encoding': 'aes128gcm', 'Content-Type': 'application/octet-stream', Urgency: 'normal' }
   });
   return { ok: r.status >= 200 && r.status < 300, gone: r.status === 404 || r.status === 410, status: r.status };
+}
+
+/** отправить на все устройства человека; отписавшиеся устройства удаляются. Возвращает, на сколько ушло */
+export async function pushToUser(db: Tx, userId: string, msg: PushMessage) {
+  const subs = await db.select().from(pushSubscriptions).where(eq(pushSubscriptions.userId, userId));
+  let sent = 0;
+  for (const s of subs) {
+    try {
+      const r = await sendPush(s, msg);
+      if (r.ok) sent++;
+      if (r.gone) await db.delete(pushSubscriptions).where(eq(pushSubscriptions.id, s.id));
+    } catch { /* устройство недоступно — попробуем в следующий раз */ }
+  }
+  return sent;
 }

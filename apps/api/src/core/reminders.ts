@@ -13,7 +13,7 @@ import { requireUser } from './auth.js';
 import { subscription } from './billing.js';
 import { bad, uid } from './http.js';
 import type { Nudge } from './module.js';
-import { endpointOk, sendPush, vapid, type PushMessage } from './push.js';
+import { endpointOk, pushToUser, vapid } from './push.js';
 import { profiles, pushSubscriptions, reminderLog, users } from './schema.js';
 import { activeDays } from './today.js';
 
@@ -45,19 +45,6 @@ export async function dueNudges(db: DB, userId: string, at = Date.now()): Promis
   return { today: now.day, list: list.filter(x => R[x.kind as keyof RemindSettings] !== false && (x.at === undefined || (min >= x.at && min < x.at + WINDOW))) };
 }
 
-async function pushTo(db: DB, userId: string, msg: PushMessage) {
-  const subs = await db.select().from(pushSubscriptions).where(eq(pushSubscriptions.userId, userId));
-  let sent = 0;
-  for (const s of subs) {
-    try {
-      const r = await sendPush(s, msg);
-      if (r.ok) sent++;
-      if (r.gone) await db.delete(pushSubscriptions).where(eq(pushSubscriptions.id, s.id));
-    } catch { /* устройство недоступно — попробуем в следующий раз */ }
-  }
-  return sent;
-}
-
 /** один проход: всем, у кого есть устройства, отправить то, что пора и ещё не отправлено */
 export async function remindTick(db: DB, at = Date.now()) {
   const owners = await db.selectDistinct({ userId: pushSubscriptions.userId }).from(pushSubscriptions);
@@ -69,7 +56,7 @@ export async function remindTick(db: DB, at = Date.now()) {
     let fresh = list.filter(x => x.every ? !log.has(x.key) || at - log.get(x.key)! > x.every * 60e3 : !log.has(x.key));
     if (fresh.some(x => !x.every)) fresh = fresh.filter(x => !x.every);
     for (const x of fresh) {
-      if (!(await pushTo(db, userId, { title: x.title, body: x.body, url: x.url, tag: x.key }))) continue;
+      if (!(await pushToUser(db, userId, { title: x.title, body: x.body, url: x.url, tag: x.key }))) continue;
       total++;
       await db.insert(reminderLog).values({ userId, key: x.key, day: today, sentAt: new Date(at) }).onConflictDoUpdate({ target: [reminderLog.userId, reminderLog.key, reminderLog.day], set: { sentAt: new Date(at) } });
     }
@@ -112,7 +99,7 @@ export async function reminderRoutes(app: FastifyInstance, { db }: { db: DB }) {
     return view(uid(req));
   });
   app.post('/api/push/test', { preHandler: requireUser }, async (req, reply) => {
-    const n = await pushTo(db, uid(req), { title: 'Напоминания работают', body: 'Так будут выглядеть подсказки Бортжурнала.', url: '/#today', tag: 'test' });
+    const n = await pushToUser(db, uid(req), { title: 'Напоминания работают', body: 'Так будут выглядеть подсказки Бортжурнала.', url: '/#today', tag: 'test' });
     if (!n) return reply.code(400).send({ error: 'Не получилось отправить: на этом аккаунте нет рабочих устройств.' });
     return { sent: n };
   });

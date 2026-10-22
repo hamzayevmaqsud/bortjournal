@@ -4,7 +4,8 @@
  */
 import { and, asc, eq, gte, lte, sql } from 'drizzle-orm';
 import type { DB, Tx } from '../../db/index.js';
-import { recognizeFood } from './ai.js';
+import { pushToUser } from '../../core/push.js';
+import { recognizeFood, type AiResult } from './ai.js';
 import { drafts } from './schema.js';
 
 type Draft = typeof drafts.$inferSelect;
@@ -70,12 +71,24 @@ async function claim(db: DB, at?: Date) {
   return row ?? null;
 }
 
+/** напоминание «Фото разобрано»: что нашлось и сколько калорий, а если есть вопрос — сам вопрос */
+async function notifyReady(db: DB, d: Draft, r: AiResult) {
+  const kcal = Math.round(draftSum({ state: 'ready', result: r }).kcal), names = r.items.map(i => i.name).slice(0, 3).join(', ');
+  const q = r.questions[0];
+  await pushToUser(db, d.userId, {
+    title: q ? 'Фото разобрано, есть вопрос' : 'Фото разобрано',
+    body: q ? `${q.text} Ответь — и пересчитаю.` : `${names} — ${kcal} ккал. Проверь и сохрани.`,
+    url: `/#food?draft=${d.id}`, tag: `draft:${d.id}`
+  });
+}
+
 /** один проход: разобрать все черновики, которым пора. Возвращает, сколько обработано */
 export async function workDrafts(db: DB, at?: Date) {
   let n = 0;
   for (let d = await claim(db, at); d; d = await claim(db, at)) {
     const result = await recognizeFood({ image: d.image, mime: d.mime, note: d.note, scale: d.scale, answers: d.answers });
     await db.update(drafts).set({ state: 'ready', result, error: null }).where(eq(drafts.id, d.id));
+    await notifyReady(db, d, result);
     n++;
   }
   return n;
