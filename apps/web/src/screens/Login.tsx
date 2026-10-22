@@ -8,17 +8,19 @@ import { TRIAL_DAYS } from '@bortjournal/core';
 import { api, ApiError } from '../lib/api';
 import { Icon } from '../components/Icon';
 
-const POSTERS = [1, 2, 3, 4, 5, 6, 7, 8].map(n => `/lumi/posters/${n}.webp`);
+// 23 постеров по кругу оттенков (scripts: собираются из Documents/Lumi/login page)
+const POSTERS = Array.from({ length: 23 }, (_, k) => `/lumi/posters/${k + 1}.webp`);
 
 /**
  * Стена постеров: три колонки медленно едут навстречу друг другу (на телефоне — одна лента вбок).
  * Каждый постер не крупнее родного размера, поэтому чёткий. При «меньше движения» стена стоит.
  */
-const COLS = [0, 3, 6].map(start => POSTERS.map((_, k) => POSTERS[(start + k) % POSTERS.length]!));
+// у каждой колонки свои постеры: соседние по цвету оказываются в разных колонках, повторов между колонками нет
+const COLS = [0, 1, 2].map(c => POSTERS.filter((_, k) => k % 3 === c));
 function PosterWall() {
   return <aside className="login-art" aria-hidden="true">
     <div className="wall">{COLS.map((col, c) => <div key={c} className={`wall-col c${c}`}>
-      <div className="wall-track">{[...col, ...col].map((src, k) => <img key={k} src={src} alt="" decoding="async" loading={k < 4 ? 'eager' : 'lazy'} />)}</div>
+      <div className="wall-track">{[...col, ...col].map((src, k) => <img key={k} src={src} alt="" decoding="async" />)}</div>
     </div>)}</div>
   </aside>;
 }
