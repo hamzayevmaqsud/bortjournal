@@ -1985,9 +1985,4 @@ a.btn-accent{text-decoration:none}
 .tl-allday .ic{width:16px;height:16px;flex:none}
 .tl-allday span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
-/* док на широком экране: «Записать» — в ряд с остальными, круглая оранжевая иконка, без всплывающей плашки */
-.app.wide .tab.add{color:var(--text-3)}
-.app.wide .tab.add .pill{width:32px;height:32px;border-radius:50%;margin-top:0;box-shadow:0 4px 10px color-mix(in srgb,var(--orange) 30%,transparent)}
-.app.wide .tab.add .pill .ic{width:18px;height:18px}
-.app.wide .tab.add:hover .pill{filter:brightness(1.06)}
 .brand i{font:800 16px var(--display);letter-spacing:-.02em}

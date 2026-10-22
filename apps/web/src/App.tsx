@@ -51,7 +51,7 @@ const ORDER = ['today', 'plans', 'food', 'study', 'gym', 'budget', 'books', 'goa
 const SECTIONS: Record<string, string | null> = { goal: null, stats: null, study: 'study', gym: 'gym', budget: 'budget', books: 'books' };
 const SECTION_NAME: Record<string, string> = { study: 'Учёба', gym: 'Зал', budget: 'Бюджет', books: 'Книги' };
 // на компьютере в панели — и переехавшие разделы Pro
-const WIDE_TABS: Array<[string, string, string]> = [['today', 'today', 'Сегодня'], ['plans', 'plans', 'Планы'], ['add', 'plus', 'Записать'], ['food', 'food', 'Еда'], ['study', 'study', 'Учёба'], ['gym', 'gym', 'Зал'], ['budget', 'money', 'Бюджет'], ['books', 'books', 'Книги'], ['goal', 'target', 'Цель'], ['stats', 'stats', 'Статистика'], ['more', 'more', 'Ещё']];
+const WIDE_TABS: Array<[string, string, string]> = [['today', 'today', 'Сегодня'], ['plans', 'plans', 'Планы'], ['food', 'food', 'Еда'], ['study', 'study', 'Учёба'], ['gym', 'gym', 'Зал'], ['budget', 'money', 'Бюджет'], ['books', 'books', 'Книги'], ['goal', 'target', 'Цель'], ['stats', 'stats', 'Статистика'], ['more', 'more', 'Ещё']];
 // разделы Pro, у которых уже есть свой экран
 const PRO_TABS: Record<string, string> = { 'Цели и повторы': 'plans', 'Анализ еды': 'food', 'Учёба': 'study:study', 'Учёба и вопросы': 'study:study', 'Вопросы дня': 'study:quiz', 'Вопросы': 'study:quiz', 'Зал': 'gym', 'Тренировка': 'gym', 'Бюджет': 'budget', 'Трата': 'budget', 'Книги': 'books', 'Чтение': 'books', 'Цель и прогноз': 'goal', 'Цель и план': 'goal', 'Статистика': 'stats', 'Статистика и итог недели': 'stats', 'Достижения': 'stats:awards', 'Итог недели': 'stats:week' };
 // пояс телефона — серверу, чтобы «сегодня» и «сейчас» совпадали с часами человека
