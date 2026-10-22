@@ -1,0 +1,26 @@
+/* Демо без регистрации: тонкая полоса сверху; экраны сдвигаются под неё, нижняя навигация не задета */
+.app.demo-on{--demo-h:calc(48px + env(safe-area-inset-top,0px))}
+.demo-bar{position:absolute;z-index:22;top:0;left:0;right:0;height:var(--demo-h);display:flex;align-items:center;gap:10px;
+  padding:env(safe-area-inset-top,0px) max(12px,env(safe-area-inset-right,0px)) 0 max(16px,env(safe-area-inset-left,0px));
+  background:var(--card);border-bottom:1px solid var(--line);color:var(--text-2);font:600 13px/1.25 var(--sans)}
+.demo-dot{flex:none;width:8px;height:8px;border-radius:50%;background:var(--orange);box-shadow:0 0 0 4px var(--orange-soft)}
+.demo-text{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.demo-save{flex:none;height:32px;padding:0 12px;font-size:12.5px}
+.demo-out{flex:none;display:inline-flex;align-items:center;gap:5px;height:32px;padding:0 6px;border-radius:999px;color:var(--text-2);font:600 12.5px var(--sans);transition:color .2s}
+.demo-out:hover{color:var(--text)}
+.demo-out .ic{width:16px;height:16px}
+.app.demo-on .screens{top:var(--demo-h)}
+.app.demo-on .screen{padding-top:16px}
+.app.demo-on .outbox-bar{top:calc(var(--demo-h) + 8px)}
+.app.wide.demo-on .brand{top:calc(var(--demo-h) + 22px)}
+.app.wide .demo-bar{justify-content:center;padding-left:24px;padding-right:24px}
+.app.wide .demo-text{flex:0 1 auto}
+.app.wide.demo-on .screen{padding-top:32px}
+/* узкий телефон: текст переносится в две строки, «Выйти» — только значок */
+@media (max-width:420px){
+  .app.demo-on{--demo-h:calc(56px + env(safe-area-inset-top,0px))}
+  .demo-text{white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;font-size:12.5px}
+  .demo-out span{display:none}
+}
+.demo-lead{margin:0 0 2px;color:var(--text-2);font-size:14px;line-height:1.45}
+.demo-form .pw-field .in{padding-right:52px}

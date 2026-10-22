@@ -2,7 +2,7 @@
  * Обратная связь и админка беты.
  * «Написать разработчику» — отзыв с контекстом (экран, версия, устройство); если задан Telegram-бот
  * (TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID), отзыв сразу приходит и туда.
- * Админка (логины из ADMIN_USERS через запятую): пользователи и их активность, расход ИИ, регистрации, отзывы.
+ * Админка (логины из ADMIN_USERS через запятую): пользователи и их активность, расход ИИ, регистрации, отзывы. Демо без регистрации в ней не считаются.
  */
 import { desc, eq, sql } from 'drizzle-orm';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
@@ -54,10 +54,11 @@ export async function adminRoutes(app: FastifyInstance, { db }: { db: DB }) {
         (select coalesce(sum(a.count), 0)::int from ai_usage a where a.user_id = u.id and a.day >= current_date - 6) as ai7,
         (select count(distinct e.day)::int from events e where e.user_id = u.id and e.day between current_date - 6 and current_date) as days7
       from users u left join profiles p on p.user_id = u.id
+      where u.demo_until is null
       order by u.last_seen_at desc nulls last, u.created_at desc limit 500`)).rows;
     const since = sql`current_date - 13`;
-    const signups = (await db.execute<{ day: string; n: number }>(sql`select created_at::date::text as day, count(*)::int as n from users where created_at::date >= ${since} group by 1 order by 1`)).rows;
-    const active = (await db.execute<{ day: string; n: number }>(sql`select day::text as day, count(distinct user_id)::int as n from events where day >= ${since} and day <= current_date group by 1 order by 1`)).rows;
+    const signups = (await db.execute<{ day: string; n: number }>(sql`select created_at::date::text as day, count(*)::int as n from users where created_at::date >= ${since} and demo_until is null group by 1 order by 1`)).rows;
+    const active = (await db.execute<{ day: string; n: number }>(sql`select day::text as day, count(distinct user_id)::int as n from events where day >= ${since} and day <= current_date and user_id in (select id from users where demo_until is null) group by 1 order by 1`)).rows;
     const ai = (await db.execute<{ day: string; kind: string; n: number }>(sql`select day::text as day, kind, sum(count)::int as n from ai_usage where day >= ${since} group by 1, 2 order by 1`)).rows;
     const fb = await db.select({ id: feedback.id, text: feedback.text, context: feedback.context, done: feedback.done, createdAt: feedback.createdAt, username: users.username })
       .from(feedback).leftJoin(users, eq(users.id, feedback.userId)).orderBy(feedback.done, desc(feedback.createdAt)).limit(200);

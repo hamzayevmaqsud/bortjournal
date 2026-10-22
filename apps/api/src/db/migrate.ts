@@ -13,5 +13,6 @@ export async function runMigrations(url?: string) {
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+  (await import('../core/env.js')).loadEnv();   // как сервер и воркер: DATABASE_URL из .env
   runMigrations().then(() => console.log('Миграции применены'), e => { console.error(e); process.exit(1); });
 }

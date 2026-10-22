@@ -1,0 +1,1 @@
+ALTER TABLE "users" ADD COLUMN "demo_until" timestamp with time zone;

@@ -24,6 +24,8 @@ export const users = pgTable('users', {
   tzOffset: smallint('tz_offset').notNull().default(0),
   /** когда последний раз открывал журнал — для активности в админке (обновляется не чаще раза в 10 минут) */
   lastSeenAt: timestamp('last_seen_at', { withTimezone: true }),
+  /** демо без регистрации: до этого времени живёт, потом удаляется воркером; null — настоящий аккаунт */
+  demoUntil: timestamp('demo_until', { withTimezone: true }),
   deletedAt: timestamp('deleted_at', { withTimezone: true })
 }, t => [
   uniqueIndex('users_username_uq').on(sql`lower(${t.username})`),

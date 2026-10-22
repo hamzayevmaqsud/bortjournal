@@ -34,6 +34,7 @@ import { VoiceCapture } from './components/Voice';
 import { AiConsent } from './components/AiConsent';
 import { FeedbackForm } from './components/Feedback';
 import { Boundary } from './components/Boundary';
+import { DemoBanner } from './components/DemoBanner';
 import { setSex } from './lib/gender';
 import { Admin } from './screens/Admin';
 import { ResetPassword } from './screens/Reset';
@@ -309,7 +310,8 @@ export function App() {
   const QUICK: Record<string, string> = { 'Зал': 'gym', 'Учёба': 'study', 'Трата': 'budget', 'Чтение': 'books' };
   const lockTile = (name: string, ic: string, c: string) => <button key={name} className="tile" onClick={() => { if (QUICK[name] && can(sub, name)) setQuick({ tab: QUICK[name]!, t: Date.now() }); pro(name, sheet.kind === 'add' ? sheet.at : undefined); }}><span className="chip-ic" style={{ ['--c' as string]: c }}><Icon name={ic} /></span>{name}{!can(sub, name) && <span className="lock">PRO</span>}</button>;
 
-  return <div className={`app ${wide ? 'wide' : ''}`}>
+  return <div className={`app ${wide ? 'wide' : ''} ${me.demo ? 'demo-on' : ''}`}>
+    {me.demo && <DemoBanner onLogout={logout} onClaimed={async () => { await loadMe(); toast('Аккаунт сохранён — записи на месте'); }} />}
     {wide && <div className="brand"><img className="brand-mark" src="/favicon.svg" alt="" />Lumi</div>}
     {tab in SECTIONS && SECTIONS[tab] && sub.ended && !can(sub, SECTIONS[tab]!) && <button className="ro-bar" onClick={() => open({ kind: 'paywall', focus: SECTION_NAME[tab] })}><Icon name="file" />Только просмотр — Pro закончился. Продлить</button>}
     {queued === 0 && drafts.length > 0 && (() => {

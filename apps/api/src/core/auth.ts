@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { and, eq, gt, sql } from 'drizzle-orm';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
-import type { DB } from '../db/index.js';
+import type { DB, Tx } from '../db/index.js';
 import { startTrial, subscription } from './billing.js';
 import { modulesOf } from './entitlements.js';
 import { isAdminName } from './admin.js';
@@ -64,9 +64,35 @@ export function sessionHook(db: DB) {
   return async (req: FastifyRequest) => {
     const t = tokenOf(req); if (!t) return;
     const [s] = await db.select({ userId: sessions.userId }).from(sessions).innerJoin(users, eq(users.id, sessions.userId))
-      .where(and(eq(sessions.tokenHash, sha(t)), gt(sessions.expiresAt, sql`now()`), sql`${users.deletedAt} is null`)).limit(1);
+      .where(and(eq(sessions.tokenHash, sha(t)), gt(sessions.expiresAt, sql`now()`), sql`${users.deletedAt} is null`, sql`(${users.demoUntil} is null or ${users.demoUntil} > now())`)).limit(1);
     if (s) req.userId = s.userId;
   };
+}
+
+/** логины demo-… — только для демо без регистрации: ни войти, ни занять их нельзя */
+export const isDemoName = (username: string) => /^demo-/i.test(username);
+
+/**
+ * Проверка логина, пароля и почты для нового аккаунта (регистрация и сохранение демо).
+ * except — свой id: при сохранении демо своя почта не считается занятой
+ */
+export async function newAccount(db: Tx, body: Record<string, unknown>, except?: string): Promise<{ username: string; password: string; email: string } | { status: number; error: string }> {
+  const username = String(body.username ?? '').trim(), password = String(body.password ?? ''), email = String(body.email ?? '').trim().toLowerCase();
+  if (!/^[A-Za-z0-9._-]{3,32}$/.test(username)) return { status: 400, error: 'Логин: 3–32 символа — латиница, цифры, точка, дефис или подчёркивание.' };
+  if (isDemoName(username)) return { status: 400, error: 'Логины на «demo-» заняты под демо — выбери другой.' };
+  if (password.length < 8 || password.length > 512) return { status: 400, error: 'Пароль — не короче 8 символов.' };
+  if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return { status: 400, error: 'Почта выглядит неверно.' };
+  const taken = await db.select({ id: users.id }).from(users).where(and(sql`(lower(${users.username}) = lower(${username})${email ? sql` or lower(${users.email}) = ${email}` : sql``})`, except ? sql`${users.id} <> ${except}` : sql`true`)).limit(1);
+  if (taken.length) return { status: 409, error: 'Такой логин или почта уже заняты.' };
+  return { username, password, email };
+}
+
+/** файлы человека вне базы: оригиналы конспектов и свои обложки книг */
+export function removeUserFiles(userId: string) {
+  if (!/^[0-9a-f-]{36}$/.test(userId)) return;
+  const data = fileURLToPath(new URL('../../../../data/', import.meta.url));
+  for (const dir of [process.env.STUDY_FILES_DIR || path.join(data, 'study-files'), path.join(process.env.COVERS_DIR || path.join(data, 'covers-next'), 'u')])
+    fs.rmSync(path.join(dir, userId), { recursive: true, force: true });
 }
 
 export async function authRoutes(app: FastifyInstance, { db }: { db: DB }) {
@@ -77,7 +103,8 @@ export async function authRoutes(app: FastifyInstance, { db }: { db: DB }) {
     const keys = [`ip:${req.ip}`, `ui:${username}|${req.ip}`, `u:${username}`];
     if (tooMany(...keys)) return reply.code(429).send({ error: 'Слишком много попыток. Подожди 15 минут.' });
     const [u] = await db.select().from(users).where(and(sql`lower(${users.username}) = ${username}`, sql`${users.deletedAt} is null`)).limit(1);
-    if (!(await verifyPassword(password, u?.passwordHash)) || !u) { fail(...keys); return reply.code(401).send({ error: 'Неверный логин или пароль.' }); }
+    // demo-… без пароля и под вход не годятся — отвечаем как на неверный пароль
+    if (!(await verifyPassword(password, u?.passwordHash)) || !u || isDemoName(username) || u.demoUntil) { fail(...keys); return reply.code(401).send({ error: 'Неверный логин или пароль.' }); }
     keys.forEach(k => fails.delete(k));
     await startSession(db, req, reply, u.id);
     return { username: u.username };
@@ -89,12 +116,9 @@ export async function authRoutes(app: FastifyInstance, { db }: { db: DB }) {
     const r = regs.get(req.ip);
     if (r && r.until > Date.now() && r.n >= 5) return reply.code(429).send({ error: 'Слишком много регистраций с этого адреса. Попробуй через час.' });
     const body = (req.body ?? {}) as Record<string, unknown>;
-    const username = String(body.username ?? '').trim(), password = String(body.password ?? ''), email = String(body.email ?? '').trim().toLowerCase();
-    if (!/^[A-Za-z0-9._-]{3,32}$/.test(username)) return reply.code(400).send({ error: 'Логин: 3–32 символа — латиница, цифры, точка, дефис или подчёркивание.' });
-    if (password.length < 8 || password.length > 512) return reply.code(400).send({ error: 'Пароль — не короче 8 символов.' });
-    if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return reply.code(400).send({ error: 'Почта выглядит неверно.' });
-    const taken = await db.select({ id: users.id }).from(users).where(sql`lower(${users.username}) = lower(${username})${email ? sql` or lower(${users.email}) = ${email}` : sql``}`).limit(1);
-    if (taken.length) return reply.code(409).send({ error: 'Такой логин или почта уже заняты.' });
+    const acc = await newAccount(db, body);
+    if ('error' in acc) return reply.code(acc.status).send({ error: acc.error });
+    const { username, password, email } = acc;
     const tz = Number(body.tz);
     const userId = await db.transaction(async tx => {
       const [u] = await tx.insert(users).values({ username, email: email || null, passwordHash: await hashPassword(password), tzOffset: Number.isInteger(tz) && Math.abs(tz) <= 840 ? tz : 0 }).returning({ id: users.id });
@@ -120,7 +144,9 @@ export async function authRoutes(app: FastifyInstance, { db }: { db: DB }) {
     const b = (req.body ?? {}) as { current?: unknown; next?: unknown };
     const current = String(b.current ?? '').slice(0, 512), next = String(b.next ?? '');
     if (tooMany(`pw:${req.userId}`)) return reply.code(429).send({ error: 'Слишком много попыток. Подожди 15 минут.' });
-    const [u] = await db.select({ hash: users.passwordHash }).from(users).where(eq(users.id, req.userId));
+    const [u] = await db.select({ hash: users.passwordHash, demo: users.demoUntil }).from(users).where(eq(users.id, req.userId));
+    // у демо пароля нет и логин временный — сначала «Сохранить как аккаунт»
+    if (u?.demo) return reply.code(400).send({ error: 'Это демо — сначала сохрани его как аккаунт.' });
     // вошёл через Google или Apple и пароля ещё нет — задаёт первый, текущий не нужен
     if (u?.hash && !(await verifyPassword(current, u.hash))) { fail(`pw:${req.userId}`); return reply.code(400).send({ error: 'Текущий пароль неверный.' }); }
     if (next.length < 8 || next.length > 512) return reply.code(400).send({ error: 'Новый пароль — не короче 8 символов.' });
@@ -184,8 +210,7 @@ export async function authRoutes(app: FastifyInstance, { db }: { db: DB }) {
     if (!ok) { fail(`del:${req.userId}`); return reply.code(400).send({ error: u?.hash ? 'Пароль неверный.' : 'Логин не совпадает.' }); }
     await db.delete(users).where(eq(users.id, req.userId!));
     // загруженные файлы конспектов — тоже (записи в базе ушли каскадом)
-    const filesDir = process.env.STUDY_FILES_DIR || fileURLToPath(new URL('../../../../data/study-files', import.meta.url));
-    if (/^[0-9a-f-]{36}$/.test(req.userId!)) fs.rmSync(path.join(filesDir, req.userId!), { recursive: true, force: true });
+    removeUserFiles(req.userId!);
     setCookie(req, reply, '', 0);
     return { ok: true };
   });
@@ -204,9 +229,7 @@ export async function authRoutes(app: FastifyInstance, { db }: { db: DB }) {
       const t = await tx.execute<{ name: string }>(sql`select table_name as name from information_schema.columns where column_name = 'user_id' and table_schema = current_schema() order by table_name`);
       for (const { name } of t.rows) if (!KEEP.includes(name)) await tx.execute(sql`delete from ${sql.identifier(name)} where user_id = ${req.userId!}`);
     });
-    const data = fileURLToPath(new URL('../../../../data/', import.meta.url));
-    if (/^[0-9a-f-]{36}$/.test(req.userId!)) for (const dir of [process.env.STUDY_FILES_DIR || path.join(data, 'study-files'), path.join(process.env.COVERS_DIR || path.join(data, 'covers-next'), 'u')])
-      fs.rmSync(path.join(dir, req.userId!), { recursive: true, force: true });
+    removeUserFiles(req.userId!);
     return { ok: true };
   });
 
@@ -215,10 +238,10 @@ export async function authRoutes(app: FastifyInstance, { db }: { db: DB }) {
     // часовой пояс приходит с устройства: по нему считаются «сегодня», «сейчас» и напоминания
     const tz = Number((req.query as { tz?: string }).tz);
     if (Number.isInteger(tz) && Math.abs(tz) <= 840) await db.update(users).set({ tzOffset: tz }).where(and(eq(users.id, req.userId), sql`${users.tzOffset} <> ${tz}`));
-    const [u] = await db.select({ username: users.username, tzOffset: users.tzOffset, seen: users.lastSeenAt }).from(users).where(eq(users.id, req.userId));
+    const [u] = await db.select({ username: users.username, tzOffset: users.tzOffset, seen: users.lastSeenAt, demoUntil: users.demoUntil }).from(users).where(eq(users.id, req.userId));
     if (!u!.seen || Date.now() - u!.seen.getTime() > 10 * 60e3) await db.update(users).set({ lastSeenAt: new Date() }).where(eq(users.id, req.userId));
     const [p] = await db.select().from(profiles).where(eq(profiles.userId, req.userId));
-    return { username: u!.username, tzOffset: u!.tzOffset, admin: isAdminName(u!.username), modules: await modulesOf(db, req.userId), subscription: await subscription(db, req.userId), profile: p ?? null };
+    return { username: u!.username, tzOffset: u!.tzOffset, admin: isAdminName(u!.username), demo: !!u!.demoUntil, demoUntil: u!.demoUntil?.toISOString() ?? null, modules: await modulesOf(db, req.userId), subscription: await subscription(db, req.userId), profile: p ?? null };
   });
 }
 

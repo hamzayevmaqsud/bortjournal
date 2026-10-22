@@ -32,6 +32,15 @@ export function setOwner(username: string) {
   notify();
 }
 const mine = () => read<Pending[]>(OUTBOX, []).filter(p => p.owner && p.owner === owner());
+/** логин сменился (демо сохранено как аккаунт) — очередь и копии ответов переходят к новому логину */
+export function renameOwner(username: string) {
+  const from = owner(), to = username.toLowerCase();
+  if (!from || from === to) return;
+  write(OUTBOX, read<Pending[]>(OUTBOX, []).map(p => p.owner === from ? { ...p, owner: to } : p));
+  write(CACHE, Object.fromEntries(Object.entries(read<Cache>(CACHE, {})).map(([k, v]) => [k.startsWith(`${from}|`) ? `${to}|${k.slice(from.length + 1)}` : k, v])));
+  try { localStorage.setItem(OWNER, to); } catch { /* без памяти */ }
+  notify();
+}
 
 /** сколько записей этого человека ждут отправки */
 export const pendingCount = () => owner() ? mine().length : 0;
@@ -121,7 +130,7 @@ if (typeof window !== 'undefined') {
 
 export interface Subscription { pro: boolean; source: 'trial' | 'web' | 'apple' | 'google' | 'free' | 'beta' | null; expiresAt: string | null; daysLeft: number | null; plan: 'month' | 'year' | null; autoRenew: boolean; ended?: boolean; beta?: boolean; features?: import('@bortjournal/core').PackKey[] | null }
 export interface Profile { sex: string | null; age: number | null; heightCm: number | null; goal: string | null; pace?: string | null; targetKg: number | null; startWeightKg: number | null; settings: Record<string, any> }
-export interface Me { admin?: boolean; username: string; tzOffset: number; modules: string[]; subscription: Subscription; profile: Profile | null }
+export interface Me { admin?: boolean; /** демо без регистрации: удалится в demoUntil, пока не сохранено как аккаунт */ demo?: boolean; demoUntil?: string | null; username: string; tzOffset: number; modules: string[]; subscription: Subscription; profile: Profile | null }
 export interface PlanResult { kcal: number; protein: number; fat: number; carbs: number; weeklyKg: number; tdee: number; bmi: number; notes: string[]; weeks: number | null; water: number; steps: number }
 export interface TaskFull { id: string; title: string; day: string | null; time: string | null; done: boolean; prio: boolean; note: string | null; repeat: boolean; seriesId?: string | null; goalId?: string | null }
 export interface Goal { id: string; period: "week" | "month" | "quarter" | "year"; periodKey: string; title: string; note: string | null; done: boolean; parentId: string | null; progress: number; tasks: number; tasksDone: number; kids: number }

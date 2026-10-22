@@ -7,12 +7,17 @@ import { fileURLToPath } from 'node:url';
 import { connect, type DB } from './db/index.js';
 import { MODULES_LIST } from './modules/index.js';
 import { workCalendars } from './core/gcal.js';
+import { cleanupDemos } from './core/demo.js';
+
+let demoSweep = 0;
 
 /** один проход по всем модулям; тесты вызывают его напрямую. Возвращает число обработанных заданий */
 export async function runJobsOnce(db: DB, at?: Date) {
   let n = 0;
   for (const m of MODULES_LIST) if (m.work) n += await m.work(db, at);
   n += await workCalendars(db, at);
+  // просроченные демо — не чаще раза в 10 минут (или сразу, если тест задал время)
+  if (at || Date.now() - demoSweep > 10 * 60e3) { demoSweep = Date.now(); n += await cleanupDemos(db, at); }
   return n;
 }
 

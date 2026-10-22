@@ -90,6 +90,7 @@ export async function verifyIdToken(p: ProviderId, token: string, audiences: str
 async function freeUsername(db: DB, base: string) {
   let b = base.toLowerCase().normalize('NFKD').replace(/[^a-z0-9._-]/g, '').replace(/^[._-]+|[._-]+$/g, '').slice(0, 24);
   if (b.length < 3) b = 'user';
+  b = b.replace(/^demo-/, 'demo'); // demo-… — только для демо
   for (let i = 0; i < 50; i++) {
     const name = i ? `${b}${i < 10 ? i : crypto.randomInt(10, 9999)}` : b;
     const [t] = await db.select({ id: users.id }).from(users).where(sql`lower(${users.username}) = ${name}`).limit(1);

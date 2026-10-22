@@ -10,6 +10,7 @@ import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { authRoutes, sessionHook } from './core/auth.js';
 import { billingRoutes } from './core/billing.js';
+import { demoRoutes } from './core/demo.js';
 import { HttpError } from './core/http.js';
 import { profileRoutes } from './core/profile.js';
 import { goalRoutes } from './core/goal.js';
@@ -79,7 +80,7 @@ export async function buildApp({ db, serveWeb = fs.existsSync(WEB_DIST) }: { db:
     }
     return payload;
   });
-  await app.register(async scope => { await authRoutes(scope, { db }); await todayRoutes(scope, { db }); await billingRoutes(scope, { db }); await profileRoutes(scope, { db }); await goalRoutes(scope, { db }); await statsRoutes(scope, { db }); await reminderRoutes(scope, { db }); await exportRoutes(scope, { db }); await tokenRoutes(scope, { db }); await gcalRoutes(scope, { db }); await aiQuotaRoutes(scope, { db }); await adminRoutes(scope, { db }); await resetRoutes(scope, { db }); });
+  await app.register(async scope => { await authRoutes(scope, { db }); await demoRoutes(scope, { db }); await todayRoutes(scope, { db }); await billingRoutes(scope, { db }); await profileRoutes(scope, { db }); await goalRoutes(scope, { db }); await statsRoutes(scope, { db }); await reminderRoutes(scope, { db }); await exportRoutes(scope, { db }); await tokenRoutes(scope, { db }); await gcalRoutes(scope, { db }); await aiQuotaRoutes(scope, { db }); await adminRoutes(scope, { db }); await resetRoutes(scope, { db }); });
   // вход через Google и Apple — своя область: ей нужен разбор форм (Apple отвечает POST-формой)
   await app.register(async scope => { await oauthRoutes(scope, { db }); });
   for (const m of MODULES_LIST) if (m.routes) await app.register(async scope => { await m.routes!(scope, { db }); }, { prefix: `/api/${m.name}` });
