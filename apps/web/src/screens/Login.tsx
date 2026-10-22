@@ -20,12 +20,17 @@ const PHONE_Q = '(max-width: 899px)';
 const isPhone = () => typeof matchMedia !== 'undefined' && matchMedia(PHONE_Q).matches;
 const posterSet = (k: number) => `/lumi/posters/${k}-240.webp 240w, /lumi/posters/${k}-400.webp 400w, /lumi/posters/${k}-560.webp 560w`;
 const letterSet = (k: number) => `/lumi/logo/${k}-240.webp 240w, /lumi/logo/${k}-400.webp 400w, /lumi/logo/${k}.webp 612w`;
-/** форма справа: ширина и отступ — как в стилях (.lw-scene .login) */
-const formW = () => Math.min(600, Math.max(460, innerWidth * 0.34)), formRight = () => Math.min(110, Math.max(24, innerWidth * 0.05));
-/** место слева от формы, где стоит стена */
-export const wallFree = () => innerWidth - formW() - formRight() - 40;
-/** ширина постера: четыре ленты занимают свободное место (с зазорами), не уже 150 и не шире 330 px */
-const cardW = () => Math.round(Math.min(330, Math.max(150, (wallFree() - 3 * 18) / 4 * 0.9)));
+/** форма справа: ширина — как в стилях (.lw-scene .login); поле — отступ справа и зазор до стены, они равны */
+/** на высоких экранах форма крупнее целиком (zoom), чтобы не теряться рядом с большими карточками */
+const formZoom = () => (innerWidth >= 1800 ? Math.min(1.3, Math.max(1, innerHeight / 1080)) : 1);
+const formW = () => Math.min(600, Math.max(460, innerWidth * 0.34)) * formZoom(), margin = () => Math.min(120, Math.max(32, innerWidth * 0.045));
+/** место слева от формы, где может стоять стена */
+const wallFree = () => innerWidth - formW() - 2 * margin();
+/** ширина постера: четыре ленты занимают свободное место (с зазорами), не уже 150; на больших экранах растёт с высотой, но не шире 440 */
+const cardW = () => Math.round(Math.min(440, innerHeight * 0.3, Math.max(150, (wallFree() - 3 * 18) / 4 * 0.9)));
+/** сколько стена занимает на деле (карточки упёрлись в предел — меньше свободного места) и где тогда форма: посередине оставшегося */
+const wallUsed = (w: number) => Math.min(wallFree(), (4 * w + 3 * 18) / 0.9);
+const formRight = (w: number) => Math.max(margin(), (innerWidth - wallUsed(w) - formW()) / 2);
 const laneCount = (phone: boolean) => phone ? 1 : LETTERS;
 // буквы стоят не по линейке: M выше, U и I ниже — слово читается, но выглядит положенным рукой (доли высоты карточки)
 const LETTER_DY = [0.1, -0.12, 0.14, -0.12], LETTER_ROT = [-1.2, 0.8, -0.5, 1];
@@ -52,11 +57,11 @@ function PosterWall() {
   const box = useRef<HTMLDivElement>(null);
   const [phone, setPhone] = useState(isPhone), [n, setN] = useState(() => laneCount(isPhone()));
   const [letterAt, setLetterAt] = useState<number[] | null>(() => (isPhone() ? [0] : [0, 1, 2, 3]));
-  const [w, setW] = useState(cardW);
+  const [w, setW] = useState(cardW), [vw, setVw] = useState(() => innerWidth);   // ширина окна: форма встаёт заново, даже когда карточки упёрлись в предел
   const saved = useRef<number[] | null>(null);       // где были ленты (доля цикла) — чтобы после изменения окна продолжить, а не начать заново
   useEffect(() => {
     const mq = matchMedia(PHONE_Q); let id = 0;
-    const apply = () => { const ph = mq.matches; setPhone(ph); setN(laneCount(ph)); setW(cardW()); };
+    const apply = () => { const ph = mq.matches; setPhone(ph); setN(laneCount(ph)); setW(cardW()); setVw(innerWidth); };
     const onResize = () => { clearTimeout(id); id = window.setTimeout(apply, 200); };
     const onMq = () => { setLetterAt(mq.matches ? [0] : [0, 1, 2, 3]); saved.current = null; apply(); };
     addEventListener('resize', onResize); mq.addEventListener('change', onMq);
@@ -98,6 +103,9 @@ function PosterWall() {
     const tracks = tracksRef.current, per = tracks.map((_, c) => lanes[c]!.length * PER);
     let boost = 0, target = 0, last = performance.now(), raf = 0;
     const born = root.dataset.resumed ? -1e9 : performance.now() + 1400;   // при первом показе LUMI читается, потом ленты трогаются
+    // при первом показе по стене проходит луч маяка и по очереди зажигает L, U, M, I
+    let beam = 0;
+    if (!root.dataset.resumed && !matchMedia('(prefers-reduced-motion: reduce)').matches) { root.classList.add('beam'); beam = window.setTimeout(() => root.classList.remove('beam'), 2600); }
     const tick = (now: number) => {
       const dt = Math.min(0.05, (now - last) / 1000); last = now;
       boost += (target - boost) * (1 - Math.pow(0.002, dt));   // разгон набирается плавно, без рывка
@@ -119,13 +127,20 @@ function PosterWall() {
     };
     scene.addEventListener('wheel', wheel, { passive: true });
     return () => {
-      cancelAnimationFrame(raf); scene.removeEventListener('wheel', wheel);
+      cancelAnimationFrame(raf); clearTimeout(beam); root.classList.remove('beam'); scene.removeEventListener('wheel', wheel);
       saved.current = tracks.map(t => (t.len ? t.pos / t.len : 0));   // продолжить с того же места
     };
   }, [letterAt, n, phone, w]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // где стоит форма — переменная на всей сцене: форма стене соседка, а не дочка
+  useLayoutEffect(() => {
+    const scene = box.current?.closest<HTMLElement>('.lw-scene'); if (!scene) return;
+    if (phone) { scene.style.removeProperty('--fr'); scene.style.removeProperty('--fz'); return; }
+    scene.style.setProperty('--fr', `${Math.round(formRight(w))}px`); scene.style.setProperty('--fz', formZoom().toFixed(3));
+  }, [phone, w, vw]);
+
   const sizes = phone ? '88px' : `${w}px`;
-  return <aside className="lw" aria-hidden="true" ref={box} style={phone ? undefined : { ['--w' as string]: `${w}px`, ['--free' as string]: `${Math.round(wallFree())}px` }}>
+  return <aside className="lw" aria-hidden="true" ref={box} style={phone ? undefined : { ['--w' as string]: `${w}px`, ['--free' as string]: `${Math.round(wallUsed(w))}px` }}>
     <div className="lw-wall">{lanes.map((lane, c) => <div key={`${phone}-${n}-${c}`} className="lw-col" style={{ ['--g' as string]: `${GAP[c % GAP.length]}px` }}>
       <div className="lw-track">
         {[...lane, ...lane].map((it, k) => 'letter' in it
@@ -133,8 +148,18 @@ function PosterWall() {
           : <img key={k} srcSet={posterSet(it.poster)} sizes={sizes} src={`/lumi/posters/${it.poster}-400.webp`} alt="" draggable={false} decoding="async" />)}
       </div>
     </div>)}</div>
+    <div className="lw-beam" />
   </aside>;
 }
+
+/** надёжность пароля: 0 — короче 8, 1 — слабый, 2 — нормальный, 3 — надёжный (длина и разные виды символов) */
+const strength = (pw: string) => {
+  if (pw.length < 8) return 0;
+  const kinds = [/[a-zа-яё]/, /[A-ZА-ЯЁ]/, /\d/, /[^\p{L}\d]/u].filter(r => r.test(pw)).length;
+  const score = (pw.length >= 12 ? 2 : pw.length >= 10 ? 1 : 0) + (kinds >= 3 ? 2 : kinds === 2 ? 1 : 0);
+  return score >= 3 ? 3 : score >= 1 ? 2 : 1;
+};
+const STRENGTH = ['', 'Слабый — добавь цифры или длины', 'Нормальный', 'Надёжный'];
 
 const SEEN = 'lumi.seen';
 const seen = () => { try { return localStorage.getItem(SEEN) === '1'; } catch { return false; } };
@@ -144,7 +169,7 @@ export function Login({ onDone }: { onDone: () => void }) {
   const [mode, setMode] = useState<'in' | 'up'>(() => (new URLSearchParams(location.search).get('mode') === 'signup' || !seen() ? 'up' : 'in'));
   const [show, setShow] = useState(false), [u, setU] = useState(''), [p, setP] = useState(''), [mail, setMail] = useState(''), [err, setErr] = useState(() => takeAuthResult()?.error ?? ''), [busy, setBusy] = useState(false);
   const pv = useProviders(), any = pv.google || pv.apple, [forgot, setForgot] = useState(false), [sent, setSent] = useState('');
-  const [focus, setFocus] = useState(''), [withMail, setWithMail] = useState(false);
+  const [focus, setFocus] = useState(''), [withMail, setWithMail] = useState(false), [caps, setCaps] = useState(false);
   const pass = useRef<HTMLInputElement>(null), title = useRef<HTMLHeadingElement>(null), first = useRef(true);
   // смена экрана (вход ↔ новый пароль) — фокус на заголовок, а не в никуда
   useEffect(() => { if (first.current) { first.current = false; return; } title.current?.focus(); }, [forgot]);
@@ -193,13 +218,18 @@ export function Login({ onDone }: { onDone: () => void }) {
       finally { setBusy(false); }
     }}>
       <label className="sr-only" htmlFor="login-user">Логин</label>
-      <input id="login-user" name="username" autoComplete="username" placeholder="Логин" value={u} onChange={e => { setU(e.target.value); if (err) setErr(''); }} required autoCapitalize="none" spellCheck={false} pattern={up ? '[A-Za-z0-9._-]{3,32}' : undefined} aria-describedby={up ? 'user-hint' : undefined} {...on('u')} {...bad} />
+      <input id="login-user" name="username" autoComplete="username" placeholder="Логин" value={u} onChange={e => { setU(e.target.value); if (err) setErr(''); }} onKeyDown={e => { if (e.key === 'Enter' && !p) { e.preventDefault(); pass.current?.focus(); } }} required autoCapitalize="none" spellCheck={false} pattern={up ? '[A-Za-z0-9._-]{3,32}' : undefined} aria-describedby={up ? 'user-hint' : undefined} {...on('u')} {...bad} />
       {/* подсказки — только пока поле в фокусе, чтобы форма не казалась длинной */}
       {up && focus === 'u' && <small className="field-hint" id="user-hint">3–32 символа: латиница, цифры, . _ -</small>}
       <label className="sr-only" htmlFor="login-pass">Пароль</label>
-      <div className="pw-field"><input ref={pass} id="login-pass" name="password" type={show ? 'text' : 'password'} autoComplete={up ? 'new-password' : 'current-password'} placeholder="Пароль" value={p} onChange={e => { setP(e.target.value); if (err) setErr(''); }} required minLength={up ? 8 : undefined} aria-describedby={err ? 'login-err' : up ? 'pw-hint' : undefined} aria-invalid={err ? true : undefined} {...on('p')} />
+      <div className="pw-field"><input ref={pass} id="login-pass" name="password" type={show ? 'text' : 'password'} autoComplete={up ? 'new-password' : 'current-password'} placeholder="Пароль" value={p} onChange={e => { setP(e.target.value); if (err) setErr(''); }} required minLength={up ? 8 : undefined} aria-describedby={err ? 'login-err' : up ? 'pw-hint' : undefined} aria-invalid={err ? true : undefined} {...on('p')}
+          onKeyDown={e => setCaps(e.getModifierState('CapsLock'))} onKeyUp={e => setCaps(e.getModifierState('CapsLock'))} />
         <button type="button" className="pw-eye" onClick={() => setShow(x => !x)} aria-label={show ? 'Скрыть пароль' : 'Показать пароль'} aria-pressed={show}><Icon name={show ? 'eyeOff' : 'eye'} /></button></div>
-      {up && (focus === 'p' || (p.length > 0 && p.length < 8)) && <small className={`field-hint ${p.length >= 8 ? 'ok' : ''}`} id="pw-hint">{p.length >= 8 ? '✓ 8 символов или больше' : `Минимум 8 символов${p ? ` · ещё ${8 - p.length}` : ''}`}</small>}
+      {caps && focus === 'p' && <small className="field-hint caps" role="status">Включён Caps Lock</small>}
+      {up && (focus === 'p' || p.length > 0) && (() => { const st = strength(p); return <div className="pw-meter" data-s={st}>
+        <i /><i /><i />
+        <small className={`field-hint ${st === 3 ? 'ok' : ''}`} id="pw-hint">{st ? STRENGTH[st] : `Минимум 8 символов${p ? ` · ещё ${8 - p.length}` : ''}`}</small>
+      </div>; })()}
       {up && (withMail
         ? <><label className="sr-only" htmlFor="login-mail">Почта, необязательно</label>
           <input id="login-mail" name="email" type="email" autoComplete="email" placeholder="Почта — для восстановления пароля" value={mail} onChange={e => setMail(e.target.value)} autoFocus /></>
@@ -209,11 +239,18 @@ export function Login({ onDone }: { onDone: () => void }) {
       <button type="submit" disabled={busy}>{busy ? (up ? 'Создаю…' : 'Вхожу…') : up ? 'Создать аккаунт' : 'Войти'}</button>
       {up && <p className="trust">Без карты · {TRIAL_DAYS} дней Pro бесплатно</p>}
     </form>
+    {/* демо: временный аккаунт с примером дня, удаляется через сутки; можно сохранить как настоящий */}
+    <button type="button" className="forgot demo-link" disabled={busy} onClick={async () => {
+      setBusy(true); setErr('');
+      try { await api('/api/auth/demo', { method: 'POST', body: { tz: -new Date().getTimezoneOffset() } }); onDone(); }
+      catch (x) { setErr(x instanceof ApiError ? x.message : 'Не получилось открыть демо.'); }
+      finally { setBusy(false); }
+    }}>Посмотреть без регистрации →</button>
   </>; })();
 
   return <div className="login-scene lw-scene">
     <PosterWall />
     <ThemeToggle className="corner" />
-    <main className="login">{card}{legal}</main>
+    <main className="login">{card}{!forgot && mode === 'up' && legal}</main>
   </div>;
 }
