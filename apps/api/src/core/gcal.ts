@@ -30,7 +30,7 @@ const REVOKE = () => env('GOOGLE_REVOKE_URL') || 'https://oauth2.googleapis.com/
 
 interface Secret { refresh: string; access: string; exp: number; calendarId: string; lastSync?: number | null; error?: string | null }
 class GoogleError extends Error { constructor(public status: number, msg: string) { super(msg); } }
-const REVOKED = 'Доступ к календарю отозван — подключи заново в профиле.';
+const REVOKED = 'Доступ к календарю отозван — подключи заново в настройках.';
 
 async function form(url: string, body: Record<string, string>) {
   const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams(body), signal: AbortSignal.timeout(15000) });
@@ -161,7 +161,7 @@ export async function workCalendars(db: DB, at = new Date()) {
 export async function gcalRoutes(app: FastifyInstance, { db }: { db: DB }) {
   const redirectUri = (req: FastifyRequest) => `${publicBase(req)}/api/integrations/google-calendar/callback`;
   // возврат туда, откуда пришли: телефонная версия живёт на /m
-  const back = (reply: FastifyReply, what: string, m: boolean) => reply.redirect(`${m ? '/m' : '/'}#profile?gcal=${what}`);
+  const back = (reply: FastifyReply, what: string, m: boolean) => reply.redirect(`${m ? '/m' : '/'}#settings?gcal=${what}`);
 
   app.get('/api/integrations', { preHandler: requireUser }, async req => {
     const row = await rowOf(db, req.userId!);

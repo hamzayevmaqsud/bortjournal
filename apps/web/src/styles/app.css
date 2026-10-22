@@ -347,11 +347,11 @@ button.meal:active{transform:scale(.98)}
 .add-row{display:flex;align-items:center;justify-content:center;gap:6px;width:100%;margin-top:8px;padding:11px;border-radius:var(--r2);border:1.5px dashed var(--line-2);color:var(--orange);font-weight:700;transition:background .2s}
 .add-row:active{background:var(--orange-soft)}
 .add-row .ic{width:18px;height:18px}
-.pro-card,.profile-card,.sub-card{display:flex;align-items:center;gap:12px;padding:14px;border-radius:var(--r3);background:var(--card);box-shadow:var(--sh1);text-align:left;transition:transform .2s var(--spring)}
-.pro-card:active,.profile-card:active,.sub-card:active{transform:scale(.98)}
+.pro-card,.profile-card,.settings-card,.sub-card{display:flex;align-items:center;gap:12px;padding:14px;border-radius:var(--r3);background:var(--card);box-shadow:var(--sh1);text-align:left;transition:transform .2s var(--spring)}
+.pro-card:active,.profile-card:active,.settings-card:active,.sub-card:active{transform:scale(.98)}
 .pro-card .mid b,.profile-card .mid b{white-space:normal}
 .avatar{flex:none;width:46px;height:46px;border-radius:15px;display:grid;place-items:center;background:var(--navy);color:var(--orange);font:800 22px var(--display)}
-.profile-card .chev{width:18px;height:18px;color:var(--text-3)}
+.settings-card .mid{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}.settings-card .mid small{color:var(--text-2);font-size:13px}.settings-card .chev,.profile-card .chev{width:18px;height:18px;color:var(--text-3)}
 .steps{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:8px}
 
 /* ============ широкий экран: раскладка веб-версии журнала ============ */
@@ -1952,7 +1952,7 @@ a.btn-accent{text-decoration:none}
    чтобы картинка никогда не растягивалась и оставалась чёткой. Слева и справа от текущего — соседние, веером. */
 .login-scene{position:relative;min-height:100dvh;display:flex;flex-direction:column;background:var(--bg);overflow-x:clip}
 .login-art{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:calc(18px + env(safe-area-inset-top,0px)) 0 4px}
-.deck{position:relative;height:190px;aspect-ratio:736/1308}
+.deck{position:relative;height:210px;aspect-ratio:736/1308}
 .deck img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;border-radius:16px;box-shadow:0 14px 30px rgba(20,16,14,.22);opacity:0;transform:scale(.8);transition:transform .9s cubic-bezier(.2,.8,.2,1),opacity .9s ease,filter .9s ease;will-change:transform}
 .deck img.on{opacity:1;transform:none;z-index:3}
 .deck img.prev{opacity:1;transform:translateX(-62%) rotate(-8deg) scale(.86);filter:saturate(.85) brightness(.92);z-index:2}
@@ -1964,13 +1964,15 @@ a.btn-accent{text-decoration:none}
 .login-brand b{font:800 30px var(--display);letter-spacing:-.03em;color:var(--orange)}
 .login-scene .legal-links{font-size:12px;color:var(--text-2);text-align:center}
 @media (min-width:900px){
-  .login-scene{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(420px,1fr);align-items:center;background:radial-gradient(55% 75% at 26% 48%,color-mix(in srgb,var(--orange) 10%,var(--bg)) 0%,var(--bg) 100%)}
-  .login-art{min-height:100dvh;padding:32px}
-  .deck{height:min(78dvh,654px)}
-  .deck img{border-radius:26px;box-shadow:0 30px 60px rgba(20,16,14,.28)}
-  .deck img.prev{transform:translateX(-46%) rotate(-6deg) scale(.82)}
-  .deck img.next{transform:translateX(46%) rotate(6deg) scale(.82)}
-  .login-scene .login{margin:0 auto;width:min(100% - 48px,420px);padding:40px 8px;justify-content:center;min-height:100dvh}
+  /* колода и форма — одна композиция по центру: равные колонки, общий предел ширины */
+  .login-scene{display:grid;grid-template-columns:minmax(0,1fr) minmax(360px,420px);column-gap:clamp(40px,6vw,96px);align-items:center;justify-content:center;
+    padding-inline:max(32px,calc((100vw - 1120px) / 2));background:radial-gradient(45% 65% at 33% 50%,color-mix(in srgb,var(--orange) 10%,var(--bg)) 0%,var(--bg) 100%)}
+  .login-art{min-height:100dvh;padding:40px 0}
+  .deck{height:min(72dvh,600px)}
+  .deck img{border-radius:24px;box-shadow:0 28px 56px rgba(20,16,14,.26)}
+  .deck img.prev{transform:translateX(-40%) rotate(-5deg) scale(.84)}
+  .deck img.next{transform:translateX(40%) rotate(5deg) scale(.84)}
+  .login-scene .login{margin:0;width:100%;padding:40px 0;justify-content:center;min-height:100dvh}
 }
 @media (prefers-reduced-motion:reduce){.deck img{transition:none}}
 /* перетаскивание задач в «Планах»: строка тянется, день недели и «Без даты» подсвечиваются под курсором */

@@ -82,11 +82,11 @@ function DeleteForm({ username, hasPassword, onDeleted, wipe }: { username: stri
   </form>;
 }
 
-export function Profile({ me, wide, onBack, onSaved, onRedo, onReminders, onFeedback, onPaywall, onLogout, onDeleted }: {
-  me: Me; wide: boolean; onBack: () => void; onSaved: (s: Record<string, unknown>) => void; onRedo: () => void;
+export function Profile({ me, wide, part = 'profile', onBack, onSaved, onRedo, onReminders, onFeedback, onPaywall, onLogout, onDeleted }: {
+  me: Me; wide: boolean; part?: 'profile' | 'settings'; onBack: () => void; onSaved: (s: Record<string, unknown>) => void; onRedo: () => void;
   onReminders: () => void; onFeedback?: () => void; onPaywall: () => void; onLogout: () => void; onDeleted: () => void;
 }) {
-  const toast = useToast(), s = me.profile?.settings ?? {}, p = me.profile, sub = me.subscription;
+  const toast = useToast(), s = me.profile?.settings ?? {}, p = me.profile, sub = me.subscription, P = part === 'profile';
   const [acc, setAcc] = useState<Account | null>(null), [devs, setDevs] = useState<Device[]>([]), [allDevs, setAllDevs] = useState(false), [sheet, setSheet] = useState<null | 'password' | 'delete' | 'wipe' | 'voice' | 'obsidian' | 'gcal'>(null);
   const [name, setName] = useState(String(s.name ?? '')), [email, setEmail] = useState('');
   const load = useCallback(async () => {
@@ -105,9 +105,10 @@ export function Profile({ me, wide, onBack, onSaved, onRedo, onReminders, onFeed
   return <div className="day profile-page">
     <header className="dayhead">
       {!wide && <button className="nav" onClick={onBack} aria-label="Назад"><Icon name="chevL" /></button>}
-      <div className="daytitle"><span>профиль и настройки</span><b>{display}</b></div>
+      <div className="daytitle"><span>{P ? 'профиль' : 'нормы, разделы, подключения'}</span><b>{P ? display : 'Настройки'}</b></div>
     </header>
 
+    {P && <>
     <section className="panel pf-hero">
       <span className="avatar big">{display.slice(0, 1).toUpperCase()}</span>
       <div className="mid"><b>{display}</b><small>@{me.username}{acc ? ` · с нами с ${since(acc.createdAt)}` : ''}</small></div>
@@ -147,6 +148,9 @@ export function Profile({ me, wide, onBack, onSaved, onRedo, onReminders, onFeed
       <button className="add-row" onClick={onRedo}><Icon name="repeat" />Изменить анкету и пересчитать план</button>
     </section>
 
+    </>}
+
+    {!P && <>
     <section className="panel"><div className="panel-h"><h2>Нормы на день</h2></div><NormsForm key={JSON.stringify(s)} me={me} onSaved={onSaved} /></section>
     <section className="panel"><div className="panel-h"><h2>Разделы</h2></div><SectionsForm me={me} onSaved={onSaved} /></section>
     <ThemePick me={me} onSaved={onSaved} />
@@ -158,6 +162,14 @@ export function Profile({ me, wide, onBack, onSaved, onRedo, onReminders, onFeed
         <button className="pf-row" onClick={onReminders}><span className="mid"><b>Напоминания</b><small>{s.remind?.off ? 'выключены' : 'вода, еда, задачи, тренировки, вопросы дня'}</small></span><Icon name="chev" className="ic chev" /></button></div>
     </section>
 
+    <section className="panel"><div className="panel-h"><h2>ИИ-помощник</h2></div>
+      <div className="pf-list">
+        <label className="pf-row"><span className="mid"><b>ИИ-помощник</b><small>фото еды, голосовые записи и вопросы разбирает Google Gemini</small></span><input type="checkbox" className="switch" checked={!!s.aiConsent} onChange={async e => { try { const r = await api<{ settings: Record<string, unknown> }>('/api/profile/settings', { method: 'PUT', body: { aiConsent: e.target.checked } }); onSaved(r.settings); } catch { toast('Не получилось', { err: true }); } }} /></label>
+      </div>
+    </section>
+    </>}
+
+    {P && <>
     <section className="panel"><div className="panel-h"><h2>Устройства</h2><small>где выполнен вход</small></div>
       <div className="pf-list">{(allDevs ? devs : devs.slice(0, 5)).map(d => { const x = device(d.userAgent); return <div key={d.id} className="pf-row">
         <span className="chip-ic" style={{ ['--c' as string]: d.current ? 'var(--good)' : 'var(--water)' }}><Icon name={x.icon} /></span>
@@ -169,7 +181,6 @@ export function Profile({ me, wide, onBack, onSaved, onRedo, onReminders, onFeed
 
     <section className="panel"><div className="panel-h"><h2>Данные</h2></div>
       <div className="pf-list">
-        <label className="pf-row"><span className="mid"><b>ИИ-помощник</b><small>фото еды, голосовые записи и вопросы разбирает Google Gemini</small></span><input type="checkbox" className="switch" checked={!!s.aiConsent} onChange={async e => { try { const r = await api<{ settings: Record<string, unknown> }>('/api/profile/settings', { method: 'PUT', body: { aiConsent: e.target.checked } }); onSaved(r.settings); } catch { toast('Не получилось', { err: true }); } }} /></label>
         {onFeedback && <button className="pf-row" onClick={onFeedback}><span className="mid"><b>Написать разработчику</b><small>отзыв, идея или ошибка — экран и устройство приложатся сами</small></span><Icon name="chev" className="ic chev" /></button>}
         <a className="pf-row" href="/privacy.html" target="_blank" rel="noopener"><span className="mid"><b>Конфиденциальность и условия</b><small>что храним, кому передаём, твои права</small></span><Icon name="chev" className="ic chev" /></a>
         <label className="pf-row" style={{ cursor: 'pointer' }}><span className="mid"><b>Перенести из старого журнала</b><small>файл «Экспорт JSON» из Бортжурнала — записи добавятся к твоим</small></span><Icon name="chev" className="ic chev" />
@@ -189,6 +200,8 @@ export function Profile({ me, wide, onBack, onSaved, onRedo, onReminders, onFeed
         <button className="pf-row pf-danger" onClick={() => setSheet('delete')}><span className="mid"><b>Удалить аккаунт</b><small>вместе со всеми записями, без возврата</small></span><Icon name="chev" className="ic chev" /></button>
       </div>
     </section>
+
+    </>}
 
     <Sheet open={!!sheet} onClose={() => setSheet(null)} tall={sheet === 'voice' || sheet === 'obsidian' || sheet === 'gcal'} title={sheet === 'voice' ? 'Голос и календарь' : sheet === 'obsidian' ? 'Obsidian' : sheet === 'gcal' ? 'Google Календарь' : sheet === 'delete' ? 'Удалить аккаунт' : sheet === 'wipe' ? 'Стереть все записи' : acc && !acc.hasPassword ? 'Задать пароль' : 'Сменить пароль'}>
       {sheet === 'password' && <PasswordForm first={acc ? !acc.hasPassword : false} onDone={() => { setSheet(null); load(); }} />}

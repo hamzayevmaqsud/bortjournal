@@ -85,7 +85,7 @@ class LumiSettings extends PluginSettingTab {
   display() {
     const { containerEl: el } = this;
     el.empty();
-    el.createEl('p', { text: 'Ключ и адрес — в Lumi: Профиль → Obsidian. Заметки из папки уходят в «Учёбу» через пару секунд после правки.' });
+    el.createEl('p', { text: 'Ключ и адрес — в Lumi: Настройки → Obsidian. Заметки из папки уходят в «Учёбу» через пару секунд после правки.' });
     new Setting(el).setName('Адрес Lumi').setDesc('Например, https://lumi.example.com')
       .addText(t => t.setPlaceholder('https://…').setValue(this.p.settings.url).onChange(async v => { this.p.settings.url = v.trim(); await this.p.save(); }));
     new Setting(el).setName('Ключ').setDesc('Начинается с bjo_')

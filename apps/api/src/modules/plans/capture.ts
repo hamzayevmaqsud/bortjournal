@@ -86,7 +86,7 @@ export async function captureRoutes(app: FastifyInstance, { db }: { db: DB }) {
   const who = async (req: FastifyRequest, reply: FastifyReply) => {
     if (req.userId) return;
     const u = await userByToken(db, bearerOf(req), 'capture');
-    if (!u) return reply.code(401).send({ error: 'Нужен вход или ключ записи из профиля.', message: 'Ключ не подошёл — создай новый в профиле Lumi.' });
+    if (!u) return reply.code(401).send({ error: 'Нужен вход или ключ записи из настроек.', message: 'Ключ не подошёл — создай новый в настройках Lumi.' });
     req.userId = u;
   };
   const nowOf = async (userId: string) => { const [u] = await db.select({ tz: users.tzOffset }).from(users).where(eq(users.id, userId)); return { ...localNow(u?.tz ?? 0), tz: u?.tz ?? 0 }; };

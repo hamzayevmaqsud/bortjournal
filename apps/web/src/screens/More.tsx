@@ -42,14 +42,19 @@ export function ThemePick({ me, onSaved }: { me: Me; onSaved: (s: Record<string,
 export type MoreSummary = Partial<Record<string, string>>;
 // разделы, которые на компьютере уже есть в нижней панели — в «Ещё» их не дублируем
 const IN_DOCK = new Set(['goal', 'gym', 'study', 'budget', 'books', 'stats']);
-export function More({ me, wide = false, summary = {}, onPaywall, onPro, onSettings, onInstall, onLogout, onFeedback, onAdmin }: { me: Me; wide?: boolean; summary?: MoreSummary; onFeedback?: () => void; onAdmin?: () => void; onPaywall: (focus?: string) => void; onPro: (what: string) => void; onSettings: () => void; onInstall: () => void; onLogout: () => void; onSaved?: (s: Record<string, unknown>) => void }) {
+export function More({ me, wide = false, summary = {}, onPaywall, onPro, onProfile, onSettings, onInstall, onLogout, onFeedback, onAdmin }: { me: Me; wide?: boolean; summary?: MoreSummary; onFeedback?: () => void; onAdmin?: () => void; onPaywall: (focus?: string) => void; onPro: (what: string) => void; onProfile: () => void; onSettings: () => void; onInstall: () => void; onLogout: () => void; onSaved?: (s: Record<string, unknown>) => void }) {
   const s = me.profile?.settings ?? {}, sub = me.subscription, [pw, setPw] = useState(false);
   return <div className="day more-page">
     <header className="dayhead"><div className="daytitle"><span>ещё</span><b>{s.name || me.username}</b></div></header>
-    <button className="profile-card" onClick={onSettings}>
+    <button className="profile-card" onClick={onProfile} aria-label="Профиль">
       <span className="avatar">{(s.name || me.username).slice(0, 1).toUpperCase()}</span>
       <span className="mid"><b>{s.name || me.username}</b><small>{fmt(s.kcal ?? 2000)} ккал{s.protein ? ` · белок ${fmt(s.protein)} г` : ''} · {fmt1((s.water ?? 2000) / 1000)} л · {fmt(s.steps ?? 8000)} шагов</small></span>
-      <Icon name="edit" className="ic chev" />
+      <Icon name="chev" className="ic chev" />
+    </button>
+    <button className="settings-card" onClick={onSettings}>
+      <span className="chip-ic" style={{ ['--c' as string]: 'var(--navy)' }}><Icon name="gear" /></span>
+      <span className="mid"><b>Настройки</b><small>нормы на день, разделы, тема, напоминания, Google Календарь, Obsidian</small></span>
+      <Icon name="chev" className="ic chev" />
     </button>
     <button className="sub-card" onClick={() => onPaywall()}>
       <span className="mid"><b>Подписка</b><small>{sub.beta ? 'Бета — всё открыто бесплатно' : sub.source === 'trial' ? `Пробный Pro закончится через ${sub.daysLeft} дн.` : sub.pro ? (sub.expiresAt ? `Pro до ${new Date(sub.expiresAt).toLocaleDateString('ru-RU')}` : 'Pro открыт навсегда') : sub.features?.length ? `Свой набор: ${sub.features.length} ${sub.features.length === 1 ? 'раздел' : sub.features.length < 5 ? 'раздела' : 'разделов'}${sub.expiresAt ? ` · до ${new Date(sub.expiresAt).toLocaleDateString('ru-RU')}` : ''}` : 'Еда, вода, шаги, задачи, цель и статистика — бесплатно'}</small></span>

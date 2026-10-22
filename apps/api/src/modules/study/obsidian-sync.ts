@@ -98,7 +98,7 @@ export async function dbSearch(db: Tx, userId: string, q: string, limit = 40) {
 export async function obsidianSyncRoutes(app: FastifyInstance, { db }: { db: DB }) {
   const byKey = async (req: FastifyRequest, reply: FastifyReply) => {
     const u = await userByToken(db, bearerOf(req), 'obsidian');
-    if (!u) return reply.code(401).send({ error: 'Ключ не подошёл — создай ключ Obsidian в профиле Lumi.' });
+    if (!u) return reply.code(401).send({ error: 'Ключ не подошёл — создай ключ Obsidian в настройках Lumi.' });
     req.userId = u;
   };
   const preHandler = [byKey, requireFeature(db, 'study')];

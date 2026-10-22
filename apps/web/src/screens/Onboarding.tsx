@@ -44,7 +44,7 @@ export function Onboarding({ onDone, initial, onCancel }: { onDone: () => void; 
   };
   if (!what) return <main className="ob">
     <div className="ob-step">
-      <h1>Что хочешь вести?</h1><p>Выбери разделы — на главном экране будет только нужное. Поменять можно в любой момент в профиле.</p>
+      <h1>Что хочешь вести?</h1><p>Выбери разделы — на главном экране будет только нужное. Поменять можно в любой момент в настройках.</p>
       <input className="in" placeholder="Как тебя зовут (по желанию)" value={v.name} onChange={e => set('name')(e.target.value)} />
       <div className="ob-track">{TRACK.map(([k, n, h]) => { const on = pick.includes(k); return <button type="button" key={k} className={`ob-opt ${on ? 'on' : ''}`} aria-pressed={on} onClick={() => { setPick(p => on ? p.filter(x => x !== k) : [...p, k]); buzz(6); }}><b>{n}</b><small>{h}</small></button>; })}</div>
       {!pick.includes('food') && pick.length > 0 && <p className="hint" style={{ textAlign: 'left' }}>Без еды анкета про рост и вес не нужна — сразу к журналу.</p>}

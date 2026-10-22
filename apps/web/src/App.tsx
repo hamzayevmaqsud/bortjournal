@@ -46,7 +46,7 @@ const TABS: Array<[string, string, string]> = [['today', 'today', 'Сегодн�
 /** ссылка из напоминания «Фото разобрано»: #food?draft=<id> */
 const GCAL_BACK: Record<string, [string, boolean]> = { connected: ['Google Календарь подключён — задачи появятся в календаре «Lumi» через пару минут', false], denied: ['Доступ к календарю не выдан', true], failed: ['Не получилось подключить календарь — попробуй ещё раз', true] };
 const draftLink = (h: string) => /^food\?draft=([0-9a-f-]{36})$/.exec(h)?.[1] ?? null;
-const ORDER = ['today', 'plans', 'food', 'study', 'gym', 'budget', 'books', 'goal', 'stats', 'more', 'profile', 'admin'];
+const ORDER = ['today', 'plans', 'food', 'study', 'gym', 'budget', 'books', 'goal', 'stats', 'more', 'profile', 'settings', 'admin'];
 // разделы, открываемые поверх вкладок (на телефоне — с кнопкой «назад»); платные — с ключом своего набора
 const SECTIONS: Record<string, string | null> = { goal: null, stats: null, study: 'study', gym: 'gym', budget: 'budget', books: 'books' };
 const SECTION_NAME: Record<string, string> = { study: 'Учёба', gym: 'Зал', budget: 'Бюджет', books: 'Книги' };
@@ -70,8 +70,8 @@ export function App() {
   // когда прокрутка остановилась, панель плавно доезжает до ближайшего положения. Стиль пишем прямо в элемент — без перерисовки React
   const tabsRef = useRef<HTMLElement>(null), shift = useRef(0), goRef = useRef<(name: string) => void>(() => {}), openRef = useRef<(s: SheetState) => void>(() => {});
   // ссылка на черновик открывает «Еду» и проверку фото
-  // возврат со страницы Google после подключения календаря: #profile?gcal=connected|denied|failed
-  const openGcalBack = (h: string) => { const g = /^profile\?gcal=(\w+)$/.exec(h)?.[1]; if (!g) return false; goRef.current('profile'); const m = GCAL_BACK[g]; if (m) toast(m[0], m[1] ? { err: true } : undefined); history.replaceState(null, '', location.pathname); return true; };
+  // возврат со страницы Google после подключения календаря: #settings?gcal=connected|denied|failed
+  const openGcalBack = (h: string) => { const g = /^(?:profile|settings)\?gcal=(\w+)$/.exec(h)?.[1]; if (!g) return false; goRef.current('settings'); const m = GCAL_BACK[g]; if (m) toast(m[0], m[1] ? { err: true } : undefined); history.replaceState(null, '', location.pathname); return true; };
   const openDraftLink = (h: string) => { const id = draftLink(h); if (!id) return false; goRef.current('food'); openRef.current({ kind: 'draft', id }); history.replaceState(null, '', location.pathname); return true; };
   // уведомление ведёт в раздел: «/#plans» при открытии или сообщение от service worker, если окно уже открыто
   useEffect(() => {
@@ -270,7 +270,7 @@ export function App() {
     if (SECTIONS[name] && !can(sub, SECTIONS[name]!) && !sub.ended) { open({ kind: 'paywall', focus: SECTION_NAME[name] }); return; }
     if ((name === 'goal' || name === 'stats') && !can(sub, name)) { open({ kind: 'paywall', focus: name === 'goal' ? 'Цель и прогноз' : 'Статистика' }); return; }
     if (name in SECTIONS) setBack(tab in SECTIONS ? back : tab);
-    if (name === 'profile' || name === 'admin') setBack(tab === name ? back : tab);
+    if (name === 'profile' || name === 'settings' || name === 'admin') setBack(tab === name ? back : tab);
     setTab(name); showTabs(); buzz(6);
     try { sessionStorage.setItem('bj-tab', name); } catch { /* без памяти */ }
   };
@@ -375,6 +375,13 @@ export function App() {
           onDeleted={() => { toast('Аккаунт удалён'); setMe(null); setDays({}); setDay(null); setToday(null); setTab('today'); }} />}
         </Boundary>
       </section>
+      <section className="screen" data-pos={pos('settings')} aria-hidden={tab !== 'settings'}>
+        <Boundary name="settings" onFeedback={() => open({ kind: 'feedback' })}>
+        {tab === 'settings' && <Profile part="settings" me={me} wide={wide} onBack={() => setTab(back)} onSaved={st => { setMe(m => m && m.profile ? { ...m, profile: { ...m.profile, settings: st } } : m); setDays({}); if (day) loadDay(day); }}
+          onRedo={() => setRedo(true)} onFeedback={() => open({ kind: 'feedback' })} onReminders={() => open({ kind: 'reminders' })} onPaywall={() => open({ kind: 'paywall' })} onLogout={logout}
+          onDeleted={() => { toast('Аккаунт удалён'); setMe(null); setDays({}); setDay(null); setToday(null); setTab('today'); }} />}
+        </Boundary>
+      </section>
       <section className="screen" data-pos={pos('admin')} aria-hidden={tab !== 'admin'}>
         <Boundary name="admin" onFeedback={() => open({ kind: 'feedback' })}>
         {tab === 'admin' && me.admin && <Admin wide={wide} onBack={() => setTab(back)} />}
@@ -382,7 +389,7 @@ export function App() {
       </section>
       <section className="screen" data-pos={pos('more')} aria-hidden={tab !== 'more'}>
         <Boundary name="more" onFeedback={() => open({ kind: 'feedback' })}>
-        <More me={me} wide={wide} summary={moreSummary} onFeedback={() => open({ kind: 'feedback' })} onAdmin={() => go('admin')} onPro={pro} onSaved={st => setMe(m => m && m.profile ? { ...m, profile: { ...m.profile, settings: st } } : m)} onPaywall={focus => open({ kind: 'paywall', focus })} onSettings={() => go('profile')} onInstall={() => open({ kind: 'install' })}
+        <More me={me} wide={wide} summary={moreSummary} onFeedback={() => open({ kind: 'feedback' })} onAdmin={() => go('admin')} onPro={pro} onSaved={st => setMe(m => m && m.profile ? { ...m, profile: { ...m.profile, settings: st } } : m)} onPaywall={focus => open({ kind: 'paywall', focus })} onProfile={() => go('profile')} onSettings={() => go('settings')} onInstall={() => open({ kind: 'install' })}
           onLogout={logout} />
         </Boundary>
       </section>
