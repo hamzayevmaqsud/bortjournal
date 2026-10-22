@@ -1,0 +1,6 @@
+# файлы выкладки запускаются в Linux — только LF
+*.sh text eol=lf
+Dockerfile text eol=lf
+deploy/Caddyfile text eol=lf
+deploy/*.yml text eol=lf
+deploy/.env.example text eol=lf
