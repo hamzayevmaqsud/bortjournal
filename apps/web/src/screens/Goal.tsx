@@ -52,7 +52,6 @@ export function Goal({ wide, onBack, onWeigh, onRedo, onChanged }: { wide: boole
   </header>;
   // анкеты нет — это не ошибка, а первый шаг: объясняем зачем и даём кнопку
   if (noProfile) return <div className="day goal-page">{head}<section className="wc goal-empty">
-    <img className="lumi-pose" src="/lumi/wink.png" alt="" />
     <h2>План ещё не посчитан</h2>
     <p>Lumi считает калории, белок и срок до цели по короткой анкете: рост, вес, активность и чего хочешь добиться. Это займёт минуту.</p>
     <button className="primary" onClick={onRedo}>Пройти анкету</button></section></div>;

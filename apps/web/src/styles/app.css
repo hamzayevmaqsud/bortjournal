@@ -1003,8 +1003,6 @@ button.meal:active{transform:scale(.98)}
 .in.big::placeholder,.big-input::placeholder,.m-amount input::placeholder{color:var(--text-2);opacity:.38;font-weight:500}
 .ob-need{margin:6px 0 0;color:var(--orange)}
 /* огонёк Lumi в заголовках экранов: справа, лёгкое покачивание */
-.lumi-pose{display:block;align-self:flex-start;width:92px;height:92px;object-fit:contain;margin:-6px 0 2px -6px;filter:drop-shadow(0 8px 12px rgba(20,16,14,.22));animation:lumiPop .45s var(--spring) both,lumiBob 3.2s ease-in-out .45s infinite}
-@media (prefers-reduced-motion:reduce){.lumi-pose{animation:none}}
 .goal-empty h2{margin:0 0 8px;font:800 20px var(--display)}.goal-empty p{margin:0 0 16px;color:var(--text-2);line-height:1.5}
 .add-tile{align-items:flex-start}
 /* «Сегодня» 900–1100 px: плитки парами — еда+вода, шаги+вес, учёба+зал, бюджет+чтение, задачи во всю ширину */
@@ -1949,32 +1947,32 @@ a.btn-accent{text-decoration:none}
   .today-side{grid-column:span 5;order:5;display:flex;flex-direction:column;gap:inherit;align-self:start;min-width:0}
   .today-side>.wc{grid-column:auto;width:100%}}
 
-/* ---------- Lumi: страница входа — постеры и огонёк ---------- */
-.login-scene{position:relative;min-height:100dvh;display:grid;grid-template-columns:1fr;background:var(--bg)}
-.login-art{position:fixed;inset:0 0 auto 0;height:58dvh;overflow:hidden;z-index:0;background:#2b2320}
-.login-art img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center 30%;opacity:0;transform:scale(1.06);transition:opacity 1.4s ease,transform 7s linear}
-.login-art img.on{opacity:1;transform:scale(1)}
-.login-art::after{content:'';position:absolute;inset:0;background:linear-gradient(180deg,rgba(20,16,14,.05) 40%,var(--bg) 100%)}
-.login-dots{position:absolute;z-index:2;left:0;right:0;top:calc(14px + env(safe-area-inset-top,0px));display:flex;justify-content:center;gap:6px}
-.login-dots i{width:18px;height:3px;border-radius:2px;background:rgba(255,255,255,.35);transition:background .6s,width .6s}
-.login-dots i.on{width:28px;background:rgba(255,255,255,.95)}
-.login-scene .login{position:relative;z-index:1;justify-content:flex-start;margin:calc(46dvh - 40px) auto 0;width:min(100% - 24px,440px);padding:22px 20px calc(24px + env(safe-area-inset-bottom,0px));border-radius:28px;background:var(--bg);box-shadow:0 -18px 48px rgba(20,16,14,.18);gap:16px;min-height:auto}
-.login-brand{display:flex;align-items:center;gap:8px;font:800 20px var(--display);letter-spacing:-.01em;color:var(--text)}
-.brand .brand-mark{width:34px;height:34px;object-fit:contain;filter:drop-shadow(0 3px 5px rgba(20,16,14,.18))}
-.login-brand b{font:800 26px var(--display);letter-spacing:-.02em;color:var(--orange)}
-.login-lumi{position:absolute;right:14px;top:-92px;width:118px;height:118px;pointer-events:none}
-.login-lumi img{width:100%;height:100%;object-fit:contain;filter:drop-shadow(0 10px 14px rgba(20,16,14,.28));animation:lumiPop .45s var(--spring) both,lumiBob 3.2s ease-in-out .45s infinite}
-@keyframes lumiPop{from{opacity:0;transform:translateY(10px) scale(.86)}to{opacity:1;transform:none}}
-@keyframes lumiBob{0%,100%{transform:translateY(0)}50%{transform:translateY(-5px)}}
+/* ---------- Lumi: страница входа — колода постеров в родных пропорциях ----------
+   Постеры 736×1308: показываем не больше 654 px по высоте на широком экране и ~190 px на телефоне,
+   чтобы картинка никогда не растягивалась и оставалась чёткой. Слева и справа от текущего — соседние, веером. */
+.login-scene{position:relative;min-height:100dvh;display:flex;flex-direction:column;background:var(--bg);overflow-x:clip}
+.login-art{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:calc(18px + env(safe-area-inset-top,0px)) 0 4px}
+.deck{position:relative;height:190px;aspect-ratio:736/1308}
+.deck img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;border-radius:16px;box-shadow:0 14px 30px rgba(20,16,14,.22);opacity:0;transform:scale(.8);transition:transform .9s cubic-bezier(.2,.8,.2,1),opacity .9s ease,filter .9s ease;will-change:transform}
+.deck img.on{opacity:1;transform:none;z-index:3}
+.deck img.prev{opacity:1;transform:translateX(-62%) rotate(-8deg) scale(.86);filter:saturate(.85) brightness(.92);z-index:2}
+.deck img.next{opacity:1;transform:translateX(62%) rotate(8deg) scale(.86);filter:saturate(.85) brightness(.92);z-index:2}
+.login-dots{display:flex;justify-content:center;gap:6px}
+.login-dots i{width:16px;height:3px;border-radius:2px;background:var(--line-2);transition:background .6s,width .6s}
+.login-dots i.on{width:26px;background:var(--orange)}
+.login-scene .login{position:relative;z-index:1;justify-content:flex-start;margin:0 auto;width:min(100% - 24px,440px);padding:18px 20px calc(24px + env(safe-area-inset-bottom,0px))}
+.login-brand b{font:800 30px var(--display);letter-spacing:-.03em;color:var(--orange)}
 .login-scene .legal-links{font-size:12px;color:var(--text-2);text-align:center}
 @media (min-width:900px){
-  .login-scene{grid-template-columns:minmax(0,1.05fr) minmax(420px,1fr);align-items:center}
-  .login-art{position:relative;inset:auto;height:calc(100dvh - 32px);margin:16px;border-radius:28px;box-shadow:0 30px 70px rgba(20,16,14,.28)}
-  .login-art::after{background:linear-gradient(90deg,transparent 70%,rgba(20,16,14,.12))}
-  .login-scene .login{margin:0 auto;width:min(100% - 48px,440px);box-shadow:none;background:transparent;padding:40px 8px;justify-content:center;min-height:100dvh}
-  .login-lumi{position:relative;right:auto;top:auto;width:132px;height:132px;margin:-8px 0 -6px -8px}
+  .login-scene{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(420px,1fr);align-items:center;background:radial-gradient(55% 75% at 26% 48%,color-mix(in srgb,var(--orange) 10%,var(--bg)) 0%,var(--bg) 100%)}
+  .login-art{min-height:100dvh;padding:32px}
+  .deck{height:min(78dvh,654px)}
+  .deck img{border-radius:26px;box-shadow:0 30px 60px rgba(20,16,14,.28)}
+  .deck img.prev{transform:translateX(-46%) rotate(-6deg) scale(.82)}
+  .deck img.next{transform:translateX(46%) rotate(6deg) scale(.82)}
+  .login-scene .login{margin:0 auto;width:min(100% - 48px,420px);padding:40px 8px;justify-content:center;min-height:100dvh}
 }
-@media (prefers-reduced-motion:reduce){.login-art img{transition:none;transform:none}.login-lumi img{animation:none}}
+@media (prefers-reduced-motion:reduce){.deck img{transition:none}}
 /* перетаскивание задач в «Планах»: строка тянется, день недели и «Без даты» подсвечиваются под курсором */
 @media (hover:hover) and (pointer:fine){.task[draggable=true]{cursor:grab}.task[draggable=true] .tt{cursor:pointer}}
 .task.dragging{opacity:.45}
@@ -1984,3 +1982,10 @@ a.btn-accent{text-decoration:none}
 .tl-allday{display:flex;align-items:center;gap:8px;margin:0 0 10px;padding:8px 12px;border-radius:12px;background:color-mix(in srgb,var(--navy) 8%,transparent);color:var(--navy);font-size:13px;font-weight:600}
 .tl-allday .ic{width:16px;height:16px;flex:none}
 .tl-allday span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* док на широком экране: «Записать» — в ряд с остальными, круглая оранжевая иконка, без всплывающей плашки */
+.app.wide .tab.add{color:var(--text-3)}
+.app.wide .tab.add .pill{width:32px;height:32px;border-radius:50%;margin-top:0;box-shadow:0 4px 10px color-mix(in srgb,var(--orange) 30%,transparent)}
+.app.wide .tab.add .pill .ic{width:18px;height:18px}
+.app.wide .tab.add:hover .pill{filter:brightness(1.06)}
+.brand i{font:800 16px var(--display);letter-spacing:-.02em}
