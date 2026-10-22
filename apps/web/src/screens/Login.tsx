@@ -27,8 +27,8 @@ export const wallFree = () => innerWidth - formW() - formRight() - 40;
 /** ширина постера: четыре ленты занимают свободное место (с зазорами), не уже 150 и не шире 330 px */
 const cardW = () => Math.round(Math.min(330, Math.max(150, (wallFree() - 3 * 18) / 4 * 0.9)));
 const laneCount = (phone: boolean) => phone ? 1 : LETTERS;
-// буквы стоят не по линейке: чуть разная высота и наклон — слово читается, но выглядит положенным рукой
-const LETTER_DY = [0, -16, 10, -6], LETTER_ROT = [-1.2, 0.8, -0.5, 1];
+// буквы стоят не по линейке: M выше, U и I ниже — слово читается, но выглядит положенным рукой (доли высоты карточки)
+const LETTER_DY = [0.1, -0.12, 0.14, -0.12], LETTER_ROT = [-1.2, 0.8, -0.5, 1];
 const GAP = [0, 6, 2, 8, 4];           // зазор между постерами немного разный у соседних лент
 
 type Item = { letter: number } | { poster: number };
@@ -84,7 +84,7 @@ function PosterWall() {
       const letter = el.querySelector<HTMLElement>('.letter');
       if (prev && prev[c] !== undefined) pos = prev[c]! * len;
       else if (phone && letter) { const ls = el.querySelectorAll<HTMLElement>('.letter'), last = ls[LETTERS - 1]!; pos = letter.offsetLeft - (view - (last.offsetLeft + last.offsetWidth - letter.offsetLeft)) / 2; }
-      else if (letter) { const k = Number(letter.dataset.k); pos = letter.offsetTop + letter.offsetHeight / 2 - view / 2 + LETTER_DY[k]!; }
+      else if (letter) { const k = Number(letter.dataset.k); pos = letter.offsetTop + letter.offsetHeight / 2 - view / 2 + LETTER_DY[k]! * letter.offsetHeight; }
       else pos = len * ((c * 0.37) % 1);
       pos = ((pos % len) + len) % len;
       el.style.transform = phone ? `translate3d(${-pos}px,0,0)` : `translate3d(0,${-pos}px,0)`;
@@ -129,8 +129,8 @@ function PosterWall() {
     <div className="lw-wall">{lanes.map((lane, c) => <div key={`${phone}-${n}-${c}`} className="lw-col" style={{ ['--g' as string]: `${GAP[c % GAP.length]}px` }}>
       <div className="lw-track">
         {[...lane, ...lane].map((it, k) => 'letter' in it
-          ? <img key={k} className="letter" data-k={it.letter - 1} style={{ ['--r' as string]: `${LETTER_ROT[it.letter - 1]}deg` }} srcSet={letterSet(it.letter)} sizes={sizes} src={`/lumi/logo/${it.letter}.webp`} alt="" decoding="async" fetchPriority="high" />
-          : <img key={k} srcSet={posterSet(it.poster)} sizes={sizes} src={`/lumi/posters/${it.poster}-400.webp`} alt="" decoding="async" />)}
+          ? <img key={k} className="letter" data-k={it.letter - 1} style={{ ['--r' as string]: `${LETTER_ROT[it.letter - 1]}deg` }} srcSet={letterSet(it.letter)} sizes={sizes} src={`/lumi/logo/${it.letter}.webp`} alt="" draggable={false} decoding="async" fetchPriority="high" />
+          : <img key={k} srcSet={posterSet(it.poster)} sizes={sizes} src={`/lumi/posters/${it.poster}-400.webp`} alt="" draggable={false} decoding="async" />)}
       </div>
     </div>)}</div>
   </aside>;

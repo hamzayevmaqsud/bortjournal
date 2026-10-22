@@ -2193,6 +2193,9 @@ input:-webkit-autofill,input:-webkit-autofill:hover,input:-webkit-autofill:focus
   .lw-scene .theme-toggle.corner{position:absolute;top:calc(clamp(120px,17dvh,160px) + 12px);right:28px;width:36px;height:36px;box-shadow:none;background:color-mix(in srgb,var(--text) 6%,transparent)}
 }
 @media (max-width:899px) and (max-height:700px){.lw-scene .login > p:not(.legal-links){display:none}}
+/* стену нельзя выделить или утащить мышью */
+.lw{-webkit-user-select:none;user-select:none}
+.lw img{-webkit-user-drag:none}
 /* перетаскивание задач в «Планах»: строка тянется, день недели и «Без даты» подсвечиваются под курсором */
 @media (hover:hover) and (pointer:fine){.task[draggable=true]{cursor:grab}.task[draggable=true] .tt{cursor:pointer}}
 .task.dragging{opacity:.45}
