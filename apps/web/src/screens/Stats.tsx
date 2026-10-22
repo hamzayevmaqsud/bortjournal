@@ -57,7 +57,7 @@ function Overview() {
     </section>
     <section className="wc span5">
       <div className="card-head"><h2>Как идёт {c.name}</h2></div>
-      <div className="ov-big"><b>{c.avg ?? '—'}<small>%</small></b><span>средняя оценка{c.prevAvg !== null ? ` · в прошлом ${c.prevAvg}%` : ''}</span></div>
+      <div className="ov-big"><b>{c.avg ?? <span className="nodata">нет</span>}{c.avg !== null && c.avg !== undefined && <small>%</small>}</b><span>средняя оценка{c.prevAvg !== null ? ` · в прошлом ${c.prevAvg}%` : ''}</span></div>
       <p className="ov-motto">{c.line}</p>
       <ul className="ov-list">
         <li><span>Дней с записями</span><b>{c.days}</b></li>

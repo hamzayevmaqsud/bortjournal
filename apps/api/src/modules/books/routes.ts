@@ -37,7 +37,10 @@ async function overview(db: Tx, userId: string, today: string) {
   const { bs, log } = await all(db, userId);
   const [p] = await db.select({ s: profiles.settings }).from(profiles).where(eq(profiles.userId, userId));
   const goal = Number((p?.s as any)?.booksGoal) || 12, y = today.slice(0, 4), done = bs.filter(b => b.status === 'done' && (b.finishedOn ?? '').startsWith(y)).length;
-  const dayOfYear = diffDays(`${y}-01-01`, today) + 1, yearDays = +y % 4 ? 365 : 366, should = goal * dayOfYear / yearDays;
+  // график года — с того дня, как полка появилась (но не раньше 1 января): новичок в октябре не «отстаёт на 10 книг»
+  const firstAdded = bs.reduce<string>((m, b) => b.addedOn && b.addedOn < m ? b.addedOn : m, today);
+  const from = firstAdded > `${y}-01-01` ? firstAdded : `${y}-01-01`;
+  const should = goal * (diffDays(from, today) + 1) / (diffDays(from, `${y}-12-31`) + 1);
   const d30 = Array.from({ length: 30 }, (_, k) => addDays(today, k - 29)), v30 = d30.map(d => pagesOn(log, d));
   const readDays = v30.filter(Boolean), pace = readDays.length ? readDays.reduce((a, b) => a + b, 0) / readDays.length : 0;
   let s = pagesOn(log, today) ? today : addDays(today, -1), streak = 0; while (pagesOn(log, s) > 0 && streak < 3650) { streak++; s = addDays(s, -1); }

@@ -18,6 +18,9 @@ export function Sheet({ open, onClose, title, children, tall = false }: { open: 
     if (el) {
       if (modal.current) { el.style.transform = `translate(-50%, calc(-50% + ${v * 28}px)) scale(${1 - v * 0.04})`; el.style.opacity = String(Math.max(0, 1 - v * 1.4)); }
       else { el.style.transform = `translateY(${v * 105}%)`; el.style.opacity = ''; }
+      // закрытый лист прячем совсем: когда поле в открытом листе получает фокус, браузер сдвигает .app,
+      // и закрытые листы, стоящие сразу за нижним краем, выглядывали бы снизу
+      el.style.visibility = v >= 0.999 ? 'hidden' : '';
     }
     if (scrim.current) scrim.current.style.opacity = String(Math.max(0, 1 - v));
   };

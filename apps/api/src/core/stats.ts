@@ -162,7 +162,7 @@ async function overview(db: Tx, userId: string, month?: string) {
   return {
     today: t, enough: w.hist.filter(d => hasAny(w.F.get(d))).length >= 2,
     score: { now: pct(w.sc(t)), parts: parts(w.F.get(t), w.A, w.norms).map(([a, v]) => ({ area: a, name: AREA_NAMES[a], v: pct(v) })), avg7: pct(avg(days(7, addDays(t, -1)).map(w.sc))) },
-    nums: { active365: yearDays.filter(d => hasAny(w.F.get(d))).length, perfect365: yearDays.filter(d => w.sc(d) >= 0.95).length, streak: st.now, bestStreak: st.best, tiers: aw.total },
+    nums: { active365: yearDays.filter(d => hasAny(w.F.get(d))).length + (hasAny(w.F.get(t)) ? 1 : 0), perfect365: yearDays.filter(d => w.sc(d) >= 0.95).length, streak: st.now, bestStreak: st.best, tiers: aw.total },
     calendar: calendar(w, month && /^\d{4}-\d{2}$/.test(month) && month <= t.slice(0, 7) ? month : t.slice(0, 7)),
     last30: pct(sAvg(days(30, addDays(t, -1)))), prev30: pct(sAvg(days(30, addDays(t, -31)))),
     year, weekdays: past.length >= 7 ? wd : null,

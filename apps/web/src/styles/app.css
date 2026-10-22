@@ -997,6 +997,7 @@ button.meal:active{transform:scale(.98)}
 /* логотип висит над прокруткой: на средних экранах — только значок, иначе подпись ложится на карточки */
 @media (max-width:1679px){.app.wide .brand{font-size:0;gap:0}}
 .primary:has(> .ic){display:flex;align-items:center;justify-content:center;gap:8px}
+.ov-big .nodata{font-size:.6em;color:var(--text-2)}
 .goal-empty h2{margin:0 0 8px;font:800 20px var(--display)}.goal-empty p{margin:0 0 16px;color:var(--text-2);line-height:1.5}
 .add-tile{align-items:flex-start}
 /* «Сегодня» 900–1100 px: плитки парами — еда+вода, шаги+вес, учёба+зал, бюджет+чтение, задачи во всю ширину */

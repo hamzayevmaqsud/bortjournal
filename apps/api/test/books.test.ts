@@ -34,6 +34,12 @@ describe('книги', () => {
     const r = (await req('GET', '/api/books/search?q=атомные')).json();
     expect(r.items[0]).toMatchObject({ title: 'Атомные привычки', pages: 320, cover: 42, isbn: ['0735211299'] });
   });
+  it('цель года: новичок, который только начал вести полку, не «отстаёт» с 1 января', async () => {
+    // полка пустая — первая книга добавлена сегодня; график считается с этого дня, а не с начала года
+    const o = (await req('GET', '/api/books/overview')).json();
+    expect(o.behind).toBeGreaterThan(-0.5);
+  });
+
   it('добавить и читать: страницы попадают в журнал, серия, темп', async () => {
     const b = (await req('POST', '/api/books/books', { title: 'Атомные привычки', author: 'Джеймс Клир', pages: 320, cover: { ol: 42, isbn: ['0735211299'] } })).json();
     id = b.id; expect(b).toMatchObject({ status: 'reading', started: today, pct: 0 });
