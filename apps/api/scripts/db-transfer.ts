@@ -3,13 +3,17 @@
  *   выгрузка:  DATABASE_URL=… npx tsx scripts/db-transfer.ts dump lumi-transfer.json.gz
  *   загрузка:  DATABASE_URL=… npx tsx scripts/db-transfer.ts restore lumi-transfer.json.gz
  * Загрузка — только в пустую базу после миграций (обе базы на одной версии схемы); всё в одной транзакции.
+ *   замена:    … restore lumi-transfer.json.gz --replace — сначала стирает все записи в базе (сделай dump для бэкапа!)
+ * DATABASE_URL берётся из .env в корне репо, если не задан.
  * Типы переносятся через json_populate_recordset, внешние ключи на время загрузки не проверяются.
  */
 import fs from 'node:fs';
 import zlib from 'node:zlib';
 import pg from 'pg';
+import { loadEnv } from '../src/core/env.js';
 
-const [cmd, file] = process.argv.slice(2);
+loadEnv();
+const [cmd, file, flag] = process.argv.slice(2), replace = flag === '--replace';
 if (!['dump', 'restore'].includes(cmd ?? '') || !file) { console.error('db-transfer.ts dump|restore <файл.json.gz>'); process.exit(2); }
 const client = new pg.Client({ connectionString: process.env.DATABASE_URL });
 await client.connect();
@@ -32,12 +36,14 @@ if (cmd === 'dump') {
   if (data.format !== 'lumi-transfer') throw new Error('это не файл переноса Lumi');
   const [mig] = (await client.query(`select count(*)::int as n from drizzle.__drizzle_migrations`)).rows;
   if (mig.n !== data.migrations) throw new Error(`версии схемы разные: в файле ${data.migrations} миграций, в базе ${mig.n}`);
-  for (const t of tables) {
+  if (!replace) for (const t of tables) {
     const [c] = (await client.query(`select count(*)::int as n from ${ident(t)}`)).rows;
-    if (c.n) throw new Error(`база не пустая: в ${t} уже ${c.n} строк`);
+    if (c.n) throw new Error(`база не пустая: в ${t} уже ${c.n} строк (замена — флаг --replace)`);
   }
   await client.query('begin');
   try {
+    // замена: старые записи уходят в той же транзакции — при ошибке база останется как была
+    if (replace && tables.length) await client.query(`truncate table ${tables.map(ident).join(', ')} restart identity cascade`);
     await client.query(`set local session_replication_role = replica`);
     for (const [t, rows] of Object.entries(data.tables as Record<string, unknown[]>)) {
       if (!tables.includes(t)) { console.warn(`${t}: такой таблицы нет — пропущена`); continue; }
