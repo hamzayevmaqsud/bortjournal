@@ -2087,6 +2087,37 @@ input:-webkit-autofill,input:-webkit-autofill:hover,input:-webkit-autofill:focus
 @media (max-width:899px){
   .wall4 .wall-track img:nth-child(odd){transform:none}
 }
+/* ---------- вход: наклонная стена на весь экран, LUMI встроено в ленты, форма поверх ----------
+   Ленты .lw-* (старые .wall-* больше не используются). Постеры до 280 px (источник 560 px — чётко на ретине). */
+.lw-scene{position:relative;min-height:100dvh;overflow:hidden;background:var(--bg);display:flex;flex-direction:column}
+.lw{position:relative;height:clamp(190px,25dvh,230px);overflow:hidden;flex:none}
+.lw-wall{position:absolute;inset:0;display:flex;align-items:center}
+.lw-track{display:flex;width:max-content;padding:calc(16px + env(safe-area-inset-top,0px)) 0 14px;will-change:transform}
+.lw-track img{width:88px;aspect-ratio:736/1308;object-fit:cover;border-radius:12px;margin-right:10px;box-shadow:0 10px 22px rgba(20,16,14,.22);outline:1px solid rgba(255,255,255,.3);outline-offset:-1px}
+.lw-track img.letter{box-shadow:0 14px 30px rgba(20,16,14,.3)}
+.lw-scene .login{position:relative;z-index:1;margin:-26px auto 0;width:min(100% - 16px,480px);flex:1;border-radius:28px 28px 0 0}
+@media (min-width:900px){
+  .lw{position:absolute;inset:0;height:auto}
+  .lw-wall{inset:-18% -12%;justify-content:center;align-items:stretch;gap:16px;transform:rotate(-6deg)}
+  .lw-col{flex:none;overflow:visible}
+  .lw-track{flex-direction:column;padding:0}
+  .lw-track img{width:clamp(170px,15vw,280px);margin:0 0 16px;border-radius:18px;box-shadow:0 22px 44px rgba(20,16,14,.26)}
+  .lw-track img.letter{box-shadow:0 26px 54px rgba(20,16,14,.36)}
+  /* мягкая виньетка: справа под формой стена чуть уходит в бумагу, края — в тень бумаги */
+  .lw::after{content:'';position:absolute;inset:0;pointer-events:none;
+    background:linear-gradient(90deg,transparent 45%,color-mix(in srgb,var(--bg) 55%,transparent) 78%,color-mix(in srgb,var(--bg) 70%,transparent)),
+               linear-gradient(180deg,color-mix(in srgb,var(--bg) 50%,transparent),transparent 12%,transparent 88%,color-mix(in srgb,var(--bg) 55%,transparent))}
+  .login-scene.lw-scene .login{position:absolute;z-index:2;right:clamp(24px,5vw,110px);top:50%;transform:translateY(-50%);margin:0;flex:none;
+    width:clamp(420px,32vw,520px);min-height:0;padding:clamp(36px,3vw,52px) clamp(34px,2.8vw,48px) clamp(28px,2.4vw,40px);gap:20px;border-radius:30px;
+    background:color-mix(in srgb,var(--card) 90%,transparent);-webkit-backdrop-filter:blur(14px) saturate(1.1);backdrop-filter:blur(14px) saturate(1.1);
+    box-shadow:0 50px 100px rgba(20,16,14,.28),0 0 0 1px color-mix(in srgb,var(--text) 6%,transparent)}
+  .lw-scene .login h1{font-size:clamp(34px,2.7vw,46px)}
+  .lw-scene .login input{height:58px;font-size:17px}
+  .lw-scene .login button[type=submit]{height:58px;font-size:17px}
+  .lw-scene .login-mark{width:46px;height:46px}
+  .lw-scene .login-brand b{font-size:32px}
+}
+@media (max-width:899px) and (max-height:700px){.lw{display:none}.lw-scene .login{margin-top:0;border-radius:0}}
 /* перетаскивание задач в «Планах»: строка тянется, день недели и «Без даты» подсвечиваются под курсором */
 @media (hover:hover) and (pointer:fine){.task[draggable=true]{cursor:grab}.task[draggable=true] .tt{cursor:pointer}}
 .task.dragging{opacity:.45}
