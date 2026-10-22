@@ -2034,6 +2034,28 @@ a.btn-accent{text-decoration:none}
 /* выбранная вкладка в тёмной теме: светлый текст на чуть более светлой плашке */
 @media (prefers-color-scheme:dark){:root:not([data-theme=light]) .login-scene .seg2 button.on{background:color-mix(in srgb,var(--text) 14%,var(--card));color:var(--text)}}
 :root[data-theme=dark] .login-scene .seg2 button.on{background:color-mix(in srgb,var(--text) 14%,var(--card));color:var(--text)}
+/* ---------- переключатель темы ---------- */
+.theme-toggle{display:grid;place-items:center;width:40px;height:40px;border-radius:50%;flex:none;margin-left:auto;background:var(--card);color:var(--text-2);box-shadow:var(--sh1);transition:transform .25s var(--spring),color .2s}
+.theme-toggle:hover{color:var(--orange)}
+.theme-toggle:active{transform:scale(.92) rotate(-20deg)}
+.theme-toggle .ic{width:20px;height:20px}
+.theme-toggle.corner{position:fixed;top:max(16px,env(safe-area-inset-top,0px));right:max(16px,env(safe-area-inset-right,0px));z-index:30}
+.login-scene .theme-toggle.in-card{position:absolute;top:22px;right:20px;margin:0;box-shadow:none;background:color-mix(in srgb,var(--text) 6%,transparent)}
+.brand .brand-mark{width:30px;height:30px;border-radius:9px;box-shadow:0 3px 8px rgba(20,16,14,.18)}
+/* поля, заполненные браузером (сохранённый логин и пароль), — в нашем цвете, а не жёлтые */
+input:-webkit-autofill,input:-webkit-autofill:hover,input:-webkit-autofill:focus{-webkit-text-fill-color:var(--text);caret-color:var(--text);
+  -webkit-box-shadow:0 0 0 1000px var(--field) inset;box-shadow:0 0 0 1000px var(--field) inset;transition:background-color 99999s ease-out}
+
+/* стена постеров: бесшовный цикл — колонки начинаются сверху (а не по центру), зазор входит в каждый постер,
+   поэтому сдвиг на половину ленты ровно равен одной копии и конец никогда не показывается */
+.wall-track{gap:0}
+.wall-track img{margin-right:8px}
+@media (min-width:900px){
+  .wall{align-items:flex-start}
+  .wall-track{margin-top:-240px}
+  .wall-col.c2 .wall-track{margin-top:-380px}
+  .wall-track img{margin:0 0 10px}
+}
 /* перетаскивание задач в «Планах»: строка тянется, день недели и «Без даты» подсвечиваются под курсором */
 @media (hover:hover) and (pointer:fine){.task[draggable=true]{cursor:grab}.task[draggable=true] .tt{cursor:pointer}}
 .task.dragging{opacity:.45}

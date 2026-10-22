@@ -5,6 +5,7 @@
  * удаление отправляется через 5 секунд, если не нажали «Вернуть».
  */
 import { can } from './lib/features';
+import { ThemeToggle } from './components/ThemeToggle';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { addDays } from '@bortjournal/core';
 import { api, ApiError, flushOutbox, forgetLocal, fromCache, pendingCount, setOwner, type Drink, type FoodDay, type FoodDraft, draftPending, type Meal, type Me, type Subscription, type TaskFull, type Today as TodayData } from './lib/api';
@@ -310,7 +311,8 @@ export function App() {
   const lockTile = (name: string, ic: string, c: string) => <button key={name} className="tile" onClick={() => { if (QUICK[name] && can(sub, name)) setQuick({ tab: QUICK[name]!, t: Date.now() }); pro(name, sheet.kind === 'add' ? sheet.at : undefined); }}><span className="chip-ic" style={{ ['--c' as string]: c }}><Icon name={ic} /></span>{name}{!can(sub, name) && <span className="lock">PRO</span>}</button>;
 
   return <div className={`app ${wide ? 'wide' : ''}`}>
-    {wide && <div className="brand"><i>L</i>Lumi</div>}
+    {wide && <div className="brand"><img className="brand-mark" src="/favicon.svg" alt="" />Lumi</div>}
+    {wide && <ThemeToggle className="corner" onSaved={st => setMe(m => m && m.profile ? { ...m, profile: { ...m.profile, settings: st } } : m)} />}
     {tab in SECTIONS && SECTIONS[tab] && sub.ended && !can(sub, SECTIONS[tab]!) && <button className="ro-bar" onClick={() => open({ kind: 'paywall', focus: SECTION_NAME[tab] })}><Icon name="file" />Только просмотр — Pro закончился. Продлить</button>}
     {queued === 0 && drafts.length > 0 && (() => {
       const ready = drafts.filter(d => d.state === 'ready'), failed = drafts.filter(d => d.state === 'failed'), busy = drafts.filter(draftPending);

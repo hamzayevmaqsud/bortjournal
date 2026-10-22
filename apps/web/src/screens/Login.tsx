@@ -8,6 +8,7 @@ import { AppleMark, GoogleMark, startUrl, takeAuthResult, useProviders } from '.
 import { TRIAL_DAYS } from '@bortjournal/core';
 import { api, ApiError } from '../lib/api';
 import { Icon } from '../components/Icon';
+import { ThemeToggle } from '../components/ThemeToggle';
 
 // 23 постера по кругу оттенков (собираются из Documents/Lumi/login page): 240 и 400 px — показываем не крупнее
 const N = 23;
@@ -101,6 +102,6 @@ export function Login({ onDone }: { onDone: () => void }) {
 
   return <div className="login-scene">
     <PosterWall />
-    <main className="login">{card}{legal}</main>
+    <main className="login"><ThemeToggle className="in-card" />{card}{legal}</main>
   </div>;
 }

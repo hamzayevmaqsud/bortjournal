@@ -1,5 +1,6 @@
 /** «Ещё»: профиль и нормы, подписка, разделы Pro, установка на телефон, выход */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { ThemeToggle } from '../components/ThemeToggle';
 import { api, ApiError, type Me } from '../lib/api';
 import { fmt, fmt1 } from '../lib/format';
 import { Icon } from '../components/Icon';
@@ -25,9 +26,10 @@ const THEMES: Array<[Theme, string, string]> = [['system', 'Как в систе
 /** Оформление: применяется сразу, сохраняется в профиль — телефон и компьютер подхватят */
 export function ThemePick({ me, onSaved }: { me: Me; onSaved: (s: Record<string, unknown>) => void }) {
   const toast = useToast(), [cur, setCur] = useState<Theme>((me.profile?.settings?.theme as Theme) ?? savedTheme());
+  useEffect(() => { const f = () => setCur(savedTheme()); addEventListener('lumi-theme', f); return () => removeEventListener('lumi-theme', f); }, []);
   const pick = async (t: Theme) => {
     if (t === cur) return; const was = cur;
-    setCur(t); applyTheme(t); buzz(6);
+    setCur(t); applyTheme(t); buzz(6); dispatchEvent(new Event('lumi-theme'));
     try { const r = await api<{ settings: Record<string, unknown> }>('/api/profile/settings', { method: 'PUT', body: { theme: t } }); onSaved(r.settings); }
     catch { setCur(was); applyTheme(was); toast('Не получилось сохранить тему', { err: true }); }
   };
@@ -42,17 +44,17 @@ export function ThemePick({ me, onSaved }: { me: Me; onSaved: (s: Record<string,
 export type MoreSummary = Partial<Record<string, string>>;
 // разделы, которые на компьютере уже есть в нижней панели — в «Ещё» их не дублируем
 const IN_DOCK = new Set(['goal', 'gym', 'study', 'budget', 'books', 'stats']);
-export function More({ me, wide = false, summary = {}, onPaywall, onPro, onProfile, onSettings, onInstall, onLogout, onFeedback, onAdmin }: { me: Me; wide?: boolean; summary?: MoreSummary; onFeedback?: () => void; onAdmin?: () => void; onPaywall: (focus?: string) => void; onPro: (what: string) => void; onProfile: () => void; onSettings: () => void; onInstall: () => void; onLogout: () => void; onSaved?: (s: Record<string, unknown>) => void }) {
+export function More({ me, wide = false, summary = {}, onPaywall, onPro, onProfile, onSettings, onInstall, onSaved, onLogout, onFeedback, onAdmin }: { me: Me; wide?: boolean; summary?: MoreSummary; onFeedback?: () => void; onAdmin?: () => void; onPaywall: (focus?: string) => void; onPro: (what: string) => void; onProfile: () => void; onSettings: () => void; onInstall: () => void; onLogout: () => void; onSaved?: (s: Record<string, unknown>) => void }) {
   const s = me.profile?.settings ?? {}, sub = me.subscription, [pw, setPw] = useState(false);
   return <div className="day more-page">
-    <header className="dayhead"><div className="daytitle"><span>ещё</span><b>{s.name || me.username}</b></div></header>
+    <header className="dayhead"><div className="daytitle"><span>ещё</span><b>{s.name || me.username}</b></div>{!wide && <ThemeToggle onSaved={onSaved} />}</header>
     <button className="profile-card" onClick={onProfile} aria-label="Профиль">
       <span className="avatar">{(s.name || me.username).slice(0, 1).toUpperCase()}</span>
       <span className="mid"><b>{s.name || me.username}</b><small>{fmt(s.kcal ?? 2000)} ккал{s.protein ? ` · белок ${fmt(s.protein)} г` : ''} · {fmt1((s.water ?? 2000) / 1000)} л · {fmt(s.steps ?? 8000)} шагов</small></span>
       <Icon name="chev" className="ic chev" />
     </button>
     <button className="settings-card" onClick={onSettings}>
-      <span className="chip-ic" style={{ ['--c' as string]: 'var(--navy)' }}><Icon name="gear" /></span>
+      <span className="chip-ic" style={{ ['--c' as string]: 'var(--text-2)' }}><Icon name="gear" /></span>
       <span className="mid"><b>Настройки</b><small>нормы на день, разделы, тема, напоминания, Google Календарь, Obsidian</small></span>
       <Icon name="chev" className="ic chev" />
     </button>
