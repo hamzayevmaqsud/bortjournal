@@ -1,6 +1,6 @@
 # Плагин Obsidian: конспекты в Lumi без чтения диска
 
-Status: ready-for-agent
+Status: done
 
 ## Problem Statement
 

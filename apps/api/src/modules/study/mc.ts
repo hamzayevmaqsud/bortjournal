@@ -4,7 +4,7 @@
  * алгоритм (study_srs, ключ «q:<id>»): верно — интервал растёт, неверно — вопрос вернётся завтра.
  * В день: всё, что пора повторить, и до 10 новых вопросов (кнопка «ещё» добавляет новые).
  */
-import { and, asc, eq, gte, inArray, lte, sql } from 'drizzle-orm';
+import { and, asc, eq, gte, inArray, isNull, lte, sql } from 'drizzle-orm';
 import { aiEnabled, gemini } from '../../core/gemini.js';
 import type { DB, Tx } from '../../db/index.js';
 import { grade, hash, rng, shuffle, type SrsState } from './cards.js';
@@ -80,7 +80,7 @@ ${part}`;
 /* ---------- вопросы дня ---------- */
 interface Q { id: string; materialId: string; chunk: number; q: string; options: string[]; correct: number; explain: string | null; createdAt: Date }
 async function state(db: Tx, userId: string, today: string) {
-  const mats = await db.select({ id: materials.id, title: materials.title, createdAt: materials.createdAt }).from(materials).where(and(eq(materials.userId, userId), eq(materials.quiz, true)));
+  const mats = await db.select({ id: materials.id, title: materials.title, createdAt: materials.createdAt }).from(materials).where(and(eq(materials.userId, userId), eq(materials.quiz, true), isNull(materials.archivedAt)));
   const ids = mats.map(m => m.id);
   const qs: Q[] = ids.length ? await db.select().from(questions).where(inArray(questions.materialId, ids)).orderBy(asc(questions.chunk), asc(questions.createdAt)) : [];
   const srs = new Map<string, SrsState>((await db.select().from(srsCards).where(and(eq(srsCards.userId, userId), sql`${srsCards.cardKey} like 'q:%'`))).map(r => [r.cardKey, { interval: r.intervalDays, ease: r.ease, reps: r.reps, due: r.dueOn, last: r.lastOn }]));

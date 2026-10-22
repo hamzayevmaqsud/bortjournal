@@ -1,0 +1,1 @@
+ALTER TABLE "study_materials" ADD COLUMN "archived_at" timestamp with time zone;

@@ -1,11 +1,12 @@
-# Архитектура Бортжурнала (новая версия)
+# Архитектура Lumi (новая версия)
 
 Текущий журнал (`server.js`, `app.js` в корне) работает как раньше, пока новая версия
 не догонит его по модулям. Новая версия живёт рядом:
 
 ```
 apps/api        бэкенд: Fastify + Drizzle + Postgres (TypeScript)
-apps/web        фронт: React + Vite (следующий шаг)
+apps/web        фронт: React + Vite
+apps/obsidian   плагин Obsidian: присылает конспекты по личному ключу (ADR-0001)
 packages/core   общая логика без зависимостей: модули, тарифы, формулы — для API и фронта
 docs/           этот файл
 ```
@@ -18,7 +19,7 @@ docs/           этот файл
 |---|---|
 | food   | food_meals, food_drinks, food_user_foods, food_meal_sets, food_drafts |
 | gym    | gym_workouts → gym_workout_exercises → gym_workout_sets, gym_user_exercises, gym_plans, gym_live |
-| study  | study_sessions, study_srs, study_quizzes, study_time |
+| study  | study_sessions, study_srs, study_quizzes, study_time, study_materials, study_questions, study_answers, study_note_log |
 | budget | budget_settings, budget_entries |
 | books  | books, book_quotes, book_reading_log |
 | plans  | plan_goals, plan_task_series, plan_tasks |
@@ -80,6 +81,16 @@ cd apps/api && npx tsx scripts/import-legacy.ts [--data ../../data] [--user им
 - Сейчас работает одно задание: **черновик приёма** (`food_drafts`) — фото еды, которое человек отправил и не ждёт на экране. Состояния `queued → working → ready | failed`, три попытки с паузой 30 с и 2 мин, зависший больше 5 минут в `working` снова берётся в работу. Готовый — Web Push «Фото разобрано» со ссылкой `/#food?draft=<id>`.
 - Без воркера фото так и останется «разбирается…»: API только ставит черновик в очередь.
 - В тестах воркер не запускается: тест вызывает `runJobsOnce(db, at?)` между запросами и может прокрутить время вперёд.
+
+## Плагин Obsidian
+
+Конспекты из Obsidian присылает плагин (`apps/obsidian`), а не сервер читает диск (ADR-0001).
+
+- Ключ вида `obsidian` (`bjo_…`) создаётся в профиле, плагин шлёт его в `Authorization: Bearer`. Маршруты — `/api/study/obsidian/{notes,rename,status}` (`modules/study/obsidian-sync.ts`).
+- Заметка = конспект `kind 'obsidian'`, `source` = путь в хранилище. Удаление ставит `archived_at`: конспект пропадает из списка и вопросов, история ответов цела; та же заметка, присланная снова, оживает.
+- При обновлении текста сравниваются разделы `##`: дописанные и изменённые пишутся в `study_note_log`, одна запись на конспект в день.
+- Если у человека нет чтения с диска (`OBSIDIAN_VAULT`), обзор, читалка и поиск «Учёбы» берут заметки из базы. Чтение с диска остаётся, пока владелец не подтвердит плагин в работе.
+- Сборка: `npm run build -w @bortjournal/obsidian` кладёт `main.js` и `manifest.json` в `apps/obsidian/dist` и в `apps/web/public/obsidian` — оттуда их скачивают по ссылке из профиля. Логика синхронизации (`src/sync.ts`) не зависит от Obsidian и покрыта тестами.
 
 ## Локальный запуск
 

@@ -10,7 +10,8 @@ import { isHttps, requireUser } from './auth.js';
 import { bad } from './http.js';
 import { apiTokens } from './schema.js';
 
-export const TOKEN_KINDS = ['capture', 'calendar'] as const;
+export const TOKEN_KINDS = ['capture', 'calendar', 'obsidian'] as const;
+const PREFIX: Record<TokenKind, string> = { capture: 'c', calendar: 'l', obsidian: 'o' };
 export type TokenKind = (typeof TOKEN_KINDS)[number];
 const sha = (s: string) => crypto.createHash('sha256').update(s).digest('hex');
 
@@ -33,12 +34,13 @@ export async function tokenRoutes(app: FastifyInstance, { db }: { db: DB }) {
     return Object.fromEntries(TOKEN_KINDS.map(k => { const r = rows.find(x => x.kind === k); return [k, r ? { createdAt: r.createdAt, lastUsedAt: r.lastUsedAt } : null]; }));
   });
   app.post('/api/tokens/:kind', { preHandler: requireUser }, async req => {
-    const kind = kindOf((req.params as { kind?: string }).kind), raw = `bj${kind === "calendar" ? "l" : "c"}_${crypto.randomBytes(24).toString("base64url")}`;
+    const kind = kindOf((req.params as { kind?: string }).kind), raw = `bj${PREFIX[kind]}_${crypto.randomBytes(24).toString("base64url")}`;
     await db.delete(apiTokens).where(and(eq(apiTokens.userId, req.userId!), eq(apiTokens.kind, kind)));
     await db.insert(apiTokens).values({ userId: req.userId!, kind, tokenHash: sha(raw) });
     const base = publicBase(req);
     return kind === 'calendar'
       ? { token: raw, url: `${base}/api/plans/calendar/${raw}.ics`, webcal: `${base.replace(/^https?:/, 'webcal:')}/api/plans/calendar/${raw}.ics` }
+      : kind === 'obsidian' ? { token: raw, url: base }
       : { token: raw, url: `${base}/api/plans/capture` };
   });
   app.delete('/api/tokens/:kind', { preHandler: requireUser }, async req => {

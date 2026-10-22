@@ -1,6 +1,6 @@
 /** Учёба: занятия, карточки интервального повторения, порции вопросов, время по конспектам */
 import { sql } from 'drizzle-orm';
-import { boolean, date, doublePrecision, index, integer, jsonb, pgTable, primaryKey, text, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
+import { boolean, date, doublePrecision, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 import { users } from '../../core/schema.js';
 import { createdAt, hhmm, id, legacyId, owner, updatedAt } from '../../db/columns.js';
 
@@ -64,8 +64,25 @@ export const materials = pgTable('study_materials', {
   quizError: text('quiz_error'),
   quizDone: integer('quiz_done').notNull().default(0),
   quizTotal: integer('quiz_total').notNull().default(0),
+  /** заметку удалили в Obsidian: конспект в архиве — не в списке и не в вопросах, история ответов цела */
+  archivedAt: timestamp('archived_at', { withTimezone: true }),
   createdAt: createdAt(), updatedAt: updatedAt()
 }, t => [index('study_materials_user_idx').on(t.userId), uniqueIndex('study_materials_obsidian_uq').on(t.userId, t.source).where(sql`${t.kind} = 'obsidian'`)]);
+
+/**
+ * Дневник конспектов из Obsidian: какие разделы ## дописаны и изменены. Одна запись на конспект в день —
+ * правки за день сливаются в неё. kind: new — конспект появился в этот день, edit — дописан или изменён.
+ */
+export const noteLog = pgTable('study_note_log', {
+  id: id(), userId: owner(),
+  materialId: uuid('material_id').notNull().references(() => materials.id, { onDelete: 'cascade' }),
+  day: date('day', { mode: 'string' }).notNull(),
+  time: hhmm('time').notNull(),
+  kind: text('kind').notNull(),
+  added: jsonb('added').$type<string[]>().notNull().default([]),
+  changed: jsonb('changed').$type<string[]>().notNull().default([]),
+  createdAt: createdAt(), updatedAt: updatedAt()
+}, t => [uniqueIndex('study_note_log_day_uq').on(t.materialId, t.day), index('study_note_log_user_idx').on(t.userId, t.day)]);
 
 /** Вопрос с вариантами ответа (ровно один верный) по куску конспекта */
 export const questions = pgTable('study_questions', {

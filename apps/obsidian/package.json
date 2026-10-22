@@ -1,0 +1,12 @@
+{
+  "name": "@bortjournal/obsidian",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Плагин Obsidian: отправляет конспекты из выбранной папки в Lumi",
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit -p ."
+  }
+}

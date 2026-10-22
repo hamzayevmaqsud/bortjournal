@@ -1,0 +1,9 @@
+{
+  "id": "lumi",
+  "name": "Lumi",
+  "version": "0.1.0",
+  "minAppVersion": "1.4.0",
+  "description": "Отправляет конспекты из выбранной папки в журнал Lumi после каждой правки.",
+  "author": "Lumi",
+  "isDesktopOnly": false
+}

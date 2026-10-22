@@ -78,6 +78,20 @@
       "when": 1792663185436,
       "tag": "0010_food_drafts",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1792667762129,
+      "tag": "0011_study_materials_archive",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1792667940412,
+      "tag": "0012_study_note_log",
+      "breakpoints": true
     }
   ]
 }

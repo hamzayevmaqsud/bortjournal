@@ -2,7 +2,7 @@
  * Учёба (раздел Pro): конспекты (файлы PDF и Word, текст, ссылки, Obsidian), дневник занятий и минуты.
  * Вопросы с вариантами ответа — только по конспектам, для которых их попросили; повторение по интервалам.
  */
-import { and, asc, desc, eq, gte, lte } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, isNull, lte } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { addDays } from '@bortjournal/core';
 import { requireUser } from '../../core/auth.js';
@@ -14,6 +14,7 @@ import { bad, dayParam, HttpError, hmParam, idParam, notFound, uid } from '../..
 import { users } from '../../core/schema.js';
 import type { DB, Tx } from '../../db/index.js';
 import { obsFor } from './obsidian.js';
+import { dbDiary, dbNote, dbSearch, noteView, obsidianSyncRoutes } from './obsidian-sync.js';
 import { takeAi } from '../../core/ai-quota.js';
 import { answer, answersByDay, isRunning, present, queueOf, removeSrsOf, startQuestions } from './mc.js';
 import { extractFile, extractLink, MAX_FILE, MAX_TEXT } from './extract.js';
@@ -49,6 +50,7 @@ export async function studyRoutes(app: FastifyInstance, { db }: { db: DB }) {
     return c;
   };
   const preHandler = [requireUser, requireFeature(db, 'study')];
+  await obsidianSyncRoutes(app, { db });
   const ctx = async (userId: string) => userContext(db, userId);
 
   app.get('/overview', { preHandler }, async req => {
@@ -57,24 +59,28 @@ export async function studyRoutes(app: FastifyInstance, { db }: { db: DB }) {
     const timeBy = new Map(times.map(t => [t.key, t]));
     const minOn = (d: string) => w.ss.filter(s => s.day === d).reduce((a, s) => a + s.minutes, 0) + times.filter(t => t.day === d).reduce((a, t) => a + t.minutes, 0);
     const d30 = Array.from({ length: 30 }, (_, k) => addDays(today, k - 29));
+    // без чтения с диска заметки и их дневник — из базы (их присылает плагин)
+    const plugin = !w.state, pdiary = plugin ? await dbDiary(db, userId) : [];
     const diary = [
+      ...pdiary.map(e => ({ src: 'obs', ...e, minutes: timeBy.get(e.id)?.minutes ?? null })),
       ...(w.state?.diary ?? []).map((e: any) => ({ src: 'obs', id: e.id, day: e.date, at: e.at, title: e.title, kind: e.kind, added: e.added, changed: e.changed, noteId: e.noteId, link: w.state.notes.find((n: any) => n.id === e.noteId)?.link ?? null, minutes: timeBy.get(e.id)?.minutes ?? null })),
       ...w.ss.map(s => ({ src: 'manual', id: s.id, day: s.day, at: s.time, title: s.topic, category: s.category, minutes: s.minutes, time: s.time, theses: s.theses, qa: s.qa }))
     ].sort((a: any, b: any) => b.day.localeCompare(a.day) || String(b.at ?? '').localeCompare(String(a.at ?? ''))).slice(0, 120);
-    const mats = await db.select().from(materials).where(eq(materials.userId, userId)).orderBy(desc(materials.createdAt));
+    const mats = await db.select().from(materials).where(and(eq(materials.userId, userId), isNull(materials.archivedAt))).orderBy(desc(materials.createdAt));
     // конспект «завис» в работе после перезапуска сервера — продолжаем
     for (const m of mats) if (m.quizStatus === 'working' && !isRunning(m.id)) startQuestions(db, m.id, msg => req.log.warn(msg));
     const q = await queueOf(db, userId, today);
     const counts = await countsOf(userId, q.queue);
     const own = mats.filter(m => m.kind !== 'obsidian'), obsMat = new Map(mats.filter(m => m.kind === 'obsidian').map(m => [m.source, m]));
-    const notes = (w.state?.notes ?? []).map((n: any) => {
+    const notes = plugin ? mats.filter(m => m.kind === 'obsidian').map(m => ({ ...noteView(m), material: pubMaterial(m, counts) })) : (w.state?.notes ?? []).map((n: any) => {
       const mm = obsMat.get(n.rel);
       return { id: n.id, rel: n.rel, title: n.title, tags: n.tags, date: n.date, link: n.link, cheat: !!n.cheat, tasks: (n.tasks ?? []).filter((t: any) => !t.done).map((t: any) => t.text),
         sections: n.sections.filter((s: any) => !s.skip).map((s: any) => ({ key: s.key, h: s.h })), material: mm ? pubMaterial(mm, counts) : null };
     });
     const allMin = w.ss.reduce((a, s) => a + s.minutes, 0) + times.reduce((a, t) => a + t.minutes, 0);
     return {
-      today, goal: norms.study, ai: aiEnabled(), obs: w.state ? { enabled: true, vault: w.state.vaultName, folder: w.state.folder, lastSync: w.state.lastSync, error: w.state.error } : { enabled: false },
+      today, goal: norms.study, ai: aiEnabled(), obs: w.state ? { enabled: true, vault: w.state.vaultName, folder: w.state.folder, lastSync: w.state.lastSync, error: w.state.error }
+        : { enabled: false, plugin: true, notes: notes.length, lastSync: mats.filter(m => m.kind === 'obsidian').reduce<Date | null>((a, m) => !a || m.updatedAt > a ? m.updatedAt : a, null) },
       kpi: { materials: own.length + notes.length, questions: q.qs.length, due: q.queue.length, week: d30.slice(-7).reduce((a, d) => a + minOn(d), 0), all: allMin, sessions: w.ss.length },
       days: d30.map(d => ({ day: d, minutes: minOn(d) })), diary, materials: own.map(m => pubMaterial(m, counts)), notes,
       categories: [...new Set([...w.ss.map(s => s.category).filter(Boolean), 'C#', 'Unity', 'Алгоритмы', 'Архитектура', 'Web', 'Git', 'Математика', 'Английский'])]
@@ -219,13 +225,28 @@ export async function studyRoutes(app: FastifyInstance, { db }: { db: DB }) {
   /* ---------- Obsidian (только владелец хранилища) ---------- */
   const obsOr404 = async (req: any, reply: any) => { const o = obsFor(await username(db, uid(req))); if (!o) reply.code(404).send({ error: 'Obsidian не подключён.' }); return o; };
   app.post('/obsidian/sync', { preHandler }, async (req, reply) => { const o = await obsOr404(req, reply); if (!o) return; await o.sync(); return { ok: true }; });
-  app.get('/obsidian/search', { preHandler }, async (req, reply) => { const o = await obsOr404(req, reply); if (!o) return; return { hits: await o.search(String((req.query as any).q ?? '').slice(0, 200)) }; });
-  app.get('/obsidian/library', { preHandler }, async (req, reply) => { const o = await obsOr404(req, reply); if (!o) return; return { notes: await o.listLibrary() }; });
-  app.get('/obsidian/note', { preHandler }, async (req, reply) => { const o = await obsOr404(req, reply); if (!o) return; return o.readNote(String((req.query as any).rel ?? '')); });
+  // поиск, читалка и вопросы: с диска у владельца хранилища, иначе — по заметкам, присланным плагином
+  const disk = async (req: any) => obsFor(await username(db, uid(req)));
+  app.get('/obsidian/search', { preHandler }, async req => {
+    const q = String((req.query as any).q ?? '').slice(0, 200), o = await disk(req);
+    return { hits: o ? await o.search(q) : await dbSearch(db, uid(req), q) };
+  });
+  app.get('/obsidian/library', { preHandler }, async req => { const o = await disk(req); return { notes: o ? await o.listLibrary() : [] }; });
+  app.get('/obsidian/note', { preHandler }, async (req, reply) => {
+    const rel = String((req.query as any).rel ?? ''), o = await disk(req);
+    if (o) return o.readNote(rel);
+    return (await dbNote(db, uid(req), rel)) ?? reply.code(404).send({ error: 'Заметка не найдена.' });
+  });
   // вопросы по заметке Obsidian: заметка копируется в конспекты (с текущим текстом) и дальше — как любой конспект
   app.post('/obsidian/quiz', { preHandler }, async (req, reply) => {
-    const o = await obsOr404(req, reply); if (!o) return;
     const b = (req.body ?? {}) as { rel?: unknown; on?: unknown }, rel = String(b.rel ?? ''), userId = uid(req);
+    const o = await disk(req);
+    if (!o) {
+      const [m] = await db.select().from(materials).where(and(eq(materials.userId, userId), eq(materials.kind, 'obsidian'), eq(materials.source, rel), isNull(materials.archivedAt)));
+      if (!m) return notFound(reply);
+      await quizOn(userId, m, !!b.on, s => req.log.warn(s));
+      return { ok: true, id: m.id };
+    }
     const note = await o.readNote(rel).catch(() => null); if (!note?.markdown) return notFound(reply);
     let [m] = await db.select().from(materials).where(and(eq(materials.userId, userId), eq(materials.kind, 'obsidian'), eq(materials.source, rel)));
     if (!m) [m] = await db.insert(materials).values({ userId, kind: 'obsidian', title: String(note.title ?? rel).slice(0, 200), source: rel, text: String(note.markdown) }).returning();
