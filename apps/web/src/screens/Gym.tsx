@@ -25,6 +25,9 @@ const n = (v: string) => Number(String(v).replace(',', '.')) || 0;
 const blank = (): LiveSet => ({ kg: '', reps: '', seconds: '', minutes: '', km: '', done: false });
 const toLiveEx = (ex: Exercise, sets: number | LiveSet[] = 3): LiveEx => ({ key: ex.id, name: ex.name, icon: ex.icon, group: ex.group, kind: ex.kind, equip: ex.equip, sets: Array.isArray(sets) ? sets : Array.from({ length: sets }, blank) });
 const COLS: Record<GymKind, Array<[keyof LiveSet, string, 'decimal' | 'numeric']>> = { w: [['kg', 'кг', 'decimal'], ['reps', 'повт.', 'numeric']], bw: [['kg', '+кг', 'decimal'], ['reps', 'повт.', 'numeric']], t: [['seconds', 'сек', 'numeric']], c: [['minutes', 'мин', 'numeric'], ['km', 'км', 'decimal']] };
+/** без этого поля подход не считается сделанным */
+const MAIN: Record<GymKind, keyof LiveSet> = { w: 'reps', bw: 'reps', t: 'seconds', c: 'minutes' };
+const MAIN_NAME: Record<GymKind, string> = { w: 'повторы', bw: 'повторы', t: 'секунды', c: 'минуты' };
 const toSet = (s: LiveSet): S => ({ kg: s.kg ? n(s.kg) : null, reps: s.reps ? Math.round(n(s.reps)) : null, seconds: s.seconds ? Math.round(n(s.seconds)) : null, minutes: s.minutes ? n(s.minutes) : null, km: s.km ? n(s.km) : null });
 const fromSet = (s: S, done = true): LiveSet => ({ kg: s.kg ? String(s.kg) : '', reps: s.reps ? String(s.reps) : '', seconds: s.seconds ? String(s.seconds) : '', minutes: s.minutes ? String(s.minutes) : '', km: s.km ? String(s.km) : '', done });
 // черновик в новом формате; старый (из прошлой версии журнала) не открываем
@@ -87,6 +90,7 @@ function ExerciseInfo({ k, onAdd }: { k: string; onAdd?: (ex: Exercise) => void 
 
 /* ---------------- идущая тренировка ---------------- */
 function LiveView({ live, setLive, custom, onFinish, onCancel, onInfo, restSec = 90 }: { restSec?: number; live: Live; setLive: (l: Live | null, save?: boolean) => void; custom: Exercise[]; onFinish: () => void; onCancel: () => void; onInfo: (k: string) => void }) {
+  const toast = useToast();
   const [hint, setHint] = useState<Record<string, any>>({}), [, tick] = useState(0), [rest, setRest] = useState<number | null>(null), [pick, setPick] = useState(false), [busy, setBusy] = useState(false);
   const keys = live.ex.map(x => x.key).join(',');
   useEffect(() => { if (keys) api<any>(`/api/gym/hints?keys=${encodeURIComponent(keys)}${live.editing ? `&skip=${live.editing}` : ''}`).then(setHint, () => {}); }, [keys, live.editing]);
@@ -122,12 +126,21 @@ function LiveView({ live, setLive, custom, onFinish, onCancel, onInfo, restSec =
           <span key={`n${j}`} className={`gs-n ${s.done ? 'done' : ''}`}>{j + 1}</span>,
           <span key={`p${j}`} className="gs-prev">{hp ? setText(hp, x.kind) : '—'}</span>,
           ...cols.map(([f, nm, im]) => { const ph = (hp as any)?.[f] ?? (own ? n(own[f] as string) || '' : ''); return <input key={`${f}${j}`} className={`gs-in ${s.done ? 'done' : ''}`} inputMode={im} autoComplete="off" aria-label={`${nm}, подход ${j + 1}`} placeholder={ph ? String(ph).replace('.', ',') : ''} value={s[f] as string} onChange={e => upd(l => { (l.ex[i]!.sets[j] as any)[f] = e.target.value; })} />; }),
-          <button key={`d${j}`} className={`gs-ok ${s.done ? 'on' : ''}`} aria-pressed={s.done} aria-label={`Подход ${j + 1} сделан`} onClick={() => upd(l => {
-            const set = l.ex[i]!.sets[j]!; set.done = !set.done;
-            // пустой подход по отметке берёт подсказку: прошлый раз или предыдущий подход
-            if (set.done) for (const [f] of cols) if (!set[f] && ((hp as any)?.[f] || (own && own[f]))) (set as any)[f] = String((hp as any)?.[f] ?? own![f]);
-            if (set.done && !live.past) { setRest(Date.now() + restSec * 1000); buzz([10, 30, 10]); }
-          })}><Icon name="check" /></button>,
+          <button key={`d${j}`} className={`gs-ok ${s.done ? 'on' : ''}`} aria-pressed={s.done} aria-label={`Подход ${j + 1} сделан`} onClick={e => {
+            // главное поле подхода: повторы, секунды или минуты. Пустым подход не засчитываем — иначе «1 подход», а объём 0
+            const main = MAIN[x.kind], row = (e.currentTarget as HTMLElement).parentElement;
+            let empty = false;
+            upd(l => {
+              const set = l.ex[i]!.sets[j]!;
+              if (set.done) { set.done = false; return; }
+              // пустой подход по отметке берёт подсказку: прошлый раз или предыдущий подход
+              for (const [f] of cols) if (!set[f] && ((hp as any)?.[f] || (own && own[f]))) (set as any)[f] = String((hp as any)?.[f] ?? own![f]);
+              if (!set[main]) { empty = true; return; }
+              set.done = true;
+              if (!live.past) { setRest(Date.now() + restSec * 1000); buzz([10, 30, 10]); }
+            });
+            if (empty) { toast(`Впиши ${MAIN_NAME[x.kind]} — тогда подход засчитается`); (row?.querySelector(`input[aria-label^="${cols.find(c => c[0] === main)?.[1]}, подход ${j + 1}"]`) as HTMLInputElement | null)?.focus(); buzz(20); }
+          }}><Icon name="check" /></button>,
           <button key={`x${j}`} className="gs-x" aria-label="Убрать подход" onClick={() => upd(l => { l.ex[i]!.sets.splice(j, 1); })}>×</button>
         ]; })}
       </div>
