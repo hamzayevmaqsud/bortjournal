@@ -63,6 +63,8 @@ export function Onboarding({ onDone, initial, onCancel }: { onDone: () => void; 
         <input className="in" placeholder="Как тебя зовут (по желанию)" value={v.name} onChange={e => set('name')(e.target.value)} />
         <div className="ob-row"><Opt on={v.sex === 'm'} onClick={() => set('sex')('m')} title="Мужчина" /><Opt on={v.sex === 'f'} onClick={() => set('sex')('f')} title="Женщина" /></div>
         <label className="fld"><span>Возраст</span><input className="in big" inputMode="numeric" value={v.age} onChange={e => set('age')(e.target.value)} placeholder="30" /></label>
+        {/* «Дальше» неактивна — говорим, чего не хватает, а не оставляем гадать */}
+        {!ok && <p className="hint ob-need">{!v.sex ? 'Выбери пол — от него зависит норма калорий.' : 'Укажи возраст от 14 до 100.'}</p>}
       </>}
       {step === 1 && <>
         <h1>Рост и вес</h1><p>Вес сегодня — от него журнал покажет реальный темп.</p>
@@ -70,6 +72,7 @@ export function Onboarding({ onDone, initial, onCancel }: { onDone: () => void; 
           <label className="fld"><span>Рост, см</span><input className="in big" inputMode="numeric" value={v.height} onChange={e => set('height')(e.target.value)} placeholder="175" /></label>
           <label className="fld"><span>Вес, кг</span><input className="in big" inputMode="decimal" value={v.weight} onChange={e => set('weight')(e.target.value)} placeholder="75" /></label>
         </div>
+        {!ok && (v.height || v.weight) && <p className="hint ob-need">Рост — от 120 до 230 см, вес — от 30 до 300 кг.</p>}
       </>}
       {step === 2 && <>
         <h1>Активность на этой неделе</h1><p>Только тренировки и работа — шаги посчитаем отдельно.</p>
