@@ -8,7 +8,7 @@ import { connect, type DB } from './db/index.js';
 import { MODULES_LIST } from './modules/index.js';
 
 /** один проход по всем модулям; тесты вызывают его напрямую. Возвращает число обработанных заданий */
-export async function runJobsOnce(db: DB, at = new Date()) {
+export async function runJobsOnce(db: DB, at?: Date) {
   let n = 0;
   for (const m of MODULES_LIST) if (m.work) n += await m.work(db, at);
   return n;

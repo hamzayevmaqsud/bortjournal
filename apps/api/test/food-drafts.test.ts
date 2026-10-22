@@ -1,6 +1,7 @@
 /** Фото еды в фоне: черновик приёма, разбор воркером, подтверждение, уточнения, сбои. Gemini — поддельный */
 import http from 'node:http';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { localNow } from '@bortjournal/core';
 import { hashPassword } from '../src/core/auth.js';
 import { grant, grantFree } from '../src/core/entitlements.js';
 import * as s from '../src/schema.js';
@@ -21,7 +22,8 @@ const LUNCH = { is_food: true, comment: 'Учёл масло.', questions: [] as
 const ok = (out: unknown): Reply => ({ status: 200, body: { candidates: [{ content: { parts: [{ text: JSON.stringify(out) }] } }] } });
 let replies: Reply[] = [], calls: any[] = [];
 
-const PHOTO = { image: 'x'.repeat(400), mime: 'image/jpeg', note: '', scale: 'fork', day: '2026-10-22', time: '13:05', slot: 'lunch' };
+const TODAY = localNow(240).day;
+const PHOTO = { image: 'x'.repeat(400), mime: 'image/jpeg', note: '', scale: 'fork', day: TODAY, time: '13:05', slot: 'lunch' };
 
 beforeAll(async () => {
   conn = await freshDb();
@@ -51,7 +53,7 @@ describe('фото еды в фоне', () => {
     const r = await as('pro', 'POST', '/api/food/drafts', PHOTO);
     expect(r.statusCode).toBe(201);
     const draft = r.json();
-    expect(draft).toMatchObject({ state: 'queued', day: '2026-10-22', time: '13:05', slot: 'lunch' });
+    expect(draft).toMatchObject({ state: 'queued', day: TODAY, time: '13:05', slot: 'lunch' });
     expect(calls).toHaveLength(0);
 
     await runJobsOnce(conn.db);
@@ -82,5 +84,45 @@ describe('фото еды в фоне', () => {
     expect(await used()).toBe(before + 1);
     await runJobsOnce(conn.db);
     expect(await used()).toBe(before + 1);
+  });
+});
+
+describe('черновик в дне еды', () => {
+  const day = () => as('pro', 'GET', `/api/food/day?day=${TODAY}`).then(r => r.json());
+  const fresh = async (who = 'pro') => { const d = (await as(who, 'POST', '/api/food/drafts', PHOTO)).json(); await runJobsOnce(conn.db); return d; };
+  beforeEach(async () => { for (const d of (await as('pro', 'GET', '/api/food/drafts')).json().items) await as('pro', 'DELETE', `/api/food/drafts/${d.id}`); });
+
+  it('готовый черновик виден в дне, его калории входят в итоги как предварительные', async () => {
+    const before = await day();
+    const d = await fresh();
+    const f = await day();
+    expect(f.drafts.map((x: any) => x.id)).toContain(d.id);
+    expect(f.drafts[0].image).toBeUndefined();
+    expect(f.totals.draft.kcal).toBe(450);
+    expect(f.totals.kcal).toBe(before.totals.kcal + 450);
+    const stats = (await as('pro', 'GET', '/api/stats/food?days=7')).json();
+    expect(stats.rows.find((r: any) => r.day === TODAY).kcal).toBe(before.totals.kcal + 450);
+  });
+
+  it('подтверждение записывает приёмы со временем фото, убирает черновик и не задваивает калории', async () => {
+    const before = await day();
+    const d = await fresh();
+    const r = await as('pro', 'POST', '/api/food/meals/batch', { draftId: d.id, day: TODAY, time: '13:40', slot: 'lunch', source: 'photo',
+      items: [{ name: 'Гречка', kcal: 220, protein: 8, fat: 2, carbs: 43 }, { name: 'Котлета', kcal: 230, protein: 15, fat: 15, carbs: 8 }] });
+    expect(r.statusCode).toBe(201);
+    expect(r.json().items.every((m: any) => m.time === '13:05' && m.source === 'photo')).toBe(true);
+    expect((await as('pro', 'GET', `/api/food/drafts/${d.id}`)).statusCode).toBe(404);
+    const f = await day();
+    expect(f.drafts).toEqual([]);
+    expect(f.totals.draft.kcal).toBe(0);
+    expect(f.totals.kcal).toBe(before.totals.kcal + 450);
+  });
+
+  it('удаление черновика убирает его калории; чужой удалить нельзя', async () => {
+    const before = await day();
+    const d = await fresh();
+    expect((await as('other', 'DELETE', `/api/food/drafts/${d.id}`)).statusCode).toBe(404);
+    expect((await as('pro', 'DELETE', `/api/food/drafts/${d.id}`)).statusCode).toBe(200);
+    expect((await day()).totals.kcal).toBe(before.totals.kcal);
   });
 });

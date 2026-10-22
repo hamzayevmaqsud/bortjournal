@@ -1,10 +1,10 @@
 import type { FastifyInstance } from 'fastify';
 import { DRINKS } from '@bortjournal/core';
-import { bad, dayParam, guard, hmParam, idParam, notFound, uid } from '../../core/http.js';
+import { bad, dayParam, guard, hmParam, HttpError, idParam, notFound, uid } from '../../core/http.js';
 import type { DB } from '../../db/index.js';
 import { addDrink, addMeal, dayFood, deleteEntry, myFoods, updateDrink, updateMeal, type MealInput } from './service.js';
 import { aiEnabled, recognizeFood } from './ai.js';
-import { createDraft, getDraft, listDrafts } from './drafts.js';
+import { createDraft, deleteDraft, getDraft, listDrafts, takeReadyDraft } from './drafts.js';
 import { takeAi } from '../../core/ai-quota.js';
 import { requireUser } from '../../core/auth.js';
 import { requireFeature } from '../../core/billing.js';
@@ -45,8 +45,14 @@ export async function foodRoutes(app: FastifyInstance, { db }: { db: DB }) {
   app.post('/meals/batch', { preHandler }, async (req, reply) => {
     const b = (req.body ?? {}) as Record<string, unknown>, items = Array.isArray(b.items) ? b.items : [];
     if (!items.length || items.length > 20) throw bad('Нужно от 1 до 20 позиций.');
-    const list = items.map(it => mealBody({ ...(it as object), day: b.day, time: b.time, slot: b.slot, source: b.source }));
-    const rows = await db.transaction(async tx => { const out = []; for (const m of list) out.push(await addMeal(tx, uid(req), m)); return out; });
+    const draftId = b.draftId === undefined || b.draftId === null ? null : idParam(b.draftId);
+    const rows = await db.transaction(async tx => {
+      // подтверждение черновика приёма: день и время — как у фото, черновик забирается в той же транзакции
+      const from = draftId ? await takeReadyDraft(tx, uid(req), draftId) : null;
+      if (draftId && !from) throw new HttpError(404, 'Черновик не найден или ещё не разобран.');
+      const list = items.map(it => mealBody({ ...(it as object), day: from?.day ?? b.day, time: from ? from.time : b.time, slot: b.slot, source: from ? 'photo' : b.source }));
+      const out = []; for (const m of list) out.push(await addMeal(tx, uid(req), m)); return out;
+    });
     return reply.code(201).send({ items: rows });
   });
 
@@ -91,6 +97,7 @@ export async function foodRoutes(app: FastifyInstance, { db }: { db: DB }) {
   });
   app.get('/drafts', { preHandler: pro }, async req => ({ items: await listDrafts(db, uid(req)) }));
   app.get('/drafts/:id', { preHandler: pro }, async (req, reply) => (await getDraft(db, uid(req), idParam((req.params as any).id))) ?? notFound(reply));
+  app.delete('/drafts/:id', { preHandler: pro }, async (req, reply) => (await deleteDraft(db, uid(req), idParam((req.params as any).id))) ? { ok: true } : notFound(reply));
 
   app.delete('/entries/:id', { preHandler }, async (req, reply) => {
     if (!(await deleteEntry(db, uid(req), idParam((req.params as any).id)))) return notFound(reply);

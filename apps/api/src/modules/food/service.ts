@@ -5,19 +5,23 @@ import { recordEvent, removeEvents } from '../../core/events.js';
 import type { DayContext, Nudge } from '../../core/module.js';
 import type { Tx } from '../../db/index.js';
 import { drinks, meals, userFoods } from './schema.js';
+import { dayDrafts, draftSum, draftView, rangeDrafts } from './drafts.js';
 
 export async function dayFood(db: Tx, userId: string, day: string) {
   const ms = await db.select().from(meals).where(and(eq(meals.userId, userId), eq(meals.day, day))).orderBy(sql`${meals.time} nulls last`, asc(meals.createdAt));
   const ds = await db.select().from(drinks).where(and(eq(drinks.userId, userId), eq(drinks.day, day))).orderBy(sql`${drinks.time} nulls last`, asc(drinks.createdAt));
   const dt = ds.map(d => ({ ...d, title: drinkName(d), ...drinkTotals(d) }));
+  // черновики приёма (фото в разборе или ждёт подтверждения): их калории — предварительная часть итогов
+  const dr = await dayDrafts(db, userId, day), draft = dr.map(draftSum).reduce((a, x) => ({ kcal: a.kcal + x.kcal, protein: a.protein + x.protein, fat: a.fat + x.fat, carbs: a.carbs + x.carbs }), { kcal: 0, protein: 0, fat: 0, carbs: 0 });
   const totals = {
-    kcal: Math.round(ms.reduce((a, m) => a + m.kcal, 0) + dt.reduce((a, d) => a + d.kcal, 0)),
-    protein: ms.reduce((a, m) => a + m.protein, 0) + dt.reduce((a, d) => a + d.p, 0),
-    fat: ms.reduce((a, m) => a + m.fat, 0) + dt.reduce((a, d) => a + d.f, 0),
-    carbs: ms.reduce((a, m) => a + m.carbs, 0) + dt.reduce((a, d) => a + d.c, 0),
-    waterMl: Math.round(dt.reduce((a, d) => a + d.hyd, 0))
+    kcal: Math.round(ms.reduce((a, m) => a + m.kcal, 0) + dt.reduce((a, d) => a + d.kcal, 0) + draft.kcal),
+    protein: ms.reduce((a, m) => a + m.protein, 0) + dt.reduce((a, d) => a + d.p, 0) + draft.protein,
+    fat: ms.reduce((a, m) => a + m.fat, 0) + dt.reduce((a, d) => a + d.f, 0) + draft.fat,
+    carbs: ms.reduce((a, m) => a + m.carbs, 0) + dt.reduce((a, d) => a + d.c, 0) + draft.carbs,
+    waterMl: Math.round(dt.reduce((a, d) => a + d.hyd, 0)),
+    draft: { ...draft, kcal: Math.round(draft.kcal) }
   };
-  return { meals: ms, drinks: dt, totals };
+  return { meals: ms, drinks: dt, drafts: dr.map(draftView), totals };
 }
 
 export async function foodToday({ db, userId, day, profile, settings }: DayContext) {
@@ -77,6 +81,8 @@ export async function foodSeries(db: Tx, userId: string, from: string, to: strin
   const at = (day: string) => by.get(day) ?? by.set(day, { day, kcal: 0, protein: 0, fat: 0, carbs: 0, waterMl: 0, meals: 0 }).get(day)!;
   for (const m of ms) Object.assign(at(m.day), { kcal: Number(m.kcal), protein: Number(m.protein), fat: Number(m.fat), carbs: Number(m.carbs), meals: Number(m.n) });
   for (const d of ds) { const t = drinkTotals(d), r = at(d.day); r.kcal += t.kcal; r.protein += t.p; r.fat += t.f; r.carbs += t.c; r.waterMl += t.hyd; }
+  // черновик приёма — предварительная запись: калории и сам факт приёма
+  for (const d of await rangeDrafts(db, userId, from, to)) { const t = draftSum(d), r = at(d.day); r.kcal += t.kcal; r.protein += t.protein; r.fat += t.fat; r.carbs += t.carbs; r.meals += 1; }
   return [...by.values()].map(r => ({ ...r, kcal: Math.round(r.kcal), waterMl: Math.round(r.waterMl) })).sort((a, b) => a.day.localeCompare(b.day));
 }
 
