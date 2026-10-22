@@ -47,6 +47,8 @@ export interface DayFacts {
   tasks?: number; tasksDone?: number;
   budgetOk?: boolean; spent?: number;
 }
+/** Пункт для Google Календаря: key — постоянный ключ (вид:id), time null — на весь день, minutes — длительность */
+export interface CalendarItem { key: string; title: string; day: string; time: string | null; minutes?: number; done?: boolean }
 /** Итоги за всё время, которые не сложить из дней */
 export interface Totals { tasksDone?: number; booksDone?: number; booksOwned?: number; quotes?: number; pagesTotal?: number; booksDoneInRange?: Array<{ title: string; day: string }> }
 
@@ -73,6 +75,8 @@ export interface AppModule {
   remind?(ctx: DayContext & { min: number }): Promise<Nudge[]>;
   /** дни, которые модуль считает активными сверх событий (например, фото еды, ждущее подтверждения) — для серии */
   activeDays?(db: Tx, userId: string, since: string): Promise<string[]>;
+  /** что показать в Google Календаре за [from, to]: задачи с датой, тренировки по плану (ядро само создаёт и меняет события) */
+  calendarItems?(db: Tx, userId: string, from: string, to: string, today: string): Promise<CalendarItem[]>;
   /** фоновые задания модуля: один проход по всему, чему пора (at — «сейчас»). Вызывает воркер, не API. Возвращает число обработанных */
   work?(db: DB, at?: Date): Promise<number>;
 }

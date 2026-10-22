@@ -92,6 +92,15 @@ cd apps/api && npx tsx scripts/import-legacy.ts [--data ../../data] [--user им
 - Если у человека нет чтения с диска (`OBSIDIAN_VAULT`), обзор, читалка и поиск «Учёбы» берут заметки из базы. Чтение с диска остаётся, пока владелец не подтвердит плагин в работе.
 - Сборка: `npm run build -w @bortjournal/obsidian` кладёт `main.js` и `manifest.json` в `apps/obsidian/dist` и в `apps/web/public/obsidian` — оттуда их скачивают по ссылке из профиля. Логика синхронизации (`src/sync.ts`) не зависит от Obsidian и покрыта тестами.
 
+## Google Календарь
+
+Спека: `.scratch/google-calendar/spec.md`. Код: `apps/api/src/core/gcal.ts`.
+
+- Подключение — OAuth Google с правами `calendar.app.created` и `calendar.events.readonly`. Ключи те же, что для входа через Google. В Google Cloud Console нужно добавить адрес возврата `<PUBLIC_URL>/api/integrations/google-calendar/callback` и включить Google Calendar API.
+- Токены и id календаря «Lumi» — в `integrations.secret_enc`, AES-256-GCM (`core/secret-box.ts`). Ключ — `INTEGRATIONS_KEY` или файл `data/integrations.key`; без ключа токены не расшифровать, его нужно бэкапить вместе с базой.
+- Модули отдают пункты календаря через `AppModule.calendarItems`; сейчас это задачи с датой (plans) и тренировки по плану на две недели (gym).
+- Воркер раз в 5 минут сверяет пункты с событиями календаря «Lumi» по отпечатку (`gcal_links`) и забирает события основного календаря в `gcal_events`. «Сегодня» отдаёт их полем `calendar`, лента дня рисует дорожку «Календарь».
+
 ## Локальный запуск
 
 ```

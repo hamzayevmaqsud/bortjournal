@@ -38,7 +38,7 @@ export function TodayWide({ wide = true, data, day, today, sub, still, settings 
   const dt = parseDay(day), off = Math.round((dt.getTime() - parseDay(today).getTime()) / 864e5);
   const rel = off === 0 ? 'сегодня' : off === -1 ? 'вчера' : off === 1 ? 'завтра' : '';
   const P = data?.parts ?? {}, food = P.food, body = P.body, study = P.study, gym = P.gym, tasks = P.plans?.tasks ?? [];
-  const marks = data ? marksOf(data.events, tasks) : [];
+  const marks = data ? marksOf(data.events, tasks, data.calendar) : [];
   const done = tasks.filter(t => t.done).length;
   // что человек выбрал вести (в анкете или профиле); не выбрано ничего — показываем всё
   const chosen = settings.sections as string[] | undefined, has = (k: string) => !chosen || chosen.includes(k);
@@ -127,7 +127,7 @@ export function TodayWide({ wide = true, data, day, today, sub, still, settings 
     </section>}
     {!data ? <div className="wgrid"><div className="skel" style={{ gridColumn: 'span 12', height: 260 }} /><div className="skel" style={{ gridColumn: 'span 4', height: 230 }} /><div className="skel" style={{ gridColumn: 'span 4', height: 230 }} /><div className="skel" style={{ gridColumn: 'span 4', height: 230 }} /></div> : <>
       <section className="panel tl-panel">
-        <Timeline marks={marks} now={data.isToday ? data.now.hm : null} still={still} pro={can(sub, 'study') || can(sub, 'gym')} sums={wide ? sums : undefined} onAdd={t => onAdd(t)} onDelete={onDelete} onEdit={onEdit} onToggleTask={onToggleTask} />
+        <Timeline marks={marks} allDay={(data.calendar ?? []).filter(c => !c.time).map(c => c.title)} now={data.isToday ? data.now.hm : null} still={still} pro={can(sub, 'study') || can(sub, 'gym')} sums={wide ? sums : undefined} onAdd={t => onAdd(t)} onDelete={onDelete} onEdit={onEdit} onToggleTask={onToggleTask} />
         <p className="tl-hint">{wide ? 'Нажми на пустое место дорожки — добавишь запись на это время. Нажми на отметку — изменишь её.' : 'Нажми пустое место — запись на это время, отметку — изменить.'}</p>
       </section>
 

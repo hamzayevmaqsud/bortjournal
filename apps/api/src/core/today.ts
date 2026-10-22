@@ -2,7 +2,7 @@
  * Экран «Сегодня»: сводки модулей (каждый отдаёт свою через AppModule.today),
  * лента событий дня для полос и серия. Модули с закрытым доступом в ответ не попадают.
  */
-import { eq, sql } from 'drizzle-orm';
+import { and, asc, eq, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { hasFeature, addDays, isDay, localNow } from '@bortjournal/core';
 import type { DB } from '../db/index.js';
@@ -11,7 +11,7 @@ import { requireUser } from './auth.js';
 import { subscription } from './billing.js';
 import { dayEvents } from './events.js';
 import { bad } from './http.js';
-import { events, profiles, users } from './schema.js';
+import { events, gcalEvents, profiles, users } from './schema.js';
 
 /** дни с записями: еда, учёба, тренировка или шаги — как в старом журнале */
 export async function activeDays(db: DB, userId: string, today: string) {
@@ -48,6 +48,9 @@ export async function todayRoutes(app: FastifyInstance, { db }: { db: DB }) {
     const parts: Record<string, unknown> = {};
     await Promise.all(MODULES_LIST.filter(m => m.today && allowed.has(m.name)).map(async m => { parts[m.name] = await m.today!(ctx); }));
     const evs = (await dayEvents(db, userId, day)).filter(e => allowed.has(e.module));
+    // события Google Календаря (если подключён): сначала на весь день, потом по времени
+    const cal = await db.select({ id: gcalEvents.eventId, title: gcalEvents.title, time: gcalEvents.time, minutes: gcalEvents.minutes }).from(gcalEvents)
+      .where(and(eq(gcalEvents.userId, userId), eq(gcalEvents.day, day))).orderBy(sql`${gcalEvents.time} asc nulls first`, asc(gcalEvents.title));
     return {
       day, now, isToday: day === now.day,
       name: settings.name || null,
@@ -56,6 +59,7 @@ export async function todayRoutes(app: FastifyInstance, { db }: { db: DB }) {
       modules: [...allowed],
       subscription: sub,
       parts,
+      calendar: cal,
       events: evs.map(e => ({ id: e.refId, module: e.module, kind: e.kind, time: e.time, title: e.title, value: e.value, unit: e.unit, data: e.data }))
     };
   });

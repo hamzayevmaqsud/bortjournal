@@ -92,6 +92,13 @@
       "when": 1792667940412,
       "tag": "0012_study_note_log",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1792669974339,
+      "tag": "0013_gcal",
+      "breakpoints": true
     }
   ]
 }

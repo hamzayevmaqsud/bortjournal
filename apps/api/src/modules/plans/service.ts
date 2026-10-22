@@ -2,7 +2,7 @@ import { and, asc, eq, gte, isNull, lte, or, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { recordEvent, removeEvents } from '../../core/events.js';
 import { bad, dayParam, guard, hmParam, idParam, notFound, uid } from '../../core/http.js';
-import type { DayContext, Nudge } from '../../core/module.js';
+import type { CalendarItem, DayContext, Nudge } from '../../core/module.js';
 import type { DB, Tx } from '../../db/index.js';
 import { goals, tasks } from './schema.js';
 import { goalRoutes, localToday, skipSeriesDay, syncSeries } from './goals.js';
@@ -98,4 +98,11 @@ export async function plansRemind({ db, userId, now, settings }: DayContext & { 
   const lead = leadOf(settings);
   const ts = await db.select({ id: tasks.id, title: tasks.title, time: tasks.time }).from(tasks).where(and(eq(tasks.userId, userId), eq(tasks.day, now.day), eq(tasks.done, false)));
   return ts.filter(t => t.time).map(t => ({ key: `tasks:${t.id}`, kind: 'tasks', title: lead ? `Через ${lead} мин: ${t.title}` : `Задача в ${t.time!.slice(0, 5)}`, body: lead ? `В ${t.time!.slice(0, 5)} — ${t.title}` : t.title, url: '/#plans', at: Math.max(0, hmMin(t.time)! - lead) }));
+}
+
+/** задачи с датой — в Google Календарь (со временем — на 30 минут, без времени — на весь день) */
+export async function plansCalendar(db: Tx, userId: string, from: string, to: string): Promise<CalendarItem[]> {
+  const rows = await db.select({ id: tasks.id, title: tasks.title, day: tasks.day, time: tasks.time, done: tasks.done }).from(tasks)
+    .where(and(eq(tasks.userId, userId), gte(tasks.day, from), lte(tasks.day, to)));
+  return rows.map(t => ({ key: `task:${t.id}`, title: t.title, day: t.day!, time: t.time, minutes: 30, done: t.done }));
 }

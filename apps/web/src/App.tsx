@@ -44,6 +44,7 @@ import { applyTheme, type Theme } from './lib/theme';
 
 const TABS: Array<[string, string, string]> = [['today', 'today', 'Сегодня'], ['plans', 'plans', 'Планы'], ['add', 'plus', 'Записать'], ['food', 'food', 'Еда'], ['more', 'more', 'Ещё']];
 /** ссылка из напоминания «Фото разобрано»: #food?draft=<id> */
+const GCAL_BACK: Record<string, [string, boolean]> = { connected: ['Google Календарь подключён — задачи появятся в календаре «Lumi» через пару минут', false], denied: ['Доступ к календарю не выдан', true], failed: ['Не получилось подключить календарь — попробуй ещё раз', true] };
 const draftLink = (h: string) => /^food\?draft=([0-9a-f-]{36})$/.exec(h)?.[1] ?? null;
 const ORDER = ['today', 'plans', 'food', 'study', 'gym', 'budget', 'books', 'goal', 'stats', 'more', 'profile', 'admin'];
 // разделы, открываемые поверх вкладок (на телефоне — с кнопкой «назад»); платные — с ключом своего набора
@@ -69,10 +70,12 @@ export function App() {
   // когда прокрутка остановилась, панель плавно доезжает до ближайшего положения. Стиль пишем прямо в элемент — без перерисовки React
   const tabsRef = useRef<HTMLElement>(null), shift = useRef(0), goRef = useRef<(name: string) => void>(() => {}), openRef = useRef<(s: SheetState) => void>(() => {});
   // ссылка на черновик открывает «Еду» и проверку фото
+  // возврат со страницы Google после подключения календаря: #profile?gcal=connected|denied|failed
+  const openGcalBack = (h: string) => { const g = /^profile\?gcal=(\w+)$/.exec(h)?.[1]; if (!g) return false; goRef.current('profile'); const m = GCAL_BACK[g]; if (m) toast(m[0], m[1] ? { err: true } : undefined); history.replaceState(null, '', location.pathname); return true; };
   const openDraftLink = (h: string) => { const id = draftLink(h); if (!id) return false; goRef.current('food'); openRef.current({ kind: 'draft', id }); history.replaceState(null, '', location.pathname); return true; };
   // уведомление ведёт в раздел: «/#plans» при открытии или сообщение от service worker, если окно уже открыто
   useEffect(() => {
-    const nav = (h: string) => { if (openDraftLink(h)) return; if (h === 'voice') { openRef.current({ kind: 'voice' }); history.replaceState(null, '', location.pathname); return; } if (ORDER.includes(h)) { goRef.current(h); history.replaceState(null, '', location.pathname); } };
+    const nav = (h: string) => { if (openGcalBack(h) || openDraftLink(h)) return; if (h === 'voice') { openRef.current({ kind: 'voice' }); history.replaceState(null, '', location.pathname); return; } if (ORDER.includes(h)) { goRef.current(h); history.replaceState(null, '', location.pathname); } };
     const onMsg = (e: MessageEvent) => { if (typeof e.data?.nav === 'string') nav(e.data.nav); };
     const onHash = () => nav(location.hash.slice(1));
     navigator.serviceWorker?.addEventListener('message', onMsg); addEventListener('hashchange', onHash);
@@ -99,7 +102,7 @@ export function App() {
   const ready = !!me?.profile?.heightCm;
   // ссылка для нового пароля: /#reset=…
   const [resetToken, setResetToken] = useState(() => /^#reset=([\w-]{20,})$/.exec(location.hash)?.[1] ?? '');
-  useEffect(() => { const h = location.hash.slice(1); if (!ready) return; if (openDraftLink(h)) { /* открыт черновик */ } else if (h === 'voice') { openRef.current({ kind: 'voice' }); history.replaceState(null, '', location.pathname); } else if (ORDER.includes(h)) { goRef.current(h); history.replaceState(null, '', location.pathname); } }, [ready]);
+  useEffect(() => { const h = location.hash.slice(1); if (!ready) return; if (openGcalBack(h)) { /* вернулись от Google */ } else if (openDraftLink(h)) { /* открыт черновик */ } else if (h === 'voice') { openRef.current({ kind: 'voice' }); history.replaceState(null, '', location.pathname); } else if (ORDER.includes(h)) { goRef.current(h); history.replaceState(null, '', location.pathname); } }, [ready]);
   // вернулись после привязки Google или Apple из профиля — сказать, что вышло, и открыть профиль
   useEffect(() => { if (!ready) return; const r = takeAuthResult(); if (!r) return; toast(r.error ?? r.ok!, r.error ? { err: true } : undefined); goRef.current('profile'); }, [ready]); // eslint-disable-line react-hooks/exhaustive-deps
   const [tab, setTab] = useState('today');

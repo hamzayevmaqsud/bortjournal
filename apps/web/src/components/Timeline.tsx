@@ -3,7 +3,7 @@
  * Нажатие на отметку — карточка записи; на пустое место — «Записать» на это время.
  */
 import { useEffect, useRef, useState } from 'react';
-import type { DayEvent, Task } from '../lib/api';
+import type { CalEvent, DayEvent, Task } from '../lib/api';
 import { fmt, fmt1, hmToMin, minToHm } from '../lib/format';
 import { buzz } from '../lib/motion';
 import { Icon } from './Icon';
@@ -12,10 +12,10 @@ const T0 = 6 * 60, SPAN = 18 * 60;
 const pct = (t: string) => Math.max(0, Math.min(100, (hmToMin(t) - T0) / SPAN * 100));
 
 export interface Mark { id: string; lane: string; time: string; title: string; sub?: string; value?: string; color: string; icon: string; kcal?: number; ml?: number; min?: number; open?: boolean; task?: boolean; deletable?: boolean }
-const LANES: Array<[string, string, string, string]> = [['food', 'food', 'var(--food)', 'Еда'], ['water', 'drop', 'var(--water)', 'Вода'], ['study', 'study', 'var(--study)', 'Учёба'], ['gym', 'gym', 'var(--gym)', 'Зал'], ['task', 'task', 'var(--orange)', 'Задачи']];
+const LANES: Array<[string, string, string, string]> = [['food', 'food', 'var(--food)', 'Еда'], ['water', 'drop', 'var(--water)', 'Вода'], ['study', 'study', 'var(--study)', 'Учёба'], ['gym', 'gym', 'var(--gym)', 'Зал'], ['task', 'task', 'var(--orange)', 'Задачи'], ['cal', 'plans', 'var(--navy)', 'Календарь']];
 
 /** события дня → отметки на дорожках */
-export function marksOf(events: DayEvent[], tasks: Task[]): Mark[] {
+export function marksOf(events: DayEvent[], tasks: Task[], calendar: CalEvent[] = []): Mark[] {
   const out: Mark[] = [];
   for (const e of events) {
     if (!e.time || !e.id) continue;
@@ -24,12 +24,15 @@ export function marksOf(events: DayEvent[], tasks: Task[]): Mark[] {
     else if (e.kind === 'session') out.push({ id: e.id, lane: 'study', time: e.time, title: e.title, value: e.value ? `${e.value} мин` : '', color: 'var(--study)', icon: 'study', min: e.value ?? 30 });
     else if (e.kind === 'workout') out.push({ id: e.id, lane: 'gym', time: e.time, title: e.title, value: e.value ? `${e.value} мин` : '', color: 'var(--gym)', icon: 'gym', min: e.value ?? 60 });
   }
+  // встречи из Google Календаря — только посмотреть: ни изменить, ни удалить из Lumi
+  for (const c of calendar) if (c.time) out.push({ id: `cal-${c.id}`, lane: 'cal', time: c.time, title: c.title, sub: 'Google Календарь', value: c.minutes ? (c.minutes >= 60 ? `${Math.floor(c.minutes / 60)} ч${c.minutes % 60 ? ` ${c.minutes % 60} мин` : ''}` : `${c.minutes} мин`) : '', color: 'var(--navy)', icon: 'plans', min: c.minutes ?? 30 });
   for (const t of tasks) if (t.time) out.push({ id: t.id, lane: 'task', time: t.time, title: t.title, sub: t.done ? 'сделано' : 'задача', value: t.done ? '✓' : '', color: 'var(--orange)', icon: 'task', open: !t.done, task: true });
   return out;
 }
 
-export function Timeline({ marks, now, still, pro = true, sums, onAdd, onDelete, onEdit, onToggleTask }: {
+export function Timeline({ marks, now, still, pro = true, sums, allDay = [], onAdd, onDelete, onEdit, onToggleTask }: {
   marks: Mark[]; now: string | null; still: boolean; pro?: boolean;
+  /** события календаря на весь день — строкой над шкалой */ allDay?: string[];
   /** итог по дорожке справа — только на широком экране */ sums?: Record<string, string>;
   onAdd: (time: string) => void; onDelete: (m: Mark) => void; onEdit?: (m: Mark) => void; onToggleTask: (id: string) => void;
 }) {
@@ -46,11 +49,12 @@ export function Timeline({ marks, now, still, pro = true, sums, onAdd, onDelete,
   let n = 0;
 
   return <div ref={box} className={`tl-wrap ${still ? 'still' : ''}`} style={{ position: 'relative' }}>
+    {allDay.length > 0 && <div className="tl-allday"><Icon name="plans" /><span>Весь день: {allDay.join(' · ')}</span></div>}
     <div className={`tl ${sums ? 'wide' : ''}`}>
       <div className="tl-axis">{['06', '09', '12', '15', '18', '21', '24'].map((h, i) => <span key={h} style={{ left: `${i / 6 * 100}%`, visibility: now && Math.abs(i / 6 * 100 - pct(now)) < (sums ? 6 : 19) ? 'hidden' : undefined }}>{h}</span>)}</div>
       <div className="tl-body">
         {now && <div className="tl-now" style={{ left: `calc(var(--lw) + (100% - var(--lw) - var(--sw)) * ${pct(now) / 100})` }}><b>сейчас {now}</b></div>}
-        {LANES.filter(([lane]) => pro || (lane !== 'study' && lane !== 'gym') || marks.some(m => m.lane === lane)).map(([lane, icon, color, name]) => (
+        {LANES.filter(([lane]) => lane === 'cal' ? marks.some(m => m.lane === 'cal') : pro || (lane !== 'study' && lane !== 'gym') || marks.some(m => m.lane === lane)).map(([lane, icon, color, name]) => (
           <div className="lane" key={lane}>
             <span className="lane-ic" style={{ ['--c' as string]: color }} title={name}><Icon name={icon} /><span className="lane-name">{name}</span></span>
             <div className="track" aria-label={`${name}: нажми, чтобы добавить`} onClick={e => {

@@ -188,6 +188,26 @@ export const integrations = pgTable('integrations', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow()
 }, t => [uniqueIndex('integrations_user_provider_uq').on(t.userId, t.provider)]);
 
+/** Google Календарь: пункт Lumi (задача, тренировка) ↔ событие в календаре «Lumi»; hash — отпечаток содержимого события */
+export const gcalLinks = pgTable('gcal_links', {
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  key: text('key').notNull(),
+  eventId: text('event_id').notNull(),
+  hash: text('hash').notNull(),
+  day: date('day', { mode: 'string' }).notNull()
+}, t => [primaryKey({ columns: [t.userId, t.key] })]);
+
+/** Google Календарь: события основного календаря на окно синхронизации — для ленты дня (заменяются целиком) */
+export const gcalEvents = pgTable('gcal_events', {
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  eventId: text('event_id').notNull(),
+  day: date('day', { mode: 'string' }).notNull(),
+  /** «ЧЧ:ММ» в поясе человека; null — на весь день */
+  time: text('time'),
+  minutes: integer('minutes'),
+  title: text('title').notNull()
+}, t => [primaryKey({ columns: [t.userId, t.eventId, t.day] }), index('gcal_events_user_day_idx').on(t.userId, t.day)]);
+
 /** Сырые данные с устройств — отдельно от ручных записей и с указанием источника */
 export const rawSamples = pgTable('raw_samples', {
   id: bigserial('id', { mode: 'number' }).primaryKey(),

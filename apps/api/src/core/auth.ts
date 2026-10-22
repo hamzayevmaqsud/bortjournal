@@ -199,7 +199,7 @@ export async function authRoutes(app: FastifyInstance, { db }: { db: DB }) {
     const [u] = await db.select({ hash: users.passwordHash, username: users.username }).from(users).where(eq(users.id, req.userId!));
     const ok = u?.hash ? await verifyPassword(password, u.hash) : String(b.confirm ?? '').trim().toLowerCase() === u?.username.toLowerCase();
     if (!ok) { fail(`wipe:${req.userId}`); return reply.code(400).send({ error: u?.hash ? 'Пароль неверный.' : 'Логин не совпадает.' }); }
-    const KEEP = ['users', 'sessions', 'profiles', 'entitlements', 'push_subscriptions', 'api_tokens', 'auth_identities', 'password_resets', 'ai_usage', 'feedback', 'integrations', 'activity_weeks'];
+    const KEEP = ['users', 'sessions', 'profiles', 'entitlements', 'push_subscriptions', 'api_tokens', 'auth_identities', 'password_resets', 'ai_usage', 'feedback', 'integrations', 'activity_weeks', 'gcal_links'];
     await db.transaction(async tx => {
       const t = await tx.execute<{ name: string }>(sql`select table_name as name from information_schema.columns where column_name = 'user_id' and table_schema = current_schema() order by table_name`);
       for (const { name } of t.rows) if (!KEEP.includes(name)) await tx.execute(sql`delete from ${sql.identifier(name)} where user_id = ${req.userId!}`);

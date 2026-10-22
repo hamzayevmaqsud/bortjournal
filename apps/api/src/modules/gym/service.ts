@@ -1,6 +1,6 @@
 import { and, eq, gte, lte, sql } from 'drizzle-orm';
-import { weekday } from '@bortjournal/core';
-import type { DayContext, Nudge } from '../../core/module.js';
+import { addDays, weekday } from '@bortjournal/core';
+import type { CalendarItem, DayContext, Nudge } from '../../core/module.js';
 import type { Tx } from '../../db/index.js';
 import { liveWorkouts, workoutPlans, workouts } from './schema.js';
 
@@ -28,4 +28,13 @@ export async function gymRemind({ db, userId, now }: DayContext & { min: number 
   if (live) return [];
   const n = t.plan.exercises;
   return [{ key: `gym:${t.plan.id}`, kind: 'gym', title: `Сегодня тренировка: ${t.plan.name}`, body: `${n} ${plural(n, 'упражнение', 'упражнения', 'упражнений')} — открой и начни, веса подскажу.`, url: '/#gym', at: hmMin(t.plan.time) ?? 19 * 60 }];
+}
+
+/** тренировки по плану на две недели вперёд — в Google Календарь (на час) */
+export async function gymCalendar(db: Tx, userId: string, from: string, to: string, today: string): Promise<CalendarItem[]> {
+  const plans = await db.select().from(workoutPlans).where(eq(workoutPlans.userId, userId));
+  const out: CalendarItem[] = [], end = [to, addDays(today, 13)].sort()[0]!;
+  for (let d = from > today ? from : today; d <= end; d = addDays(d, 1))
+    for (const p of plans) if (p.weekdays.includes(weekday(d))) out.push({ key: `gym:${p.id}:${d}`, title: `Зал: ${p.name}`, day: d, time: p.time, minutes: 60 });
+  return out;
 }

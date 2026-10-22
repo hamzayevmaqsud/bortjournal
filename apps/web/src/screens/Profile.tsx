@@ -15,6 +15,7 @@ import { PasswordForm, ThemePick } from './More';
 import { TRACK } from './Onboarding';
 import { VoiceSetup } from '../components/VoiceSetup';
 import { ObsidianSetup } from '../components/ObsidianSetup';
+import { CalendarSetup } from '../components/CalendarSetup';
 import { AppleMark, GoogleMark, PROVIDER_NAMES, startUrl, useProviders, type ProviderId } from '../lib/oauth';
 
 interface Account { username: string; email: string | null; createdAt: string; tzOffset: number; hasPassword: boolean; identities: Array<{ provider: ProviderId; email: string | null; createdAt: string }> }
@@ -86,7 +87,7 @@ export function Profile({ me, wide, onBack, onSaved, onRedo, onReminders, onFeed
   onReminders: () => void; onFeedback?: () => void; onPaywall: () => void; onLogout: () => void; onDeleted: () => void;
 }) {
   const toast = useToast(), s = me.profile?.settings ?? {}, p = me.profile, sub = me.subscription;
-  const [acc, setAcc] = useState<Account | null>(null), [devs, setDevs] = useState<Device[]>([]), [allDevs, setAllDevs] = useState(false), [sheet, setSheet] = useState<null | 'password' | 'delete' | 'wipe' | 'voice' | 'obsidian'>(null);
+  const [acc, setAcc] = useState<Account | null>(null), [devs, setDevs] = useState<Device[]>([]), [allDevs, setAllDevs] = useState(false), [sheet, setSheet] = useState<null | 'password' | 'delete' | 'wipe' | 'voice' | 'obsidian' | 'gcal'>(null);
   const [name, setName] = useState(String(s.name ?? '')), [email, setEmail] = useState('');
   const load = useCallback(async () => {
     try { const a = await api<Account>('/api/account'); setAcc(a); setEmail(a.email ?? ''); } catch { /* без сети — покажем то, что есть */ }
@@ -152,6 +153,7 @@ export function Profile({ me, wide, onBack, onSaved, onRedo, onReminders, onFeed
 
     <section className="panel"><div className="panel-h"><h2>Уведомления и подключения</h2></div>
       <div className="pf-list"><button className="pf-row" onClick={() => setSheet('voice')}><span className="mid"><b>Голос и календарь</b><small>кнопка действия, Siri, виджет; задачи в «Календаре»</small></span><Icon name="chev" className="ic chev" /></button>
+        <button className="pf-row" onClick={() => setSheet('gcal')}><span className="mid"><b>Google Календарь</b><small>задачи и тренировки в календаре, встречи — в ленте дня</small></span><Icon name="chev" className="ic chev" /></button>
         <button className="pf-row" onClick={() => setSheet('obsidian')}><span className="mid"><b>Obsidian</b><small>конспекты из хранилища приходят в «Учёбу» сами</small></span><Icon name="chev" className="ic chev" /></button>
         <button className="pf-row" onClick={onReminders}><span className="mid"><b>Напоминания</b><small>{s.remind?.off ? 'выключены' : 'вода, еда, задачи, тренировки, вопросы дня'}</small></span><Icon name="chev" className="ic chev" /></button></div>
     </section>
@@ -188,10 +190,11 @@ export function Profile({ me, wide, onBack, onSaved, onRedo, onReminders, onFeed
       </div>
     </section>
 
-    <Sheet open={!!sheet} onClose={() => setSheet(null)} tall={sheet === 'voice' || sheet === 'obsidian'} title={sheet === 'voice' ? 'Голос и календарь' : sheet === 'obsidian' ? 'Obsidian' : sheet === 'delete' ? 'Удалить аккаунт' : sheet === 'wipe' ? 'Стереть все записи' : acc && !acc.hasPassword ? 'Задать пароль' : 'Сменить пароль'}>
+    <Sheet open={!!sheet} onClose={() => setSheet(null)} tall={sheet === 'voice' || sheet === 'obsidian' || sheet === 'gcal'} title={sheet === 'voice' ? 'Голос и календарь' : sheet === 'obsidian' ? 'Obsidian' : sheet === 'gcal' ? 'Google Календарь' : sheet === 'delete' ? 'Удалить аккаунт' : sheet === 'wipe' ? 'Стереть все записи' : acc && !acc.hasPassword ? 'Задать пароль' : 'Сменить пароль'}>
       {sheet === 'password' && <PasswordForm first={acc ? !acc.hasPassword : false} onDone={() => { setSheet(null); load(); }} />}
       {sheet === 'voice' && <VoiceSetup />}
       {sheet === 'obsidian' && <ObsidianSetup />}
+      {sheet === 'gcal' && <CalendarSetup />}
       {sheet === 'wipe' && <DeleteForm wipe username={me.username} hasPassword={acc?.hasPassword ?? true} onDeleted={() => setSheet(null)} />}
       {sheet === 'delete' && <DeleteForm username={me.username} hasPassword={acc?.hasPassword ?? true} onDeleted={onDeleted} />}
     </Sheet>

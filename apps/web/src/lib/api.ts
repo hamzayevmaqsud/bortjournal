@@ -129,9 +129,12 @@ export interface Meal { source?: string; id: string; day: string; time: string |
 export interface Drink { id: string; day: string; time: string | null; type: string; ml: number; title: string; kcal: number; name: string | null; kcalPer100: number | null; sugarPer100: number | null }
 export interface DayEvent { id: string | null; module: string; kind: string; time: string | null; title: string; value: number | null; unit: string | null; data: Record<string, unknown> | null }
 export interface Task { id: string; title: string; time: string | null; done: boolean; prio: boolean; repeat: boolean }
+export interface CalEvent { id: string; title: string; time: string | null; minutes: number | null }
 export interface Today {
   day: string; now: { day: string; hm: string; minutes: number }; isToday: boolean; name: string | null;
   plan: { kcal: number; protein: number }; streak: number; modules: string[]; events: DayEvent[]; subscription: Subscription;
+  /** события Google Календаря на этот день (если подключён); time null — на весь день */
+  calendar?: CalEvent[];
   parts: {
     food?: { kcal: number; protein: number; fat: number; carbs: number; waterMl: number; norm: { kcal: number; protein: number; fat: number; carbs: number; water: number } };
     body?: { steps: number; stepsGoal: number; weight: { kg: number; day: string | null; today: boolean } | null };

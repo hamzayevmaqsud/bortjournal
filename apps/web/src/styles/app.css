@@ -1980,3 +1980,7 @@ a.btn-accent{text-decoration:none}
 .task.dragging{opacity:.45}
 .wk-d.drop{outline:2px dashed var(--orange);outline-offset:2px;background:color-mix(in srgb,var(--orange) 12%,transparent)}
 .panel.drop{outline:2px dashed var(--orange);outline-offset:-6px}
+/* лента дня: события календаря на весь день — строкой над шкалой */
+.tl-allday{display:flex;align-items:center;gap:8px;margin:0 0 10px;padding:8px 12px;border-radius:12px;background:color-mix(in srgb,var(--navy) 8%,transparent);color:var(--navy);font-size:13px;font-weight:600}
+.tl-allday .ic{width:16px;height:16px;flex:none}
+.tl-allday span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}

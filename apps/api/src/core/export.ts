@@ -13,7 +13,8 @@ import { bad, uid } from './http.js';
 import { checksOk, importState } from './legacy-import.js';
 import type { ImportCheck, LegacyState } from './module.js';
 
-const SKIP = new Set(['sessions', 'push_subscriptions', 'users', 'raw_samples']);
+// без секретов и служебного: сессии, ключи уведомлений, токены интеграций, связи с календарём
+const SKIP = new Set(['sessions', 'push_subscriptions', 'users', 'raw_samples', 'integrations', 'api_tokens', 'gcal_links']);
 
 export async function exportRoutes(app: FastifyInstance, { db }: { db: DB }) {
   app.get('/api/export', { preHandler: requireUser }, async (req, reply) => {
