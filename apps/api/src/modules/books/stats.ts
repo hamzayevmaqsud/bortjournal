@@ -11,7 +11,7 @@ const range = (n: number, end: string) => Array.from({ length: n }, (_, k) => ad
 export async function booksStats(db: Tx, userId: string, n: number) {
   const { today } = await userContext(db, userId), ds = range(n, today), year = +today.slice(0, 4);
   const log = await db.select({ day: readingLog.day, pages: readingLog.pages }).from(readingLog)
-    .where(and(eq(readingLog.userId, userId), gte(readingLog.day, addDays(today, -400)), lte(readingLog.day, today)));
+    .where(and(eq(readingLog.userId, userId), gte(readingLog.day, addDays(today, -Math.max(2 * n + 1, 400))), lte(readingLog.day, today)));
   const by = new Map<string, number>();
   for (const l of log) by.set(l.day, (by.get(l.day) ?? 0) + l.pages);
   // серия: дни подряд с чтением; сегодня ещё не читал — серия не прерывается
@@ -21,7 +21,7 @@ export async function booksStats(db: Tx, userId: string, n: number) {
   const thisYear = done.filter(b => b.finishedOn?.startsWith(String(year)));
   const genres = new Map<string, number>();
   for (const b of done) genres.set(b.genre || 'Без жанра', (genres.get(b.genre || 'Без жанра') ?? 0) + 1);
-  const speed = done.filter(b => b.startedOn && b.finishedOn && b.pages).map(b => b.pages! / (diffDays(b.startedOn!, b.finishedOn!) + 1));
+  const speed = done.filter(b => b.startedOn && b.finishedOn && b.pages && b.finishedOn >= b.startedOn).map(b => b.pages! / (diffDays(b.startedOn!, b.finishedOn!) + 1));
   const [p] = await db.select({ settings: profiles.settings }).from(profiles).where(eq(profiles.userId, userId));
   const perDay = ds.map(day => ({ day, pages: by.get(day) ?? 0 }));
   return {

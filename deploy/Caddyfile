@@ -1,0 +1,15 @@
+# https для домена из deploy/.env (DOMAIN). Сертификат Caddy получает и продлевает сам.
+{$DOMAIN} {
+	encode zstd gzip
+	# фото еды и файлы конспектов бывают большими
+	request_body {
+		max_size 50MB
+	}
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options nosniff
+		Referrer-Policy strict-origin-when-cross-origin
+		-Server
+	}
+	reverse_proxy app:4000
+}

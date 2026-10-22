@@ -151,7 +151,7 @@ export function Profile({ me, wide, onBack, onSaved, onRedo, onReminders, onFeed
     <section className="panel"><div className="panel-h"><h2>Разделы</h2></div><SectionsForm me={me} onSaved={onSaved} /></section>
     <ThemePick me={me} onSaved={onSaved} />
 
-    <section className="panel"><div className="panel-h"><h2>Уведомления и подключения</h2></div>
+    <section className="panel"><div className="panel-h"><h2>Напоминания и подключения</h2></div>
       <div className="pf-list"><button className="pf-row" onClick={() => setSheet('voice')}><span className="mid"><b>Голос и календарь</b><small>кнопка действия, Siri, виджет; задачи в «Календаре»</small></span><Icon name="chev" className="ic chev" /></button>
         <button className="pf-row" onClick={() => setSheet('gcal')}><span className="mid"><b>Google Календарь</b><small>задачи и тренировки в календаре, встречи — в ленте дня</small></span><Icon name="chev" className="ic chev" /></button>
         <button className="pf-row" onClick={() => setSheet('obsidian')}><span className="mid"><b>Obsidian</b><small>конспекты из хранилища приходят в «Учёбу» сами</small></span><Icon name="chev" className="ic chev" /></button>

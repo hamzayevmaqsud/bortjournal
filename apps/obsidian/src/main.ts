@@ -71,7 +71,13 @@ export default class LumiPlugin extends Plugin {
     this.bar.setAttr('title', s?.error ?? 'Конспекты отправляются в Lumi после правки');
   }
 
-  async save() { await this.saveData(this.settings); this.rebuild(); }
+  private again: number | null = null;
+  /** сохранить настройки; пересобрать синхронизацию, когда человек перестал печатать (иначе каждая буква сбрасывала бы очередь) */
+  async save() {
+    await this.saveData(this.settings);
+    if (this.again !== null) window.clearTimeout(this.again);
+    this.again = window.setTimeout(() => { this.again = null; this.rebuild(); }, 1500);
+  }
 }
 
 class LumiSettings extends PluginSettingTab {

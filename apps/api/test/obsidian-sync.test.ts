@@ -68,6 +68,14 @@ describe('заметки по ключу плагина', () => {
     expect((await plugin('writer', 'GET', '/status')).json().notes).toBe(2);
   });
 
+  it('переименование на путь удалённой заметки — тот же конспект, архивный не мешает', async () => {
+    await plugin('writer', 'PUT', '/notes', { path: 'Учёба/A.md', markdown: '## A\nстарое' });
+    await plugin('writer', 'DELETE', `/notes?path=${encodeURIComponent('Учёба/A.md')}`);
+    const b = (await plugin('writer', 'PUT', '/notes', { path: 'Учёба/B.md', markdown: '## B\nновое' })).json().id;
+    expect((await plugin('writer', 'POST', '/rename', { from: 'Учёба/B.md', to: 'Учёба/A.md' })).statusCode).toBe(200);
+    expect((await plugin('writer', 'PUT', '/notes', { path: 'Учёба/A.md', markdown: '## B\nновое и дописанное' })).json()).toMatchObject({ id: b, status: 'updated' });
+  });
+
   it('ограничения: путь обязателен, заметка не больше 1 МБ', async () => {
     expect((await plugin('writer', 'PUT', '/notes', { markdown: 'x' })).statusCode).toBe(400);
     expect((await plugin('writer', 'PUT', '/notes', { path: 'Учёба/big.md', markdown: 'x'.repeat(1_100_000) })).statusCode).toBe(413);

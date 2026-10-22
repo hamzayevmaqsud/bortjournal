@@ -63,8 +63,10 @@ const localStamp = (day: string, hm: string, plusMin: number, tz: number) => {
   const d = new Date(Date.parse(`${day}T${hm}:00Z`) + plusMin * 60e3);
   return `${d.toISOString().slice(0, 19)}${offset(tz)}`;
 };
+const HM = /^([01]\d|2[0-3]):[0-5]\d$/;
 function eventOf(it: CalendarItem, tz: number) {
-  const timed = it.time ? { start: { dateTime: localStamp(it.day, it.time, 0, tz) }, end: { dateTime: localStamp(it.day, it.time, it.minutes ?? 30, tz) } }
+  // кривое время (старые записи) — событие на весь день, а не падение всей синхронизации
+  const timed = it.time && HM.test(it.time) ? { start: { dateTime: localStamp(it.day, it.time, 0, tz) }, end: { dateTime: localStamp(it.day, it.time, it.minutes ?? 30, tz) } }
     : { start: { date: it.day }, end: { date: addDays(it.day, 1) } };
   return { summary: `${it.done ? '✓ ' : ''}${it.title}`.slice(0, 300), description: 'Из Lumi', ...timed };
 }
@@ -121,12 +123,17 @@ export async function syncCalendar(db: DB, userId: string, at = new Date()) {
   const got = (await gapi(token, 'GET', `/calendars/primary/events?${q}`)).json?.items ?? [];
   const rows = (got as any[]).filter(e => e?.id && e.status !== 'cancelled').map(e => ({ e, l: localOf(e, tz) })).filter(x => x.l && x.l.day >= from && x.l.day <= to)
     .map(({ e, l }) => ({ userId, eventId: String(e.id).slice(0, 200), day: l!.day, time: l!.time, minutes: l!.minutes, title: String(e.summary ?? 'Без названия').slice(0, 300) }));
+  // пока шёл проход, человек мог отключить или переподключить календарь — тогда результат этого прохода не нужен
+  const still = await rowOf(db, userId);
+  let cur: Secret | null = null;
+  try { cur = still?.secretEnc ? unseal<Secret>(still.secretEnc) : null; } catch { cur = null; }
+  if (!still || still.status !== 'active' || cur?.calendarId !== s.calendarId || cur.refresh !== s.refresh) return changes;
   await db.transaction(async tx => {
     await tx.delete(gcalEvents).where(and(eq(gcalEvents.userId, userId), gte(gcalEvents.day, from), lte(gcalEvents.day, to)));
     if (rows.length) await tx.insert(gcalEvents).values(rows).onConflictDoNothing();
   });
 
-  await save(db, row.id, { ...s, lastSync: now, error: null });
+  await save(db, row.id, { ...cur!, lastSync: now, error: null });
   return changes;
 }
 
@@ -137,7 +144,7 @@ export async function workCalendars(db: DB, at = new Date()) {
   let n = 0;
   for (const row of rows) {
     let s: Secret;
-    try { s = unseal<Secret>(row.secretEnc!); } catch { continue; }
+    try { s = unseal<Secret>(row.secretEnc!); } catch { await db.update(integrations).set({ status: 'error' }).where(eq(integrations.id, row.id)); continue; }
     if (s.lastSync && at.getTime() - s.lastSync < EVERY_MS) continue;
     try { n += await syncCalendar(db, row.userId, at); }
     catch (e) {
@@ -159,8 +166,11 @@ export async function gcalRoutes(app: FastifyInstance, { db }: { db: DB }) {
   app.get('/api/integrations', { preHandler: requireUser }, async req => {
     const row = await rowOf(db, req.userId!);
     let s: Secret | null = null;
-    try { s = row?.secretEnc ? unseal<Secret>(row.secretEnc) : null; } catch { s = null; }
-    return { googleCalendar: { available: available(), connected: !!row, error: s?.error ?? null, lastSync: s?.lastSync ? new Date(s.lastSync).toISOString() : null } };
+    let broken = false;
+    try { s = row?.secretEnc ? unseal<Secret>(row.secretEnc) : null; } catch { s = null; broken = true; }
+    // ключ шифрования сменился или потерян — токены не прочитать
+    const error = broken ? 'Ключ шифрования на сервере сменился — подключи календарь заново.' : s?.error ?? null;
+    return { googleCalendar: { available: available(), connected: !!row, error, lastSync: s?.lastSync ? new Date(s.lastSync).toISOString() : null } };
   });
 
   app.get('/api/integrations/google-calendar/start', { preHandler: requireUser }, async (req, reply) => {

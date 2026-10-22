@@ -248,10 +248,10 @@ function Overview({ o, open, onQuiz, onObsQuiz, onReload }: { o: any; open: (s: 
 
     {(o.obs.enabled || o.obs.plugin) && <section className="wc span12"><div className="card-head"><h2>Obsidian</h2>{o.obs.enabled && <div className="card-actions"><button className="btn-accent" onClick={async () => { await api('/api/study/obsidian/sync', { method: 'POST' }).catch(() => {}); toast('Синхронизировано'); onReload(); }}><Icon name="repeat" />Синхронизировать</button></div>}</div>
       {o.obs.enabled ? <p className="card-note">Хранилище <b>{o.obs.vault}</b> → папка <b>{o.obs.folder}</b> · синхронизировано {ago(o.obs.lastSync)}</p>
-        : o.notes.length ? <p className="card-note">Заметки присылает плагин Obsidian · последняя правка {ago(o.obs.lastSync)}</p>
+        : o.notes.length ? <p className="card-note">Конспекты присылает плагин Obsidian · последняя правка {ago(o.obs.lastSync)}</p>
         : <p className="card-note">Поставь плагин Lumi в Obsidian — конспекты из выбранной папки будут приходить сюда сами после каждой правки. Ключ и инструкция — в профиле, раздел «Obsidian».</p>}
       {o.obs.error && <p className="form-err">{o.obs.error}</p>}
-      {(o.obs.enabled || o.notes.length > 0) && <div className="fp-search"><Icon name="search" /><input className="in" type="search" placeholder="Поиск по всем заметкам: etcd кворум, multipath, LACP…" value={q} onChange={e => setQ(e.target.value)} /></div>}
+      {(o.obs.enabled || o.notes.length > 0) && <div className="fp-search"><Icon name="search" /><input className="in" type="search" placeholder="Поиск по всем конспектам: etcd кворум, multipath, LACP…" value={q} onChange={e => setQ(e.target.value)} /></div>}
       {hits !== null ? (hits.length ? hits.map((x: any, i: number) => <button key={i} className="hit-i" onClick={() => open({ kind: 'obs', rel: x.rel, h: x.h, q })}><span className="hit-path"><b>{noteShort(x.title)}</b>{x.h ? ` › ${x.h}` : ''}</span><span className="hit-snip">{x.snippet}</span></button>) : <p className="card-note">Ничего не нашлось. Попробуй другое слово.</p>)
         : <>
           {o.notes.length > 0 && <div className="mt-list">{o.notes.map((n: any) => <article key={n.id} className="mt">

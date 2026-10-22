@@ -1,0 +1,12 @@
+**/node_modules
+**/dist
+data
+deploy/backups
+.env
+.env.*
+!.env.example
+.git
+.scratch
+apps/mobile/ios
+apps/mobile/android
+*.log

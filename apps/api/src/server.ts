@@ -33,8 +33,10 @@ const CSP = ["default-src 'self'", "script-src 'self'", "style-src 'self' 'unsaf
 // принимаем только свои адреса: защита от подмены Host (DNS rebinding)
 const hostOk = (host = '') => { const h = host.replace(/:\d+$/, '').toLowerCase(); return h === 'localhost' || h === '127.0.0.1' || h.endsWith('.ts.net') || (process.env.ALLOWED_HOSTS ?? '').split(',').map(s => s.trim()).includes(h); };
 
+/** чьим заголовкам X-Forwarded-* верить: по умолчанию только локальному прокси; за Caddy в Docker — TRUST_PROXY=true или подсеть */
+const trustProxy = () => { const v = process.env.TRUST_PROXY?.trim(); return !v ? '127.0.0.1' : v === 'true' ? true : v.split(',').map(x => x.trim()); };
 export async function buildApp({ db, serveWeb = fs.existsSync(WEB_DIST) }: { db: DB; serveWeb?: boolean }) {
-  const app = Fastify({ logger: process.env.NODE_ENV === 'test' ? false : { level: process.env.LOG_LEVEL ?? 'info' }, bodyLimit: 1_000_000, trustProxy: '127.0.0.1' });
+  const app = Fastify({ logger: process.env.NODE_ENV === 'test' ? false : { level: process.env.LOG_LEVEL ?? 'info' }, bodyLimit: 1_000_000, trustProxy: trustProxy() });
 
   app.addHook('onRequest', async (req, reply) => {
     if (!hostOk(req.headers.host)) return reply.code(421).send({ error: 'Неизвестный адрес.' });

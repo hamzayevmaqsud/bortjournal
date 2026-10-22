@@ -237,7 +237,7 @@ export async function studyRoutes(app: FastifyInstance, { db }: { db: DB }) {
   app.get('/obsidian/note', { preHandler }, async (req, reply) => {
     const rel = String((req.query as any).rel ?? ''), o = await disk(req);
     if (o) return o.readNote(rel);
-    return (await dbNote(db, uid(req), rel)) ?? reply.code(404).send({ error: 'Заметка не найдена.' });
+    return (await dbNote(db, uid(req), rel)) ?? reply.code(404).send({ error: 'Конспект не найден.' });
   });
   // вопросы по заметке Obsidian: заметка копируется в конспекты (с текущим текстом) и дальше — как любой конспект
   app.post('/obsidian/quiz', { preHandler }, async (req, reply) => {

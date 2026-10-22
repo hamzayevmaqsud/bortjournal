@@ -11,7 +11,7 @@ import { requireUser } from './auth.js';
 import { subscription } from './billing.js';
 import { dayEvents } from './events.js';
 import { bad } from './http.js';
-import { events, gcalEvents, profiles, users } from './schema.js';
+import { events, gcalEvents, integrations, profiles, users } from './schema.js';
 
 /** дни с записями: еда, учёба, тренировка или шаги — как в старом журнале */
 export async function activeDays(db: DB, userId: string, today: string) {
@@ -50,7 +50,7 @@ export async function todayRoutes(app: FastifyInstance, { db }: { db: DB }) {
     const evs = (await dayEvents(db, userId, day)).filter(e => allowed.has(e.module));
     // события Google Календаря (если подключён): сначала на весь день, потом по времени
     const cal = await db.select({ id: gcalEvents.eventId, title: gcalEvents.title, time: gcalEvents.time, minutes: gcalEvents.minutes }).from(gcalEvents)
-      .where(and(eq(gcalEvents.userId, userId), eq(gcalEvents.day, day))).orderBy(sql`${gcalEvents.time} asc nulls first`, asc(gcalEvents.title));
+      .where(and(eq(gcalEvents.userId, userId), eq(gcalEvents.day, day), sql`exists (select 1 from ${integrations} i where i.user_id = ${userId} and i.provider = 'google-calendar')`)).orderBy(sql`${gcalEvents.time} asc nulls first`, asc(gcalEvents.title));
     return {
       day, now, isToday: day === now.day,
       name: settings.name || null,

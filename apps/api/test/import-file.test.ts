@@ -53,6 +53,12 @@ describe('импорт выгрузки старого журнала', () => {
 
   it('файл не даёт Pro и не задваивает записи при повторе; выгрузку можно обернуть в { state }', async () => {
     expect(await hasModule(conn.db, userId, 'pro')).toBe(false);
+    // своя обложка, уже перенесённая раньше, при повторном импорте файла не пропадает
+    const OLD2 = { ...OLD, books: [{ id: 'b9', title: 'Своя', status: 'want', cover: { mine: 1 } }] };
+    await r(OLD2);
+    await conn.db.update(s.books).set({ coverKey: 'u/x/b9.jpg' }).where(eq(s.books.legacyId, 'b9'));
+    await r(OLD2);
+    expect((await conn.db.select().from(s.books).where(eq(s.books.legacyId, 'b9')))[0]?.coverKey).toBe('u/x/b9.jpg');
     expect((await r({ rev: 3, state: OLD })).json().ok).toBe(true);
     expect((await conn.db.select({ n: count() }).from(s.meals).where(eq(s.meals.userId, userId)))[0]!.n).toBe(2);
     expect((await conn.db.select({ n: count() }).from(s.drinks).where(eq(s.drinks.userId, userId)))[0]!.n).toBe(1);

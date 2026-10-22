@@ -5,3 +5,4 @@ node_modules/
 dist/
 *.tsbuildinfo
 .env.local
+deploy/backups/

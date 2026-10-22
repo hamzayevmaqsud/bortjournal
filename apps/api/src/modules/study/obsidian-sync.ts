@@ -105,12 +105,14 @@ export async function obsidianSyncRoutes(app: FastifyInstance, { db }: { db: DB 
   const note = async (userId: string, source: string) =>
     (await db.select().from(materials).where(and(eq(materials.userId, userId), eq(materials.kind, 'obsidian'), eq(materials.source, source))))[0];
 
-  app.put('/obsidian/notes', { preHandler, bodyLimit: MAX_NOTE * 2 }, async req => {
+  // предел — 1 МБ текста в UTF-8; тело запроса больше из-за JSON и экранирования
+  app.put('/obsidian/notes', { preHandler, bodyLimit: MAX_NOTE * 4 }, async req => {
     const b = (req.body ?? {}) as { path?: unknown; title?: unknown; markdown?: unknown };
     const source = pathOf(b.path), md = typeof b.markdown === 'string' ? b.markdown.replace(/\r/g, '') : '';
-    if (md.length > MAX_NOTE) throw new HttpError(413, 'Заметка больше 1 МБ — Lumi её не примет.');
+    if (Buffer.byteLength(md) > MAX_NOTE) throw new HttpError(413, 'Заметка больше 1 МБ — Lumi её не примет.');
     const text = md.length > MAX_TEXT ? md.slice(0, MAX_TEXT) : md, title = titleOf(b.title, md, source), userId = uid(req);
-    return db.transaction(async tx => {
+    // две первые отправки одной заметки разом: вторая упрётся в уникальный индекс — повторяем, тогда строка уже есть
+    const once = () => db.transaction(async tx => {
       const [m] = await tx.select().from(materials).where(and(eq(materials.userId, userId), eq(materials.kind, 'obsidian'), eq(materials.source, source))).for('update');
       if (!m) {
         const [n] = await tx.insert(materials).values({ userId, kind: 'obsidian', title, source, text, bytes: Buffer.byteLength(md) }).returning({ id: materials.id });
@@ -123,14 +125,18 @@ export async function obsidianSyncRoutes(app: FastifyInstance, { db }: { db: DB 
       if (m.text !== text) await logSections(tx, userId, m.id, m.text, text);
       return { id: m.id, status: restored ? 'restored' : 'updated' };
     });
+    try { return await once(); } catch (e) { if ((e as { cause?: { code?: string } }).cause?.code === '23505' || (e as { code?: string }).code === '23505') return once(); throw e; }
   });
 
   app.post('/obsidian/rename', { preHandler }, async (req, reply) => {
     const b = (req.body ?? {}) as { from?: unknown; to?: unknown }, from = pathOf(b.from), to = pathOf(b.to), userId = uid(req);
     const m = await note(userId, from);
-    if (!m) return reply.code(404).send({ error: 'Такой заметки в Lumi нет — пришли её целиком.' });
+    if (!m) return reply.code(404).send({ error: 'Такого конспекта в Lumi нет — пришли заметку целиком.' });
     if (from === to) return { id: m.id };
-    if (await note(userId, to)) return reply.code(409).send({ error: 'По новому пути уже есть конспект.' });
+    const taken = await note(userId, to);
+    if (taken && !taken.archivedAt) return reply.code(409).send({ error: 'По новому пути уже есть конспект.' });
+    // по новому пути лежит архивный конспект удалённой заметки — отодвигаем его, история ответов остаётся при нём
+    if (taken) await db.update(materials).set({ source: `${to}#архив-${taken.id.slice(0, 8)}` }).where(eq(materials.id, taken.id));
     // название из имени файла переезжает вместе с ним; заданное заголовком # — остаётся
     const base = (p: string) => p.split('/').pop()!.replace(/\.md$/i, '');
     await db.update(materials).set({ source: to, ...(m.title === base(from) ? { title: base(to).slice(0, 200) } : {}), updatedAt: new Date() }).where(eq(materials.id, m.id));
@@ -139,7 +145,7 @@ export async function obsidianSyncRoutes(app: FastifyInstance, { db }: { db: DB 
 
   app.delete('/obsidian/notes', { preHandler }, async (req, reply) => {
     const m = await note(uid(req), pathOf((req.query as { path?: unknown }).path));
-    if (!m) return reply.code(404).send({ error: 'Такой заметки в Lumi нет.' });
+    if (!m) return reply.code(404).send({ error: 'Такого конспекта в Lumi нет.' });
     if (!m.archivedAt) await db.update(materials).set({ archivedAt: new Date() }).where(eq(materials.id, m.id));
     return { id: m.id, archived: true };
   });

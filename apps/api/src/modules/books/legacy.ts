@@ -16,6 +16,8 @@ const validBooks = (st: LegacyState) => uniqById(list(st.books)).filter(b => str
 
 export async function importBooks({ db, userId, warn, dataDir, username }: ImportContext, st: LegacyState) {
   const bs = validBooks(st);
+  // уже перенесённые свои обложки (повторный импорт, файл выгрузки без папки data) — не терять
+  const before = new Map((await db.select({ legacyId: books.legacyId, coverKey: books.coverKey }).from(books).where(eq(books.userId, userId))).map(b => [b.legacyId, b.coverKey]));
   const ids = await upsertByLegacy(db, books, bs.map(b => ({
     userId, legacyId: String(b.id), title: str(b.title, 200), author: optStr(b.author, 160), pages: num(b.pages) ? Math.round(num(b.pages)) : null, currentPage: Math.round(num(b.page)),
     status: STATUS.has(b.status) ? b.status : 'want', format: ['paper', 'ebook', 'audio'].includes(b.format) ? b.format : 'paper', genre: optStr(b.genre, 40),
@@ -28,11 +30,12 @@ export async function importBooks({ db, userId, warn, dataDir, username }: Impor
   const oldDir = dataDir && username ? path.join(dataDir, 'covers', 'u', crypto.createHash('sha256').update(username).digest('hex').slice(0, 16)) : null;
   for (const b of bs.filter(x => x.cover?.mine)) {
     const id = ids.get(String(b.id))!, src = oldDir ? path.join(oldDir, `${String(b.id).replace(/[^a-z0-9]/gi, '')}.jpg`) : '';
-    let key: string | null = null;
+    const had = before.get(String(b.id));
+    let key: string | null = had && !had.startsWith('legacy/') ? had : null;
     if (src && fs.existsSync(src)) {
       key = path.join('u', userId, `${id}.jpg`);
       fs.mkdirSync(path.join(COVERS(), 'u', userId), { recursive: true }); fs.copyFileSync(src, path.join(COVERS(), key));
-    } else warn(`книги: своя обложка «${str(b.title, 60)}» не нашлась — книга без обложки`);
+    } else if (!key) warn(`книги: своя обложка «${str(b.title, 60)}» не нашлась — книга без обложки`);
     await db.update(books).set({ coverKey: key }).where(and(eq(books.id, id), eq(books.userId, userId)));
   }
   if (bookIds.length) await db.delete(bookQuotes).where(inArray(bookQuotes.bookId, bookIds));

@@ -188,6 +188,7 @@ var LumiPlugin = class extends import_obsidian.Plugin {
     this.sync = null;
     this.bar = null;
     this.last = null;
+    this.again = null;
   }
   async onload() {
     this.settings = { ...DEFAULTS, ...await this.loadData() };
@@ -256,9 +257,14 @@ var LumiPlugin = class extends import_obsidian.Plugin {
     this.bar.setText(!this.sync ? "Lumi: \u043D\u0435 \u043D\u0430\u0441\u0442\u0440\u043E\u0435\u043D" : s?.error ? `Lumi: \u26A0 ${s.error}` : s?.pending ? `Lumi: \u043E\u0442\u043F\u0440\u0430\u0432\u043A\u0430\u2026 ${s.pending}` : s?.lastSync ? `Lumi: \u2713 ${ago(s.lastSync)}` : "Lumi: \u0433\u043E\u0442\u043E\u0432");
     this.bar.setAttr("title", s?.error ?? "\u041A\u043E\u043D\u0441\u043F\u0435\u043A\u0442\u044B \u043E\u0442\u043F\u0440\u0430\u0432\u043B\u044F\u044E\u0442\u0441\u044F \u0432 Lumi \u043F\u043E\u0441\u043B\u0435 \u043F\u0440\u0430\u0432\u043A\u0438");
   }
+  /** сохранить настройки; пересобрать синхронизацию, когда человек перестал печатать (иначе каждая буква сбрасывала бы очередь) */
   async save() {
     await this.saveData(this.settings);
-    this.rebuild();
+    if (this.again !== null) window.clearTimeout(this.again);
+    this.again = window.setTimeout(() => {
+      this.again = null;
+      this.rebuild();
+    }, 1500);
   }
 };
 var LumiSettings = class extends import_obsidian.PluginSettingTab {
