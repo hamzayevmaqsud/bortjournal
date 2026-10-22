@@ -109,7 +109,7 @@ export function TodayWide({ wide = true, data, day, today, sub, still, settings 
         </div>}
         {data && <span className="greet">{greet(data.now.hm)}{data.name ? `, ${data.name}` : ''}.</span>}
         {data && <div className="statgroup">
-          {has('food') && <button onClick={() => onPro('Цель и прогноз')}><i><Icon name="today" />план</i><b>{fmt(data.plan.kcal)}<small>ккал</small></b><span>белок {fmt(data.plan.protein)} г</span></button>}
+          {has('food') && <button onClick={() => onPro('Цель и прогноз')}><i><Icon name="today" />план</i><b>{fmt(data.plan.kcal)}<small>ккал</small></b><span>{data.plan.protein ? `белок ${fmt(data.plan.protein)} г` : 'норма по анкете'}</span></button>}
           {has('food') && <button onClick={onWeight}><i><Icon name="steps" />вес</i><b>{body?.weight ? fmt1(body.weight.kg) : '—'}<small>кг</small></b><span className={body?.weight?.today ? '' : 'go'}>{body?.weight?.today ? (data.isToday ? 'сегодня' : 'в этот день') : 'взвеситься →'}</span></button>}
           <button className="hot" onClick={() => onPro('Статистика')}><i><Icon name="flame" />серия</i><b>{data.streak}<small>{plural(data.streak, 'день', 'дня', 'дней')}</small></b><span>подряд</span></button>
         </div>}

@@ -47,7 +47,7 @@ export function Timeline({ marks, now, still, pro = true, sums, onAdd, onDelete,
 
   return <div ref={box} className={`tl-wrap ${still ? 'still' : ''}`} style={{ position: 'relative' }}>
     <div className={`tl ${sums ? 'wide' : ''}`}>
-      <div className="tl-axis">{['06', '09', '12', '15', '18', '21', '24'].map((h, i) => <span key={h} style={{ left: `${i / 6 * 100}%` }}>{h}</span>)}</div>
+      <div className="tl-axis">{['06', '09', '12', '15', '18', '21', '24'].map((h, i) => <span key={h} style={{ left: `${i / 6 * 100}%`, visibility: now && Math.abs(i / 6 * 100 - pct(now)) < 9 ? 'hidden' : undefined }}>{h}</span>)}</div>
       <div className="tl-body">
         {now && <div className="tl-now" style={{ left: `calc(var(--lw) + (100% - var(--lw) - var(--sw)) * ${pct(now) / 100})` }}><b>сейчас {now}</b></div>}
         {LANES.filter(([lane]) => pro || (lane !== 'study' && lane !== 'gym') || marks.some(m => m.lane === lane)).map(([lane, icon, color, name]) => (

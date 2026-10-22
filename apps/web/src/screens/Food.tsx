@@ -31,7 +31,7 @@ function Meter({ v, max, color, size = 132, sw = 12 }: { v: number; max: number;
 }
 function SBar({ name, v, norm, unit, color, f = fmt }: { name: string; v: number; norm: number; unit: string; color: string; f?: (n: number) => string }) {
   const r = norm ? v / norm : 0, over = r > 1.03, w = useNextFrame(Math.min(100, r * 100), 0);
-  return <div className="sb"><div className="sb-top"><span className="sb-name"><i style={{ background: color }} />{name}</span><span className="sb-val"><b>{f(v)}</b> / {f(norm)} {unit}{over && <em> ▲ +{f(v - norm)}</em>}</span></div>
+  return <div className="sb"><div className="sb-top"><span className="sb-name"><i style={{ background: color }} />{name}</span><span className="sb-val"><b>{f(v)}</b>{norm ? <> / {f(norm)}</> : null} {unit}{over && <em> ▲ +{f(v - norm)}</em>}</span></div>
     <div className="sb-track"><i style={{ width: `${w}%`, background: over ? `color-mix(in srgb, ${color} 62%, #000)` : color }} /></div></div>;
 }
 

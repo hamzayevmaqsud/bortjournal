@@ -32,10 +32,10 @@ const kg2 = (v: number) => (Math.round(Math.abs(v) * 100) / 100).toLocaleString(
 const kgWeek = (v: number) => Math.abs(v) < 0.005 ? '±0 кг/нед' : `${v > 0 ? '+' : '−'}${kg2(v)} кг/нед`;
 
 export function Goal({ wide, onBack, onWeigh, onRedo, onChanged }: { wide: boolean; onBack: () => void; onWeigh: () => void; onRedo: () => void; onChanged: () => void }) {
-  const toast = useToast(), [g, setG] = useState<GoalData | null>(null), [err, setErr] = useState(''), [busy, setBusy] = useState('');
+  const toast = useToast(), [g, setG] = useState<GoalData | null>(null), [err, setErr] = useState(''), [noProfile, setNoProfile] = useState(false), [busy, setBusy] = useState('');
   const load = useCallback(async () => {
     try { const d = await api<GoalData>('/api/goal'); setG(d); if (d.recalculated) { toast(`План пересчитан: ${fmt(d.recalculated.from)} → ${fmt(d.recalculated.to)} ккал`); onChanged(); } }
-    catch (e) { setErr(e instanceof ApiError ? e.message : 'Не получилось загрузить'); }
+    catch (e) { if (e instanceof ApiError && e.status === 409) setNoProfile(true); else setErr(e instanceof ApiError ? e.message : 'Не получилось загрузить'); }
   }, [toast, onChanged]);
   useEffect(() => { load(); }, [load]);
 
@@ -50,6 +50,11 @@ export function Goal({ wide, onBack, onWeigh, onRedo, onChanged }: { wide: boole
     <div className="daytitle"><span>цель{g ? ` · ${g.profile.goalName.toLowerCase()}${g.profile.paceName ? `, ${g.profile.paceName.toLowerCase()} темп` : ''}` : ''}</span><b>План и прогноз</b></div>
     <button className="nav" onClick={onRedo} aria-label="Изменить цель" title="Изменить цель"><Icon name="edit" /></button>
   </header>;
+  // анкеты нет — это не ошибка, а первый шаг: объясняем зачем и даём кнопку
+  if (noProfile) return <div className="day goal-page">{head}<section className="wc goal-empty">
+    <h2>План ещё не посчитан</h2>
+    <p>Журнал считает калории, белок и срок до цели по короткой анкете: рост, вес, активность и чего хочешь добиться. Это займёт минуту.</p>
+    <button className="primary" onClick={onRedo}>Пройти анкету</button></section></div>;
   if (err) return <div className="day goal-page">{head}<p className="form-err">{err}</p></div>;
   if (!g) return <div className="day goal-page">{head}<div className="skel" style={{ height: 220 }} /><div className="skel" style={{ height: 160 }} /><div className="skel" style={{ height: 300 }} /></div>;
 

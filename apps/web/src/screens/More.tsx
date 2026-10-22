@@ -48,7 +48,7 @@ export function More({ me, wide = false, summary = {}, onPaywall, onPro, onSetti
     <header className="dayhead"><div className="daytitle"><span>ещё</span><b>{s.name || me.username}</b></div></header>
     <button className="profile-card" onClick={onSettings}>
       <span className="avatar">{(s.name || me.username).slice(0, 1).toUpperCase()}</span>
-      <span className="mid"><b>{s.name || me.username}</b><small>{fmt(s.kcal ?? 2000)} ккал · белок {fmt(s.protein ?? 0)} г · {fmt1((s.water ?? 2000) / 1000)} л · {fmt(s.steps ?? 8000)} шагов</small></span>
+      <span className="mid"><b>{s.name || me.username}</b><small>{fmt(s.kcal ?? 2000)} ккал{s.protein ? ` · белок ${fmt(s.protein)} г` : ''} · {fmt1((s.water ?? 2000) / 1000)} л · {fmt(s.steps ?? 8000)} шагов</small></span>
       <Icon name="edit" className="ic chev" />
     </button>
     <button className="sub-card" onClick={() => onPaywall()}>
