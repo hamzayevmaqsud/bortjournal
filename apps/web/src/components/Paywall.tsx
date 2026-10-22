@@ -75,7 +75,7 @@ function PaywallInner({ sub, focus, onChange, onClose }: { sub: Subscription; fo
   return <div className="pw">
     <div className="pw-hero">
       <span className="pw-badge">{mode === 'pro' ? 'PRO' : 'СВОЙ НАБОР'}</span>
-      <h3>{mode === 'pro' ? 'Весь Бортжурнал' : 'Только то, что нужно'}</h3>
+      <h3>{mode === 'pro' ? 'Весь Lumi' : 'Только то, что нужно'}</h3>
       <p>{mode === 'pro' ? (focus ? `«${focus}» — часть Pro. Или возьми только его в своём наборе — так дешевле.` : 'Фото и описание еды с ИИ, зал, учёба, бюджет, книги, цели и повторы.') : 'Плати только за нужное. Два раздела — скидка 15%, три и больше — 25%.'} {sub.source === 'trial' ? `Пробный период: ещё ${sub.daysLeft} дн.` : ''}</p>
     </div>
 

@@ -70,7 +70,7 @@ export function More({ me, wide = false, summary = {}, onPaywall, onPro, onSetti
       <a className="row" href="/api/export" download><span className="chip-ic" style={{ ['--c' as string]: 'var(--steps)' }}><Icon name="file" /></span><span className="mid"><b>Выгрузить мои данные</b><small>всё, что записано, — одним файлом JSON</small></span><Icon name="chev" className="ic chev" /></a>
       <button className="row" onClick={onLogout}><span className="chip-ic" style={{ ['--c' as string]: 'var(--bad)' }}><Icon name="logout" /></span><span className="mid"><b>Выйти</b><small>{me.username}</small></span></button>
     </div>
-    <p className="hint">Бортжурнал · бета</p>
+    <p className="hint">Lumi · бета</p>
     <Sheet open={pw} onClose={() => setPw(false)} title="Сменить пароль">{pw && <PasswordForm onDone={() => setPw(false)} />}</Sheet>
   </div>;
 }
@@ -100,7 +100,7 @@ export function SettingsForm({ me, onDone, onRedo }: { me: Me; onDone: (s: Recor
 export function InstallHelp() {
   const ios = /iPhone|iPad|iPod/.test(navigator.userAgent);
   return <div className="form">
-    <p style={{ margin: 0 }}>Бортжурнал ставится на экран «Домой» и открывается как приложение — без браузерных панелей.</p>
+    <p style={{ margin: 0 }}>Lumi ставится на экран «Домой» и открывается как приложение — без браузерных панелей.</p>
     {ios ? <ol className="steps"><li>Открой ссылку для телефона в <b>Safari</b>.</li><li>Нажми <b>«Поделиться»</b> внизу экрана.</li><li>Выбери <b>«На экран „Домой“»</b> → «Добавить».</li><li>Открывай журнал с новой иконки.</li></ol>
       : <ol className="steps"><li>Открой меню браузера (⋮).</li><li>Выбери <b>«Установить приложение»</b> или «Добавить на главный экран».</li></ol>}
     <div className="links">

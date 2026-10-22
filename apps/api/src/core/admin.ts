@@ -32,7 +32,7 @@ export async function adminRoutes(app: FastifyInstance, { db }: { db: DB }) {
     const context = { screen: clip(b.screen, 60), version: clip(b.version, 40), device: clip(req.headers['user-agent'], 200), theme: clip(b.theme, 20), size: clip(b.size, 20) };
     const [u] = await db.select({ username: users.username }).from(users).where(eq(users.id, req.userId!));
     await db.insert(feedback).values({ userId: req.userId!, text, context });
-    void telegram(`Бортжурнал — отзыв от @${u?.username ?? '?'} (${context.screen || 'экран ?'})\n\n${text}\n\n${context.device}`);
+    void telegram(`Lumi — отзыв от @${u?.username ?? '?'} (${context.screen || 'экран ?'})\n\n${text}\n\n${context.device}`);
     return reply.code(201).send({ ok: true });
   });
 

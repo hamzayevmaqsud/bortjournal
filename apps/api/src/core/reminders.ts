@@ -99,7 +99,7 @@ export async function reminderRoutes(app: FastifyInstance, { db }: { db: DB }) {
     return view(uid(req));
   });
   app.post('/api/push/test', { preHandler: requireUser }, async (req, reply) => {
-    const n = await pushToUser(db, uid(req), { title: 'Напоминания работают', body: 'Так будут выглядеть подсказки Бортжурнала.', url: '/#today', tag: 'test' });
+    const n = await pushToUser(db, uid(req), { title: 'Напоминания работают', body: 'Так будут выглядеть подсказки Lumi.', url: '/#today', tag: 'test' });
     if (!n) return reply.code(400).send({ error: 'Не получилось отправить: на этом аккаунте нет рабочих устройств.' });
     return { sent: n };
   });

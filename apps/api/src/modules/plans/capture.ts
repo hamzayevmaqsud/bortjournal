@@ -68,7 +68,7 @@ const utcStamp = (d: Date) => d.toISOString().replace(/[-:]/g, '').replace(/\.\d
 /** местные дата и время пользователя → момент UTC (tz — смещение в минутах) */
 const atUtc = (day: string, hm: string, tz: number) => new Date(Date.parse(`${day}T${hm}:00Z`) - tz * 60e3);
 export function icsOf(list: Array<{ id: string; title: string; day: string; time: string | null; done: boolean; note: string | null }>, tz: number, lead: number) {
-  const now = utcStamp(new Date()), L = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Bortjournal//Plans//RU', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH', 'X-WR-CALNAME:Бортжурнал', 'X-PUBLISHED-TTL:PT15M', 'REFRESH-INTERVAL;VALUE=DURATION:PT15M'];
+  const now = utcStamp(new Date()), L = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Bortjournal//Plans//RU', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH', 'X-WR-CALNAME:Lumi', 'X-PUBLISHED-TTL:PT15M', 'REFRESH-INTERVAL;VALUE=DURATION:PT15M'];
   for (const t of list) {
     L.push('BEGIN:VEVENT', `UID:${t.id}@bortjournal`, `DTSTAMP:${now}`, `SUMMARY:${icsText((t.done ? '✓ ' : '') + t.title)}`);
     if (t.time) { const s = atUtc(t.day, t.time.slice(0, 5), tz); L.push(`DTSTART:${utcStamp(s)}`, `DTEND:${utcStamp(new Date(s.getTime() + 30 * 60e3))}`); }
@@ -86,7 +86,7 @@ export async function captureRoutes(app: FastifyInstance, { db }: { db: DB }) {
   const who = async (req: FastifyRequest, reply: FastifyReply) => {
     if (req.userId) return;
     const u = await userByToken(db, bearerOf(req), 'capture');
-    if (!u) return reply.code(401).send({ error: 'Нужен вход или ключ записи из профиля.', message: 'Ключ не подошёл — создай новый в профиле Бортжурнала.' });
+    if (!u) return reply.code(401).send({ error: 'Нужен вход или ключ записи из профиля.', message: 'Ключ не подошёл — создай новый в профиле Lumi.' });
     req.userId = u;
   };
   const nowOf = async (userId: string) => { const [u] = await db.select({ tz: users.tzOffset }).from(users).where(eq(users.id, userId)); return { ...localNow(u?.tz ?? 0), tz: u?.tz ?? 0 }; };

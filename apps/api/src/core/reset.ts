@@ -26,8 +26,8 @@ async function makeLink(db: DB, req: FastifyRequest, userId: string) {
 async function sendMail(to: string, link: string) {
   const r = await fetch('https://api.resend.com/emails', {
     method: 'POST', signal: AbortSignal.timeout(15000), headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ from: process.env.MAIL_FROM, to, subject: 'Бортжурнал: новый пароль',
-      text: `Кто-то (надеемся, ты) попросил сменить пароль в Бортжурнале.\n\nОткрой ссылку, чтобы задать новый пароль — она работает 30 минут:\n${link}\n\nЕсли это был не ты — просто ничего не делай, пароль останется прежним.` })
+    body: JSON.stringify({ from: process.env.MAIL_FROM, to, subject: 'Lumi: новый пароль',
+      text: `Кто-то (надеемся, ты) попросил сменить пароль в Lumi.\n\nОткрой ссылку, чтобы задать новый пароль — она работает 30 минут:\n${link}\n\nЕсли это был не ты — просто ничего не делай, пароль останется прежним.` })
   });
   if (!r.ok) throw new Error(`почта: ${r.status}`);
 }

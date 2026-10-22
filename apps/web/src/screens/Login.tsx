@@ -1,16 +1,49 @@
-/** Вход и регистрация. После регистрации — анкета; 7 дней Pro начинаются сразу */
-import { useState } from 'react';
+/**
+ * Вход и регистрация Lumi. Слева (на телефоне — фоном) сменяются постеры, справа карточка с огоньком.
+ * Огонёк реагирует: машет, зажмуривается, пока вводишь пароль, хмурится при ошибке, сияет, пока входишь.
+ * После регистрации — анкета; 7 дней Pro начинаются сразу.
+ */
+import { useEffect, useState } from 'react';
 import { AppleMark, GoogleMark, startUrl, takeAuthResult, useProviders } from '../lib/oauth';
 import { TRIAL_DAYS } from '@bortjournal/core';
 import { api, ApiError } from '../lib/api';
 import { Icon } from '../components/Icon';
 
+const POSTERS = [1, 2, 3, 4, 5, 6, 7, 8].map(n => `/lumi/posters/${n}.webp`);
+const STILL = typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+type Mood = 'wave' | 'happy' | 'wink' | 'stars' | 'determined';
+
+/** постеры сменяются раз в 6 секунд мягким наплывом; при «меньше движения» — один кадр */
+function Posters() {
+  const [i, setI] = useState(() => Math.floor(Math.random() * POSTERS.length));
+  useEffect(() => {
+    if (STILL) return;
+    const t = setInterval(() => setI(x => (x + 1) % POSTERS.length), 6000);
+    // следующий кадр заранее, чтобы наплыв не мигал пустотой
+    POSTERS.forEach(src => { const im = new Image(); im.src = src; });
+    return () => clearInterval(t);
+  }, []);
+  return <aside className="login-art" aria-hidden="true">
+    {POSTERS.map((src, k) => <img key={src} src={src} alt="" className={k === i ? 'on' : ''} loading={k === i ? 'eager' : 'lazy'} />)}
+    <div className="login-dots">{POSTERS.map((_, k) => <i key={k} className={k === i ? 'on' : ''} />)}</div>
+  </aside>;
+}
+
+function Lumi({ mood }: { mood: Mood }) {
+  return <div className="login-lumi"><img key={mood} src={`/lumi/${mood}.png`} alt="" /></div>;
+}
+
 export function Login({ onDone }: { onDone: () => void }) {
   const [mode, setMode] = useState<'in' | 'up'>('in');
   const [show, setShow] = useState(false), [u, setU] = useState(''), [p, setP] = useState(''), [mail, setMail] = useState(''), [err, setErr] = useState(() => takeAuthResult()?.error ?? ''), [busy, setBusy] = useState(false);
   const pv = useProviders(), any = pv.google || pv.apple, [forgot, setForgot] = useState(false), [sent, setSent] = useState('');
-  if (forgot) return <main className="login">
-    <div className="brand"><i><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l1.6 6.4L20 12l-6.4 1.6L12 21l-1.6-7.4L4 12l6.4-2.6z" fill="currentColor" /></svg></i>Бортжурнал</div>
+  const [pwFocus, setPwFocus] = useState(false);
+  const mood: Mood = busy ? 'stars' : err ? 'determined' : forgot ? 'wink' : pwFocus && !show ? 'happy' : 'wave';
+  const brand = <div className="login-brand"><b>Lumi</b></div>;
+  const legal = <p className="legal-links">Продолжая, ты принимаешь <a href="/terms.html" target="_blank" rel="noopener">условия</a> и <a href="/privacy.html" target="_blank" rel="noopener">политику конфиденциальности</a>.</p>;
+
+  const card = forgot ? <>
+    {brand}<Lumi mood={mood} />
     <h1>Новый пароль</h1>
     {sent ? <p>{sent}</p> : <p>Напиши логин или почту — пришлём ссылку, чтобы задать новый пароль.</p>}
     {!sent && <form onSubmit={async e => { e.preventDefault(); setBusy(true); setErr(''); try { const r = await api<{ message: string }>('/api/auth/forgot', { method: 'POST', body: { login: u } }); setSent(r.message); } catch (x) { setErr(x instanceof ApiError ? x.message : 'Не получилось.'); } finally { setBusy(false); } }}>
@@ -18,13 +51,11 @@ export function Login({ onDone }: { onDone: () => void }) {
       <div className="err" role="alert">{err}</div>
       <button type="submit" disabled={busy}>{busy ? 'Отправляю…' : 'Прислать ссылку'}</button>
     </form>}
-    <button type="button" className="forgot" style={{ alignSelf: 'center' }} onClick={() => { setForgot(false); setSent(''); }}>← Ко входу</button>
-  </main>;
-  const up = mode === 'up';
-  return <main className="login">
-    <div className="brand"><i><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l1.6 6.4L20 12l-6.4 1.6L12 21l-1.6-7.4L4 12l6.4-2.6z" fill="currentColor" /></svg></i>Бортжурнал</div>
-    <h1>{up ? 'Новый журнал' : 'С возвращением'}</h1>
-    <p>{up ? `Еда, вода, шаги, задачи, цель и статистика — бесплатно навсегда. Всё остальное — ${TRIAL_DAYS} дней бесплатно.` : 'Войди, чтобы продолжить свой день.'}</p>
+    <button type="button" className="forgot" style={{ alignSelf: 'center' }} onClick={() => { setForgot(false); setSent(''); setErr(''); }}>← Ко входу</button>
+  </> : (() => { const up = mode === 'up'; return <>
+    {brand}<Lumi mood={mood} />
+    <h1>{up ? 'Зажжём твой первый день' : 'С возвращением'}</h1>
+    <p>{up ? `Еда, вода, шаги, задачи, цель и статистика — бесплатно навсегда. Всё остальное — ${TRIAL_DAYS} дней бесплатно.` : 'Lumi сохранил твой день. Войди, чтобы продолжить.'}</p>
     {any && <div className="pv-btns">
       {pv.apple && <a className="pv-btn pv-apple" href={startUrl('apple')}><AppleMark />{up ? 'Создать через Apple' : 'Войти через Apple'}</a>}
       {pv.google && <a className="pv-btn pv-google" href={startUrl('google')}><GoogleMark />{up ? 'Создать через Google' : 'Войти через Google'}</a>}
@@ -43,14 +74,18 @@ export function Login({ onDone }: { onDone: () => void }) {
       } catch (x) { setErr(x instanceof ApiError ? x.message : 'Не получилось.'); }
       finally { setBusy(false); }
     }}>
-      <input id="login-user" autoComplete="username" placeholder="Логин" value={u} onChange={e => setU(e.target.value)} required autoCapitalize="none" spellCheck={false} />
+      <input id="login-user" autoComplete="username" placeholder="Логин" value={u} onChange={e => { setU(e.target.value); if (err) setErr(''); }} required autoCapitalize="none" spellCheck={false} />
       {up && <input id="login-mail" type="email" autoComplete="email" placeholder="Почта — чтобы восстановить пароль" value={mail} onChange={e => setMail(e.target.value)} />}
-      <div className="pw-field"><input id="login-pass" type={show ? 'text' : 'password'} autoComplete={up ? 'new-password' : 'current-password'} placeholder={up ? 'Пароль — от 8 символов' : 'Пароль'} value={p} onChange={e => setP(e.target.value)} required minLength={up ? 8 : undefined} />
+      <div className="pw-field"><input id="login-pass" type={show ? 'text' : 'password'} autoComplete={up ? 'new-password' : 'current-password'} placeholder={up ? 'Пароль — от 8 символов' : 'Пароль'} value={p} onChange={e => { setP(e.target.value); if (err) setErr(''); }} onFocus={() => setPwFocus(true)} onBlur={() => setPwFocus(false)} required minLength={up ? 8 : undefined} />
         <button type="button" className="pw-eye" onClick={() => setShow(x => !x)} aria-label={show ? 'Скрыть пароль' : 'Показать пароль'} aria-pressed={show}><Icon name={show ? 'eyeOff' : 'eye'} /></button></div>
       {!up && <button type="button" className="forgot" onClick={() => { setForgot(true); setErr(''); }}>Забыли пароль?</button>}
       <div className="err" role="alert">{err}</div>
       <button type="submit" disabled={busy}>{busy ? (up ? 'Создаю…' : 'Вхожу…') : up ? 'Создать аккаунт' : 'Войти'}</button>
     </form>
-    <p className="legal-links">Продолжая, ты принимаешь <a href="/terms.html" target="_blank" rel="noopener">условия</a> и <a href="/privacy.html" target="_blank" rel="noopener">политику конфиденциальности</a>.</p>
-  </main>;
+  </>; })();
+
+  return <div className="login-scene">
+    <Posters />
+    <main className="login">{card}{legal}</main>
+  </div>;
 }

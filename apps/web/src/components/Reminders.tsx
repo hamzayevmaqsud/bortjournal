@@ -56,7 +56,7 @@ export function Reminders({ onInstall }: { onInstall: () => void }) {
       <span className="mid"><b>{here ? 'Включены на этом устройстве' : 'На этом устройстве выключены'}</b>
         <small>{v.devices ? `Всего устройств с напоминаниями: ${v.devices}` : 'Пока ни одного устройства'}</small></span>
     </div>
-    {needInstall ? <div className="rem-hint"><p>На iPhone уведомления приходят только приложению с экрана «Домой». Добавь Бортжурнал на экран «Домой», открой его оттуда и включи напоминания здесь.</p>
+    {needInstall ? <div className="rem-hint"><p>На iPhone уведомления приходят только приложению с экрана «Домой». Добавь Lumi на экран «Домой», открой его оттуда и включи напоминания здесь.</p>
       <button type="button" className="ghost" onClick={onInstall}>Как добавить на экран «Домой»</button></div>
       : !supported() ? <p className="rem-hint">Этот браузер не умеет присылать уведомления. Открой журнал в Safari на iPhone, в Chrome или в Edge.</p>
       : here ? <div className="row-flex"><button type="button" className="ghost" disabled={busy} onClick={test}>Проверить</button><button type="button" className="ghost danger" disabled={busy} onClick={disable}>Выключить здесь</button></div>

@@ -1,6 +1,6 @@
 {
-  "name": "Бортжурнал",
-  "short_name": "Бортжурнал",
+  "name": "Lumi",
+  "short_name": "Lumi",
   "description": "Еда, вода, шаги и задачи — каждый день в одном журнале",
   "lang": "ru",
   "start_url": "/m",

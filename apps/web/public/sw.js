@@ -16,8 +16,8 @@ self.addEventListener('fetch', e => {
 /* напоминания: сервер присылает { title, body, url, tag } */
 self.addEventListener('push', e => {
   let m = {};
-  try { m = e.data ? e.data.json() : {}; } catch { m = { title: 'Бортжурнал', body: e.data ? e.data.text() : '' }; }
-  e.waitUntil(self.registration.showNotification(m.title || 'Бортжурнал', {
+  try { m = e.data ? e.data.json() : {}; } catch { m = { title: 'Lumi', body: e.data ? e.data.text() : '' }; }
+  e.waitUntil(self.registration.showNotification(m.title || 'Lumi', {
     body: m.body || '', tag: m.tag || undefined, icon: '/icon-192.png', badge: '/icon-192.png',
     data: { url: typeof m.url === 'string' && m.url.startsWith('/') ? m.url : '/' }
   }));

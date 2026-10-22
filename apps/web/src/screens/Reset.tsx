@@ -5,7 +5,7 @@ import { api, ApiError } from '../lib/api';
 export function ResetPassword({ token, onDone }: { token: string; onDone: () => void }) {
   const [p, setP] = useState(''), [p2, setP2] = useState(''), [err, setErr] = useState(''), [busy, setBusy] = useState(false);
   return <main className="login">
-    <div className="brand"><i><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l1.6 6.4L20 12l-6.4 1.6L12 21l-1.6-7.4L4 12l6.4-2.6z" fill="currentColor" /></svg></i>Бортжурнал</div>
+    <div className="brand"><i><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l1.6 6.4L20 12l-6.4 1.6L12 21l-1.6-7.4L4 12l6.4-2.6z" fill="currentColor" /></svg></i>Lumi</div>
     <h1>Новый пароль</h1><p>Придумай пароль от 8 символов. После этого журнал выйдет на всех других устройствах.</p>
     <form onSubmit={async e => {
       e.preventDefault(); setErr('');
