@@ -20,7 +20,7 @@ const PHONE_Q = '(max-width: 899px)';
 const isPhone = () => typeof matchMedia !== 'undefined' && matchMedia(PHONE_Q).matches;
 const posterSet = (k: number) => `/lumi/posters/${k}-240.webp 240w, /lumi/posters/${k}-400.webp 400w, /lumi/posters/${k}-560.webp 560w`;
 // ?v= — после замены картинок логотипа браузер не покажет старые из кэша
-const LOGO_V = 'main2';
+const LOGO_V = 'up';
 const letterSet = (k: number) => `/lumi/logo/${k}-240.webp?v=${LOGO_V} 240w, /lumi/logo/${k}-400.webp?v=${LOGO_V} 400w, /lumi/logo/${k}.webp?v=${LOGO_V} 612w`;
 /** форма справа: ширина — как в стилях (.lw-scene .login); поле — отступ справа и зазор до стены, они равны */
 /** на высоких экранах форма крупнее целиком (zoom), чтобы не теряться рядом с большими карточками */
