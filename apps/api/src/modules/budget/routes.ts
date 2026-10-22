@@ -9,7 +9,8 @@ import { requireUser } from '../../core/auth.js';
 import { requireFeature } from '../../core/billing.js';
 import { userContext } from '../../core/context.js';
 import { recordEvent, removeEvents } from '../../core/events.js';
-import { bad, dayParam, hmParam, idParam, notFound, uid } from '../../core/http.js';
+import { bad, dayParam, hmParam, idParam, notFound, statDays, uid } from '../../core/http.js';
+import { budgetStats } from './stats.js';
 import type { DB, Tx } from '../../db/index.js';
 import { budgetEntries, budgets } from './schema.js';
 
@@ -36,6 +37,7 @@ async function overview(db: Tx, userId: string, day: string, today: string) {
 
 export async function budgetRoutes(app: FastifyInstance, { db }: { db: DB }) {
   const preHandler = [requireUser, requireFeature(db, 'budget')];
+  app.get('/stats', { preHandler }, async req => budgetStats(db, uid(req), statDays((req.query as { days?: unknown }).days)));
   app.get('/overview', { preHandler }, async req => {
     const ctx = await userContext(db, uid(req)), q = req.query as { day?: string };
     return overview(db, uid(req), q.day ? dayParam(q.day) : ctx.today, ctx.today);

@@ -10,7 +10,7 @@ import type { DB, Tx } from '../db/index.js';
 import { topMeals } from '../modules/food/index.js';
 import { MODULES_LIST } from '../modules/index.js';
 import { requireUser } from './auth.js';
-import { bad } from './http.js';
+import { statDays } from './http.js';
 import type { DayFacts, Totals } from './module.js';
 import { achievements, dayJournal } from './schema.js';
 import { userContext, type Norms } from './context.js';
@@ -272,7 +272,7 @@ async function review(db: Tx, userId: string, monArg?: string) {
 export async function statsRoutes(app: FastifyInstance, { db }: { db: DB }) {
   // статистика, итог недели и достижения — бесплатно для всех
   const pre = [requireUser];
-  const n = (v: unknown) => { const x = Number(v ?? 30); if (![7, 30, 90, 365].includes(x)) throw bad('Период: 7, 30, 90 или 365 дней.'); return x; };
+  const n = statDays;
   app.get('/api/stats/overview', { preHandler: pre }, async req => overview(db, req.userId!, (req.query as any).month));
   app.get('/api/stats/food', { preHandler: pre }, async req => foodStats(db, req.userId!, n((req.query as any).days)));
   app.get('/api/stats/body', { preHandler: pre }, async req => bodyStats(db, req.userId!, n((req.query as any).days)));

@@ -10,7 +10,8 @@ import { requireFeature } from '../../core/billing.js';
 import { userContext } from '../../core/context.js';
 import { recordEvent, removeEvents } from '../../core/events.js';
 import { aiEnabled, gemini } from '../../core/gemini.js';
-import { bad, dayParam, HttpError, hmParam, idParam, notFound, uid } from '../../core/http.js';
+import { bad, dayParam, HttpError, hmParam, idParam, notFound, statDays, uid } from '../../core/http.js';
+import { studyStats } from './stats.js';
 import { users } from '../../core/schema.js';
 import type { DB, Tx } from '../../db/index.js';
 import { obsFor } from './obsidian.js';
@@ -53,6 +54,7 @@ export async function studyRoutes(app: FastifyInstance, { db }: { db: DB }) {
   await obsidianSyncRoutes(app, { db });
   const ctx = async (userId: string) => userContext(db, userId);
 
+  app.get('/stats', { preHandler }, async req => studyStats(db, uid(req), statDays((req.query as { days?: unknown }).days)));
   app.get('/overview', { preHandler }, async req => {
     const userId = uid(req), { today, norms } = await ctx(userId), w = await world(db, userId);
     const times = await db.select().from(studyTime).where(eq(studyTime.userId, userId));

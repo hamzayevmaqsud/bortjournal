@@ -10,8 +10,13 @@ import { buzz } from '../lib/motion';
 import { Icon } from '../components/Icon';
 import { Bars, Delta, Donut, HBars, human, humanLong, MonthCal, ScoreRing, scoreColor, YearHeat } from '../components/Charts';
 
-export type StatsTab = 'overview' | 'food' | 'body' | 'week' | 'awards';
-const TABS: Array<[StatsTab, string]> = [['overview', 'Обзор'], ['food', 'Еда'], ['body', 'Тело'], ['week', 'Неделя'], ['awards', 'Награды']];
+export type StatsTab = 'overview' | 'food' | 'body' | 'study' | 'money' | 'books' | 'week' | 'awards';
+// вкладки разделов Pro показываются, только если раздел открыт
+const TABS: Array<[StatsTab, string, string?]> = [['overview', 'Обзор'], ['food', 'Еда'], ['body', 'Тело'], ['study', 'Учёба', 'study'], ['money', 'Деньги', 'budget'], ['books', 'Книги', 'books'], ['week', 'Неделя'], ['awards', 'Награды']];
+const MINUTES = (m: number) => m >= 60 ? `${Math.floor(m / 60)} ч${m % 60 ? ` ${m % 60} мин` : ''}` : `${m} мин`;
+const money = (v: number, cur: string) => `${v.toLocaleString('ru-RU', { maximumFractionDigits: v >= 100 ? 0 : 2 })} ${cur}`;
+const MON = ['янв', 'фев', 'мар', 'апр', 'май', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
+const PALETTE = ['var(--books)', 'var(--study)', 'var(--food)', 'var(--water)', 'var(--mustard)', 'var(--navy)', 'var(--gym)', 'var(--steps)'];
 const WD = ['вс', 'пн', 'вт', 'ср', 'чт', 'пт', 'сб'], WDN = ['пн', 'вт', 'ср', 'чт', 'пт', 'сб', 'вс'];
 const WDL = ['понедельник', 'вторник', 'среду', 'четверг', 'пятницу', 'субботу', 'воскресенье'];
 const TIER_C = ['#B0713F', '#8C99A6', '#CFA232', '#D9622B'];
@@ -108,6 +113,83 @@ function FoodStats({ n }: { n: number }) {
   </>;
 }
 
+/* ---------------- учёба ---------------- */
+function StudyStats({ n }: { n: number }) {
+  const { d, err } = useLoad<any>(`/api/study/stats?days=${n}`);
+  if (err) return <p className="form-err">{err}</p>;
+  if (!d) return <Skel />;
+  const L = lab(n), top = d.categories[0]?.minutes || 1;
+  return <>
+    <div className="kpis">
+      <Kpi name="Учёба" value={<>{fmt1(d.total / 60)}<small>ч</small></>} sub={<>{MINUTES(Math.round(d.total / n))} в день <Delta cur={d.total} prev={d.prevTotal} /></>} tone="k-study" />
+      <Kpi name="Дней с учёбой" value={<>{d.activeDays}<small>из {n}</small></>} sub={`цель ${MINUTES(d.goal)} закрыта ${d.goalDays} ${plural(d.goalDays, 'раз', 'раза', 'раз')}`} tone="k-good" />
+      <Kpi name="Ответов" value={d.answers.n} sub={d.answers.n ? `верно ${Math.round(d.answers.good / d.answers.n * 100)}%` : 'ещё нет'} />
+      <Kpi name="Тем" value={d.topics} sub={`${d.categories.length} ${plural(d.categories.length, 'направление', 'направления', 'направлений')}`} />
+    </div>
+    <div className="wgrid">
+      <section className="wc span12"><div className="card-head"><h2>Минуты по дням</h2></div>
+        <Bars rows={d.perDay.map((r: any) => ({ label: L(r.day), v: r.minutes, hint: `${human(r.day)}: ${MINUTES(r.minutes)}`, color: r.minutes >= d.goal ? 'var(--gym)' : null }))} color="var(--study)" target={d.goal} unit="мин" every={every(n)} /></section>
+      <section className="wc span6"><div className="card-head"><h2>Направления</h2></div>
+        {d.categories.length ? <HBars rows={d.categories.map((c: any) => ({ label: c.name, v: c.minutes / top * 100, text: MINUTES(c.minutes) }))} color="var(--study)" /> : <p className="card-note">Записывай занятия с направлением — появится разбивка.</p>}</section>
+      <section className="wc span6"><div className="card-head"><h2>Точность ответов, %</h2></div>
+        {d.accuracy.length ? <Bars rows={d.accuracy.map((a: any) => ({ label: L(a.day), v: a.pct, hint: `${human(a.day)}: ${a.pct}% из ${a.n}`, color: a.pct >= 80 ? 'var(--gym)' : a.pct < 50 ? 'var(--bad)' : null }))} color="var(--mustard)" target={80} unit="%" every={Math.max(1, Math.round(d.accuracy.length / 6))} /> : <p className="card-note">Отвечай на вопросы дня — появится график.</p>}</section>
+    </div>
+  </>;
+}
+
+/* ---------------- деньги ---------------- */
+function MoneyStats({ n }: { n: number }) {
+  const { d, err } = useLoad<any>(`/api/budget/stats?days=${n}`);
+  if (err) return <p className="form-err">{err}</p>;
+  if (!d) return <Skel />;
+  if (!d.configured) return <div className="wgrid"><section className="wc span12"><p className="card-note">Бюджет ещё не настроен. Задай сумму на месяц в разделе «Бюджет» — здесь появятся траты, категории и месяцы.</p><a className="primary" href="#budget">Настроить бюджет</a></section></div>;
+  const L = lab(n), cur = d.currency;
+  return <>
+    <div className="kpis">
+      <Kpi name="Потрачено" value={money(d.total, cur)} sub={d.prevTotal ? <><Delta cur={d.total} prev={d.prevTotal} good="down" /> к прошлому периоду</> : 'за период'} tone="k-money" />
+      <Kpi name="В день" value={money(d.total / n, cur)} sub={`ровный лимит ${money(d.base, cur)}`} />
+      <Kpi name="Дней в рамках" value={d.inLimit} sub="не вышел за дневной лимит" tone="k-good" />
+      <Kpi name="Доходы" value={money(d.income, cur)} sub="за период" />
+    </div>
+    <div className="wgrid">
+      <section className="wc span12"><div className="card-head"><h2>Траты по дням</h2></div>
+        <Bars rows={d.perDay.map((r: any) => ({ label: L(r.day), v: r.spent, hint: `${human(r.day)}: ${money(r.spent, cur)}`, color: r.spent > d.base * 1.5 ? 'var(--bad)' : null }))} color="var(--money)" target={d.base} unit={cur} every={every(n)} /></section>
+      <section className="wc span6"><div className="card-head"><h2>По категориям</h2></div>
+        {d.byCat.length ? <div className="macro-wrap"><Donut parts={d.byCat.map((c: any) => ({ name: c.name, v: c.sum, color: c.color }))} center={<><b>{money(d.total, cur)}</b><small>всего</small></>} />
+          <ul className="macro-list">{d.byCat.map((c: any) => <li key={c.key}><i style={{ background: c.color }} /><span>{c.name}</span><b>{Math.round(c.sum / d.total * 100)}%</b><em>{money(c.sum, cur)}</em></li>)}</ul></div>
+          : <p className="card-note">Трат за период нет.</p>}</section>
+      <section className="wc span6"><div className="card-head"><h2>По месяцам</h2></div>
+        <Bars rows={d.periods.map((p: any) => ({ label: MON[+p.from.slice(5, 7) - 1]!, v: Math.round(p.spent), hint: `${human(p.from)} — ${human(p.to)}: ${money(p.spent, cur)}`, color: p.spent > d.amount ? 'var(--bad)' : null }))} color="var(--money)" target={d.amount} unit={cur} values /></section>
+    </div>
+  </>;
+}
+
+/* ---------------- книги ---------------- */
+function BooksStats({ n }: { n: number }) {
+  const { d, err } = useLoad<any>(`/api/books/stats?days=${n}`);
+  if (err) return <p className="form-err">{err}</p>;
+  if (!d) return <Skel />;
+  const L = lab(n), done = d.genres.reduce((a: number, g: any) => a + g.n, 0);
+  return <>
+    <div className="kpis">
+      <Kpi name="Страниц" value={fmt(d.total)} sub={<>{fmt1(d.total / n)} в день · {d.readDays} дн. с чтением <Delta cur={d.total} prev={d.prevTotal} /></>} tone="k-books" />
+      <Kpi name={`Книг за ${d.year}`} value={<>{d.doneYear}<small>из {d.goal}</small></>} sub="цель года" tone="k-good" />
+      <Kpi name="Скорость" value={d.speed ? <>{d.speed}<small>стр/день</small></> : 'нет'} sub="от начала до конца книги" />
+      <Kpi name="Серия чтения" value={d.streak} sub={`${plural(d.streak, 'день', 'дня', 'дней')} подряд`} />
+    </div>
+    <div className="wgrid">
+      <section className="wc span12"><div className="card-head"><h2>Страниц по дням</h2></div>
+        {d.total ? <Bars rows={d.perDay.map((r: any) => ({ label: L(r.day), v: r.pages, hint: `${human(r.day)}: ${r.pages} стр.` }))} color="var(--books)" unit="стр." every={every(n)} /> : <p className="card-note">Отмечай прочитанные страницы в «Книгах» — появится график.</p>}</section>
+      <section className="wc span6"><div className="card-head"><h2>Прочитано по месяцам {d.year}</h2></div>
+        <Bars rows={d.months.map((m: any, k: number) => ({ label: MON[k]!, v: m.n, hint: `${MON[k]}: ${m.titles.join(', ') || 'нет'}` }))} color="var(--books)" values max={2} /></section>
+      <section className="wc span6"><div className="card-head"><h2>Жанры</h2></div>
+        {d.genres.length ? <div className="macro-wrap"><Donut parts={d.genres.map((g: any, k: number) => ({ name: g.name, v: g.n, color: PALETTE[k % PALETTE.length]! }))} center={<><b>{done}</b><small>{plural(done, 'книга', 'книги', 'книг')}</small></>} />
+          <ul className="macro-list">{d.genres.map((g: any, k: number) => <li key={g.name}><i style={{ background: PALETTE[k % PALETTE.length] }} /><span>{g.name}</span><b>{g.n}</b></li>)}</ul></div>
+          : <p className="card-note">Дочитанных книг пока нет.</p>}</section>
+    </div>
+  </>;
+}
+
 /* ---------------- тело ---------------- */
 function BodyStats({ n }: { n: number }) {
   const { d, err } = useLoad<any>(`/api/stats/body?days=${n}`);
@@ -193,7 +275,7 @@ function Awards() {
   </>;
 }
 
-export function Stats({ wide, tab: start, onBack }: { wide: boolean; tab?: StatsTab; onBack: () => void }) {
+export function Stats({ wide, tab: start, has = () => true, onBack }: { wide: boolean; tab?: StatsTab; has?: (feature: string) => boolean; onBack: () => void }) {
   const [tab, setTab] = useState<StatsTab>(start ?? 'overview'), [n, setN] = useState(30);
   useEffect(() => { if (start) setTab(start); }, [start]);
   const pick = useCallback((t: StatsTab) => { setTab(t); buzz(6); }, []);
@@ -204,12 +286,15 @@ export function Stats({ wide, tab: start, onBack }: { wide: boolean; tab?: Stats
       <div className="daytitle"><span>{sub}</span><b>{tab === 'week' ? 'Итог недели' : tab === 'awards' ? 'Достижения' : 'Статистика'}</b></div>
     </header>
     <div className="st-bar">
-      <div className="seg-tabs" role="tablist">{TABS.map(([k, t]) => <button key={k} role="tab" aria-selected={tab === k} className={tab === k ? 'on' : ''} onClick={() => pick(k)}>{t}</button>)}</div>
-      {(tab === 'food' || tab === 'body') && <div className="seg-tabs sm">{[7, 30, 90, 365].map(r => <button key={r} className={r === n ? 'on' : ''} onClick={() => setN(r)}>{r === 365 ? 'год' : `${r} дн`}</button>)}</div>}
+      <div className="seg-tabs" role="tablist">{TABS.filter(([, , f]) => !f || has(f)).map(([k, t]) => <button key={k} role="tab" aria-selected={tab === k} className={tab === k ? 'on' : ''} onClick={() => pick(k)}>{t}</button>)}</div>
+      {['food', 'body', 'study', 'money', 'books'].includes(tab) && <div className="seg-tabs sm">{[7, 30, 90, 365].map(r => <button key={r} className={r === n ? 'on' : ''} onClick={() => setN(r)}>{r === 365 ? 'год' : `${r} дн`}</button>)}</div>}
     </div>
     {tab === 'overview' && <Overview />}
     {tab === 'food' && <FoodStats n={n} />}
     {tab === 'body' && <BodyStats n={n} />}
+    {tab === 'study' && <StudyStats n={n} />}
+    {tab === 'money' && <MoneyStats n={n} />}
+    {tab === 'books' && <BooksStats n={n} />}
     {tab === 'week' && <Week />}
     {tab === 'awards' && <Awards />}
   </div>;

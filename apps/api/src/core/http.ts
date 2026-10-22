@@ -16,3 +16,6 @@ export const idParam = (v: unknown) => { const s = String(v ?? ''); if (!/^[0-9a
 export const hmParam = (v: unknown) => (typeof v === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(v) ? v : null);
 export const uid = (req: FastifyRequest) => req.userId!;
 export const notFound = (reply: FastifyReply) => reply.code(404).send({ error: 'Запись не найдена.' });
+
+/** период статистики: 7, 30, 90 или 365 дней */
+export const statDays = (v: unknown) => { const x = Number(v ?? 30); if (![7, 30, 90, 365].includes(x)) throw bad('Период: 7, 30, 90 или 365 дней.'); return x; };

@@ -12,7 +12,8 @@ import { addDays, diffDays } from '@bortjournal/core';
 import { requireUser } from '../../core/auth.js';
 import { requireFeature } from '../../core/billing.js';
 import { userContext } from '../../core/context.js';
-import { bad, idParam, notFound, uid } from '../../core/http.js';
+import { bad, idParam, notFound, statDays, uid } from '../../core/http.js';
+import { booksStats } from './stats.js';
 import { profiles } from '../../core/schema.js';
 import type { DB, Tx } from '../../db/index.js';
 import { COVERS } from './files.js';
@@ -73,6 +74,7 @@ export async function booksRoutes(app: FastifyInstance, { db }: { db: DB }) {
   const mine = async (userId: string, id: string) => (await db.select().from(books).where(and(eq(books.userId, userId), eq(books.id, id))))[0] ?? null;
   const today = async (userId: string) => (await userContext(db, userId)).today;
 
+  app.get('/stats', { preHandler }, async req => booksStats(db, uid(req), statDays((req.query as { days?: unknown }).days)));
   app.get('/overview', { preHandler }, async req => overview(db, uid(req), await today(uid(req))));
   app.get('/shelf', { preHandler }, async req => {
     const { bs } = await all(db, uid(req)), rated = bs.filter(b => b.rating);
