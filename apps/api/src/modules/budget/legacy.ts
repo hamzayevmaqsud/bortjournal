@@ -1,7 +1,7 @@
 /** Перенос бюджета: настройки и операции. Суммы сверяются до копейки */
 import { count, eq, sql } from 'drizzle-orm';
 import { recordEvents } from '../../core/events.js';
-import { dict, hm, isDay, list, num, optStr, str, sum, uniqById } from '../../core/legacy.js';
+import { dict, hm, isDay, list, num, optStr, owned, str, sum, uniqById } from '../../core/legacy.js';
 import type { ImportCheck, ImportContext, LegacyState } from '../../core/module.js';
 import { upsertByLegacy } from '../../db/upsert.js';
 import { budgetEntries, budgets } from './schema.js';
@@ -23,9 +23,10 @@ export async function importBudget({ db, userId, warn }: ImportContext, st: Lega
   await recordEvents(db, es.map(x => ({ userId, module: 'budget' as const, kind: x.kind === 'in' ? 'income' : 'expense', refId: ids.get(String(x.id)), day: x.date, time: hm(x.time), title: str(x.note, 80) || str(x.cat, 30), value: cents(x.amount), unit: str(b.cur, 3) || '₼' })));
 }
 
-export async function verifyBudget({ db, userId }: ImportContext, st: LegacyState): Promise<ImportCheck[]> {
+export async function verifyBudget(ctx: ImportContext, st: LegacyState): Promise<ImportCheck[]> {
+  const { db } = ctx;
   const es = validEntries(st);
-  const rows = await db.select({ kind: budgetEntries.kind, n: count(), total: sql<string>`coalesce(sum(${budgetEntries.amount}), 0)` }).from(budgetEntries).where(eq(budgetEntries.userId, userId)).groupBy(budgetEntries.kind);
+  const rows = await db.select({ kind: budgetEntries.kind, n: count(), total: sql<string>`coalesce(sum(${budgetEntries.amount}), 0)` }).from(budgetEntries).where(owned(ctx, budgetEntries.userId, budgetEntries.legacyId)).groupBy(budgetEntries.kind);
   const of = (k: string) => rows.find(r => r.kind === k);
   return [
     { name: 'операций', source: es.length, db: rows.reduce((a, r) => a + r.n, 0) },

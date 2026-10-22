@@ -1,7 +1,7 @@
 /** Перенос зала: тренировки (упражнения и подходы), свои упражнения, планы, идущая тренировка */
 import { count, eq, inArray, sql } from 'drizzle-orm';
 import { recordEvents } from '../../core/events.js';
-import { hm, isDay, list, num, optNum, optStr, str, uniqById } from '../../core/legacy.js';
+import { hm, isDay, list, num, optNum, optStr, owned, str, uniqById } from '../../core/legacy.js';
 import type { ImportCheck, ImportContext, LegacyState } from '../../core/module.js';
 import { upsertByLegacy } from '../../db/upsert.js';
 import { liveWorkouts, userExercises, workoutExercises, workoutPlans, workoutSets, workouts } from './schema.js';
@@ -37,11 +37,12 @@ export async function importGym({ db, userId, warn }: ImportContext, st: LegacyS
   await recordEvents(db, ws.map(w => ({ userId, module: 'gym' as const, kind: 'workout', refId: ids.get(String(w.id)), day: w.date, time: hm(w.time), title: str(w.type, 60) || 'Тренировка', value: w.minutes ? num(w.minutes) : null, unit: 'min' })));
 }
 
-export async function verifyGym({ db, userId }: ImportContext, st: LegacyState): Promise<ImportCheck[]> {
+export async function verifyGym(ctx: ImportContext, st: LegacyState): Promise<ImportCheck[]> {
+  const { db } = ctx;
   const ws = validWorkouts(st);
-  const [w] = await db.select({ n: count() }).from(workouts).where(eq(workouts.userId, userId));
+  const [w] = await db.select({ n: count() }).from(workouts).where(owned(ctx, workouts.userId, workouts.legacyId));
   const [s] = await db.select({ n: count(), vol: sql<number>`coalesce(round(sum(coalesce(${workoutSets.kg},0) * coalesce(${workoutSets.reps},0))::numeric, 2), 0)::float` })
-    .from(workoutSets).innerJoin(workoutExercises, eq(workoutSets.workoutExerciseId, workoutExercises.id)).innerJoin(workouts, eq(workoutExercises.workoutId, workouts.id)).where(eq(workouts.userId, userId));
+    .from(workoutSets).innerJoin(workoutExercises, eq(workoutSets.workoutExerciseId, workoutExercises.id)).innerJoin(workouts, eq(workoutExercises.workoutId, workouts.id)).where(owned(ctx, workouts.userId, workouts.legacyId));
   const srcSets = ws.flatMap(x => list(x.exercises).filter(e => str(e?.name)).flatMap(e => list(e.sets)));
   return [
     { name: 'тренировок', source: ws.length, db: w!.n },

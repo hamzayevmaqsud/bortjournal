@@ -1,6 +1,6 @@
 /** Перенос тела: вес и шаги из days старого журнала. Это значения дня, а не события — лента берёт их из body_days */
 import { count, eq, sql } from 'drizzle-orm';
-import { dict, inRange, isDay, num, optNum } from '../../core/legacy.js';
+import { dict, inRange, isDay, num, optNum, owned } from '../../core/legacy.js';
 import type { ImportCheck, ImportContext, LegacyState } from '../../core/module.js';
 import { bodyDays } from './schema.js';
 
@@ -18,9 +18,10 @@ export async function importBody({ db, userId, warn }: ImportContext, st: Legacy
   }
 }
 
-export async function verifyBody({ db, userId }: ImportContext, st: LegacyState): Promise<ImportCheck[]> {
+export async function verifyBody(ctx: ImportContext, st: LegacyState): Promise<ImportCheck[]> {
+  const { db } = ctx;
   const rows = rowsOf(st);
-  const [b] = await db.select({ n: count(), steps: sql<number>`coalesce(sum(${bodyDays.steps}), 0)::bigint` }).from(bodyDays).where(eq(bodyDays.userId, userId));
+  const [b] = await db.select({ n: count(), steps: sql<number>`coalesce(sum(${bodyDays.steps}), 0)::bigint` }).from(bodyDays).where(owned(ctx, bodyDays.userId));
   return [
     { name: 'дней с весом или шагами', source: rows.length, db: b!.n },
     { name: 'шагов всего', source: rows.reduce((a, r) => a + (r.steps ?? 0), 0), db: Number(b!.steps) }

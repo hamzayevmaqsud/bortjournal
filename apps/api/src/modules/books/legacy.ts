@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { and, count, eq, inArray, sql } from 'drizzle-orm';
 import { recordEvents } from '../../core/events.js';
-import { isDay, list, num, optStr, str, uniqById } from '../../core/legacy.js';
+import { isDay, list, num, optStr, owned, str, uniqById } from '../../core/legacy.js';
 import type { ImportCheck, ImportContext, LegacyState } from '../../core/module.js';
 import { upsertByLegacy } from '../../db/upsert.js';
 import { COVERS } from './files.js';
@@ -49,12 +49,13 @@ export async function importBooks({ db, userId, warn, dataDir, username }: Impor
   ]);
 }
 
-export async function verifyBooks({ db, userId }: ImportContext, st: LegacyState): Promise<ImportCheck[]> {
+export async function verifyBooks(ctx: ImportContext, st: LegacyState): Promise<ImportCheck[]> {
+  const { db } = ctx;
   const bs = validBooks(st), ids = new Set(bs.map(b => String(b.id)));
   const logs = uniqById(list(st.readLog)).filter(r => isDay(r?.date) && num(r?.pages) > 0 && ids.has(String(r.book)));
-  const [b] = await db.select({ n: count() }).from(books).where(eq(books.userId, userId));
-  const [q] = await db.select({ n: count() }).from(bookQuotes).innerJoin(books, eq(bookQuotes.bookId, books.id)).where(eq(books.userId, userId));
-  const [r] = await db.select({ pages: sql<number>`coalesce(sum(${readingLog.pages}), 0)::int` }).from(readingLog).where(eq(readingLog.userId, userId));
+  const [b] = await db.select({ n: count() }).from(books).where(owned(ctx, books.userId, books.legacyId));
+  const [q] = await db.select({ n: count() }).from(bookQuotes).innerJoin(books, eq(bookQuotes.bookId, books.id)).where(owned(ctx, books.userId, books.legacyId));
+  const [r] = await db.select({ pages: sql<number>`coalesce(sum(${readingLog.pages}), 0)::int` }).from(readingLog).where(owned(ctx, readingLog.userId, readingLog.legacyId));
   return [
     { name: 'книг', source: bs.length, db: b!.n },
     { name: 'цитат', source: bs.reduce((a, x) => a + list(x.quotes).filter(q => str(q?.text)).length, 0), db: q!.n },

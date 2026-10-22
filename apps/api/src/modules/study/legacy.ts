@@ -1,7 +1,7 @@
 /** Перенос учёбы: занятия, карточки повторения, порции вопросов, минуты по конспектам */
 import { count, eq, sql } from 'drizzle-orm';
 import { recordEvents } from '../../core/events.js';
-import { dict, hm, isDay, list, num, optStr, str, uniqById } from '../../core/legacy.js';
+import { dict, hm, isDay, list, num, optStr, owned, str, uniqById } from '../../core/legacy.js';
 import type { ImportCheck, ImportContext, LegacyState } from '../../core/module.js';
 import { upsertByLegacy } from '../../db/upsert.js';
 import { quizzes, srsCards, studySessions, studyTime } from './schema.js';
@@ -33,11 +33,12 @@ export async function importStudy({ db, userId, warn }: ImportContext, st: Legac
   await recordEvents(db, ss.map(s => ({ userId, module: 'study' as const, kind: 'session', refId: ids.get(String(s.id)), day: s.date, time: hm(s.time), title: str(s.topic, 200), value: Math.round(num(s.minutes)), unit: 'min' })));
 }
 
-export async function verifyStudy({ db, userId }: ImportContext, st: LegacyState): Promise<ImportCheck[]> {
+export async function verifyStudy(ctx: ImportContext, st: LegacyState): Promise<ImportCheck[]> {
+  const { db } = ctx;
   const ss = validSessions(st);
-  const [s] = await db.select({ n: count(), min: sql<number>`coalesce(sum(${studySessions.minutes}), 0)::int` }).from(studySessions).where(eq(studySessions.userId, userId));
-  const [c] = await db.select({ n: count() }).from(srsCards).where(eq(srsCards.userId, userId));
-  const [q] = await db.select({ n: count() }).from(quizzes).where(eq(quizzes.userId, userId));
+  const [s] = await db.select({ n: count(), min: sql<number>`coalesce(sum(${studySessions.minutes}), 0)::int` }).from(studySessions).where(owned(ctx, studySessions.userId, studySessions.legacyId));
+  const [c] = await db.select({ n: count() }).from(srsCards).where(owned(ctx, srsCards.userId));
+  const [q] = await db.select({ n: count() }).from(quizzes).where(owned(ctx, quizzes.userId));
   return [
     { name: 'занятий', source: ss.length, db: s!.n },
     { name: 'минут учёбы', source: ss.reduce((a, x) => a + Math.round(num(x.minutes)), 0), db: Number(s!.min) },

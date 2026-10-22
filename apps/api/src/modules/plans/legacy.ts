@@ -1,7 +1,7 @@
 /** Перенос планов: цели (со ссылками на родителя), серии повторов, задачи */
 import { count, eq, sql } from 'drizzle-orm';
 import { recordEvents } from '../../core/events.js';
-import { hm, isDay, list, optStr, str, uniqById } from '../../core/legacy.js';
+import { hm, isDay, list, optStr, owned, str, uniqById } from '../../core/legacy.js';
 import type { ImportCheck, ImportContext, LegacyState } from '../../core/module.js';
 import { upsertByLegacy } from '../../db/upsert.js';
 import { goals, taskSeries, tasks } from './schema.js';
@@ -33,11 +33,12 @@ export async function importPlans({ db, userId, warn }: ImportContext, st: Legac
   await recordEvents(db, ts.filter(t => isDay(t.date)).map(t => ({ userId, module: 'plans' as const, kind: 'task', refId: taskIds.get(String(t.id)), day: t.date, time: hm(t.time), title: str(t.title, 200), value: t.done ? 1 : 0, unit: 'done' })));
 }
 
-export async function verifyPlans({ db, userId }: ImportContext, st: LegacyState): Promise<ImportCheck[]> {
+export async function verifyPlans(ctx: ImportContext, st: LegacyState): Promise<ImportCheck[]> {
+  const { db } = ctx;
   const ts = validTasks(st);
-  const [t] = await db.select({ n: count(), done: sql<number>`count(*) filter (where ${tasks.done})::int` }).from(tasks).where(eq(tasks.userId, userId));
-  const [g] = await db.select({ n: count() }).from(goals).where(eq(goals.userId, userId));
-  const [s] = await db.select({ n: count() }).from(taskSeries).where(eq(taskSeries.userId, userId));
+  const [t] = await db.select({ n: count(), done: sql<number>`count(*) filter (where ${tasks.done})::int` }).from(tasks).where(owned(ctx, tasks.userId, tasks.legacyId));
+  const [g] = await db.select({ n: count() }).from(goals).where(owned(ctx, goals.userId, goals.legacyId));
+  const [s] = await db.select({ n: count() }).from(taskSeries).where(owned(ctx, taskSeries.userId, taskSeries.legacyId));
   return [
     { name: 'задач', source: ts.length, db: t!.n },
     { name: 'задач выполнено', source: ts.filter(x => x.done).length, db: Number(t!.done) },

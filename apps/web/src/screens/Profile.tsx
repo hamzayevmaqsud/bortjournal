@@ -170,6 +170,17 @@ export function Profile({ me, wide, onBack, onSaved, onRedo, onReminders, onFeed
         <label className="pf-row"><span className="mid"><b>ИИ-помощник</b><small>фото еды, голосовые записи и вопросы разбирает Google Gemini</small></span><input type="checkbox" className="switch" checked={!!s.aiConsent} onChange={async e => { try { const r = await api<{ settings: Record<string, unknown> }>('/api/profile/settings', { method: 'PUT', body: { aiConsent: e.target.checked } }); onSaved(r.settings); } catch { toast('Не получилось', { err: true }); } }} /></label>
         {onFeedback && <button className="pf-row" onClick={onFeedback}><span className="mid"><b>Написать разработчику</b><small>отзыв, идея или ошибка — экран и устройство приложатся сами</small></span><Icon name="chev" className="ic chev" /></button>}
         <a className="pf-row" href="/privacy.html" target="_blank" rel="noopener"><span className="mid"><b>Конфиденциальность и условия</b><small>что храним, кому передаём, твои права</small></span><Icon name="chev" className="ic chev" /></a>
+        <label className="pf-row" style={{ cursor: 'pointer' }}><span className="mid"><b>Перенести из старого журнала</b><small>файл «Экспорт JSON» из Бортжурнала — записи добавятся к твоим</small></span><Icon name="chev" className="ic chev" />
+          <input type="file" accept="application/json,.json" hidden onChange={async e => {
+            const f = e.target.files?.[0]; e.target.value = ''; if (!f) return;
+            try {
+              const body = JSON.parse(await f.text());
+              toast('Переношу записи…');
+              const r = await api<{ checks: Array<{ name: string; source: number }> }>('/api/account/import', { method: 'POST', body });
+              const n = r.checks.filter(c => /записей|занятий|тренировок|операций|задач$|книг$/.test(c.name)).reduce((a, c) => a + c.source, 0);
+              toast(`Перенесено записей: ${n}`); setTimeout(() => location.reload(), 1200);
+            } catch (x) { toast(x instanceof ApiError ? x.message : x instanceof SyntaxError ? 'Это не JSON-файл.' : 'Не получилось перенести', { err: true }); }
+          }} /></label>
         <a className="pf-row" href="/api/export" download><span className="mid"><b>Выгрузить мои данные</b><small>всё, что записано, — одним файлом JSON</small></span><Icon name="chev" className="ic chev" /></a>
         <button className="pf-row" onClick={onLogout}><span className="mid"><b>Выйти</b><small>на этом устройстве</small></span><Icon name="chev" className="ic chev" /></button>
         <button className="pf-row pf-danger" onClick={() => setSheet('wipe')}><span className="mid"><b>Стереть все записи</b><small>начать с чистого листа — аккаунт и подписка остаются</small></span><Icon name="chev" className="ic chev" /></button>

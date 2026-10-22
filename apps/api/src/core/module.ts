@@ -18,10 +18,13 @@ export interface ImportContext {
   /** папка data старого журнала и логин в нём — чтобы забрать файлы (свои обложки) */
   dataDir?: string;
   username?: string;
+  /** импорт в живой аккаунт: сверка считает только перенесённые записи (с legacy_id) */
+  legacyOnly?: boolean;
 }
 
 /** Для проверки переноса: сколько было в старом журнале и сколько легло в базу */
-export interface ImportCheck { name: string; source: number; db: number }
+/** сверка переноса; atLeast — в базе может быть больше (импорт в аккаунт, где уже есть свои записи) */
+export interface ImportCheck { name: string; source: number; db: number; atLeast?: boolean }
 
 /** Всё, что нужно модулю, чтобы отдать свою часть экрана «Сегодня» */
 export interface DayContext {

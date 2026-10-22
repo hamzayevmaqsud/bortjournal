@@ -1,7 +1,7 @@
 /** Перенос еды из старого журнала: meals, drinks, foods, sets */
 import { and, count, eq, sql } from 'drizzle-orm';
 import { recordEvents } from '../../core/events.js';
-import { dict, hm, isDay, list, num, optNum, optStr, str, sum, uniqById } from '../../core/legacy.js';
+import { dict, hm, isDay, list, num, optNum, optStr, owned, str, sum, uniqById } from '../../core/legacy.js';
 import type { ImportCheck, ImportContext, LegacyState } from '../../core/module.js';
 import { upsertByLegacy } from '../../db/upsert.js';
 import { drinks, mealSets, meals, userFoods } from './schema.js';
@@ -35,11 +35,12 @@ export async function importFood({ db, userId, warn }: ImportContext, st: Legacy
   ]);
 }
 
-export async function verifyFood({ db, userId }: ImportContext, st: LegacyState): Promise<ImportCheck[]> {
+export async function verifyFood(ctx: ImportContext, st: LegacyState): Promise<ImportCheck[]> {
+  const { db } = ctx;
   const ms = uniqById(list(st.meals)).filter(m => isDay(m?.date) && str(m?.name)), ds = uniqById(list(st.drinks)).filter(x => isDay(x?.date) && num(x?.ml) > 0);
-  const [m] = await db.select({ n: count(), kcal: sql<number>`coalesce(round(sum(${meals.kcal})::numeric, 2), 0)::float` }).from(meals).where(eq(meals.userId, userId));
-  const [d] = await db.select({ n: count(), ml: sql<number>`coalesce(sum(${drinks.ml}), 0)::float` }).from(drinks).where(eq(drinks.userId, userId));
-  const [f] = await db.select({ n: count() }).from(userFoods).where(and(eq(userFoods.userId, userId)));
+  const [m] = await db.select({ n: count(), kcal: sql<number>`coalesce(round(sum(${meals.kcal})::numeric, 2), 0)::float` }).from(meals).where(owned(ctx, meals.userId, meals.legacyId));
+  const [d] = await db.select({ n: count(), ml: sql<number>`coalesce(sum(${drinks.ml}), 0)::float` }).from(drinks).where(owned(ctx, drinks.userId, drinks.legacyId));
+  const [f] = await db.select({ n: count() }).from(userFoods).where(owned(ctx, userFoods.userId));
   return [
     { name: 'еда: записей', source: ms.length, db: m!.n },
     { name: 'еда: сумма ккал', source: sum(ms.map(x => num(x.kcal))), db: Number(m!.kcal) },
