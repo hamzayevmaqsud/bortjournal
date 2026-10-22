@@ -17,21 +17,20 @@ const POSTERS = Array.from({ length: 23 }, (_, k) => `/lumi/posters/${k + 1}.web
  */
 // у каждой колонки свои постеры: соседние по цвету оказываются в разных колонках, повторов между колонками нет
 const COLS = [0, 1, 2].map(c => POSTERS.filter((_, k) => k % 3 === c));
+// скорость у всех колонок одна: секунд на постер; старт — с разных точек цикла, чтобы колонки сразу были заполнены и не шли в ногу
+const PER = 11, START = [0.3, 0.55, 0.12];
 function PosterWall() {
   return <aside className="login-art" aria-hidden="true">
     <div className="wall">{COLS.map((col, c) => <div key={c} className={`wall-col c${c}`}>
-      <div className="wall-track">{[...col, ...col].map((src, k) => <img key={k} src={src} alt="" decoding="async" />)}</div>
+      <div className="wall-track" style={{ animationDuration: `${col.length * PER}s`, animationDelay: `${-col.length * PER * START[c]!}s` }}>{[...col, ...col].map((src, k) => <img key={k} src={src} alt="" decoding="async" />)}</div>
     </div>)}</div>
   </aside>;
 }
-const SECTIONS: Array<[string, string, string]> = [['food', 'Еда', 'var(--food)'], ['drop', 'Вода', 'var(--water)'], ['plans', 'Планы', 'var(--orange)'], ['study', 'Учёба', 'var(--study)'], ['gym', 'Зал', 'var(--gym)'], ['money', 'Бюджет', 'var(--money)'], ['books', 'Книги', 'var(--books)']];
-
 export function Login({ onDone }: { onDone: () => void }) {
   const [mode, setMode] = useState<'in' | 'up'>('in');
   const [show, setShow] = useState(false), [u, setU] = useState(''), [p, setP] = useState(''), [mail, setMail] = useState(''), [err, setErr] = useState(() => takeAuthResult()?.error ?? ''), [busy, setBusy] = useState(false);
   const pv = useProviders(), any = pv.google || pv.apple, [forgot, setForgot] = useState(false), [sent, setSent] = useState('');
   const brand = <div className="login-brand"><b>Lumi</b><span>дневник, который ведёт тебя</span></div>;
-  const chips = <div className="login-chips">{SECTIONS.map(([ic, n, c]) => <span key={n} style={{ ['--c' as string]: c }}><Icon name={ic} />{n}</span>)}</div>;
   const legal = <p className="legal-links">Продолжая, ты принимаешь <a href="/terms.html" target="_blank" rel="noopener">условия</a> и <a href="/privacy.html" target="_blank" rel="noopener">политику конфиденциальности</a>.</p>;
 
   const card = forgot ? <>
@@ -48,7 +47,6 @@ export function Login({ onDone }: { onDone: () => void }) {
     {brand}
     <h1>{up ? 'Зажжём твой первый день' : 'С возвращением'}</h1>
     <p>{up ? `Еда, вода, шаги, задачи, цель и статистика — бесплатно навсегда. Всё остальное — ${TRIAL_DAYS} дней бесплатно.` : 'Lumi сохранил твой день. Войди, чтобы продолжить.'}</p>
-    {chips}
     {any && <div className="pv-btns">
       {pv.apple && <a className="pv-btn pv-apple" href={startUrl('apple')}><AppleMark />{up ? 'Создать через Apple' : 'Войти через Apple'}</a>}
       {pv.google && <a className="pv-btn pv-google" href={startUrl('google')}><GoogleMark />{up ? 'Создать через Google' : 'Войти через Google'}</a>}

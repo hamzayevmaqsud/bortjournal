@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <defs><clipPath id="c"><rect width="64" height="64" rx="14"/></clipPath></defs><g clip-path="url(#c)"><rect width="64" height="64" fill="#343A55"/>
+  <polygon points="30,19 30,23.5 6,33 6,13" fill="#E9C46A" opacity="0.9"/>
+  <path d="M28 18.5 Q34.5 10 41 18.5 Z" fill="#B4552D"/>
+  <rect x="29.5" y="18" width="10" height="6.5" fill="#F4CF74"/>
+  <rect x="27" y="24.5" width="15" height="2.6" rx="1" fill="#F3E9D2"/>
+  <polygon points="29.5,27 39.5,27 40.6,36 28.4,36" fill="#B4552D"/>
+  <polygon points="28.4,36 40.6,36 41.7,45 27.3,45" fill="#F3E9D2"/>
+  <polygon points="27.3,45 41.7,45 42.8,54 26.2,54" fill="#B4552D"/>
+  <path d="M0 64 L0 58 Q34 49 64 58 L64 64 Z" fill="#1C2134"/>
+</g></svg>
