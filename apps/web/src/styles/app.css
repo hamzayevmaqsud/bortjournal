@@ -2219,6 +2219,13 @@ input:-webkit-autofill,input:-webkit-autofill:hover,input:-webkit-autofill:focus
 @media (prefers-reduced-motion:reduce){.login-scene.lw-scene .login{animation:none}}
 .lw-scene .login .demo-link{align-self:center;min-height:40px;margin-top:-6px;color:var(--text-2);font-weight:500;font-size:14px}
 .lw-scene .login .demo-link:hover{color:var(--text)}
+/* буквы LUMI приглушены так же, как постеры (один фильтр --pf на стену); вспышка луча — поверх него */
+.lw{--pf:brightness(1)}
+@media (min-width:900px){.lw{--pf:sepia(.18) saturate(.78) brightness(.9) contrast(.96)}}
+:root[data-theme=dark] .lw{--pf:sepia(.18) saturate(.75) brightness(.78)}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]) .lw{--pf:sepia(.18) saturate(.75) brightness(.78)}}
+.lw .lw-track img.letter{filter:var(--pf)}
+@keyframes lw-lit{0%{filter:var(--pf)}35%{filter:var(--pf) brightness(1.3) drop-shadow(0 0 40px rgba(255,190,110,.75))}100%{filter:var(--pf)}}
 /* стену нельзя выделить или утащить мышью */
 .lw{-webkit-user-select:none;user-select:none}
 .lw img{-webkit-user-drag:none}
