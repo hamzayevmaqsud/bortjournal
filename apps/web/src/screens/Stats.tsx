@@ -49,10 +49,10 @@ function Overview() {
           <p className="card-note">Среднее за 7 дней — {d.score.avg7}%. Зал и чтение добавляют бонус.</p></div>
       </div>
       <div className="ov-nums">
-        <div><b>{d.nums.active365}</b><span>активных дней за год</span></div>
+        <div><b>{d.nums.active365}</b><span>{plural(d.nums.active365, 'активный день', 'активных дня', 'активных дней')} за год</span></div>
         <div><b>{d.nums.perfect365}</b><span>{plural(d.nums.perfect365, 'идеальный день', 'идеальных дня', 'идеальных дней')}</span></div>
         <div><b>{d.nums.streak}</b><span>серия сейчас · рекорд {d.nums.bestStreak}</span></div>
-        <div className="hot"><b>{d.nums.tiers}</b><span>ступеней достижений</span></div>
+        <div className="hot"><b>{d.nums.tiers}</b><span>{plural(d.nums.tiers, 'ступень', 'ступени', 'ступеней')} достижений</span></div>
       </div>
     </section>
     <section className="wc span7">

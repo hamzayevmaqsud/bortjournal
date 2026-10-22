@@ -26,7 +26,7 @@ svg{display:block}
 .daytitle span.past{color:var(--orange)}
 .daytitle b{display:block;font:800 27px/1.15 var(--display);letter-spacing:-.02em}
 
-.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
 .stat{display:flex;flex-direction:column;align-items:flex-start;padding:10px 12px;border-radius:var(--r2);background:var(--card);box-shadow:var(--sh1);text-align:left;transition:transform .25s var(--spring);min-width:0}
 .stat:active{transform:scale(.96)}
 .stat i{display:flex;align-items:center;gap:4px;font:700 10px var(--sans);font-style:normal;letter-spacing:.14em;text-transform:uppercase;color:var(--text-2)}
@@ -41,7 +41,7 @@ svg{display:block}
 .panel-h h2{margin:0;font:700 11px var(--sans);letter-spacing:.16em;text-transform:uppercase;color:var(--text-2)}
 .panel-h small{font-size:12px;color:var(--text-3)}
 
-.rings{display:grid;grid-template-columns:repeat(4,1fr);gap:4px}
+.rings{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px}
 .ring{display:flex;flex-direction:column;align-items:center;gap:2px;padding:4px 0;border-radius:var(--r2);transition:transform .25s var(--spring);min-width:0}
 .ring:active{transform:scale(.94)}
 .ring-g{position:relative;width:60px;height:60px}
@@ -96,7 +96,7 @@ svg{display:block}
 .still .mk{animation:none}
 .gap{position:absolute;top:50%;height:0;border-top:2px dashed color-mix(in srgb,var(--quiz) 75%,transparent);pointer-events:none}
 .gap span{position:absolute;bottom:4px;left:50%;transform:translateX(-50%);font:700 10px var(--sans);color:var(--quiz);white-space:nowrap}
-.tl-sum{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:12px}
+.tl-sum{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin-top:12px}
 .tl-sum div{display:flex;flex-direction:column;padding:8px 10px;border-radius:var(--r1);background:var(--field)}
 .tl-sum b{font:800 15px var(--display);font-variant-numeric:tabular-nums}
 .tl-sum small{font-size:11px;color:var(--text-2)}
@@ -151,7 +151,7 @@ button.meal:active{transform:scale(.98)}
 .meal .v{font:800 14px var(--display);font-variant-numeric:tabular-nums}
 
 /* нижняя панель */
-.tabs{position:absolute;left:0;right:0;bottom:0;display:grid;grid-template-columns:repeat(5,1fr);align-items:end;padding:8px 6px calc(10px + env(safe-area-inset-bottom,0px));background:color-mix(in srgb,var(--card) 88%,transparent);backdrop-filter:saturate(1.4) blur(18px);-webkit-backdrop-filter:saturate(1.4) blur(18px);border-top:1px solid var(--line);z-index:20}
+.tabs{position:absolute;left:0;right:0;bottom:0;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));align-items:end;padding:8px 6px calc(10px + env(safe-area-inset-bottom,0px));background:color-mix(in srgb,var(--card) 88%,transparent);backdrop-filter:saturate(1.4) blur(18px);-webkit-backdrop-filter:saturate(1.4) blur(18px);border-top:1px solid var(--line);z-index:20}
 .tab{display:flex;flex-direction:column;align-items:center;gap:3px;font-size:10.5px;font-weight:600;color:var(--text-3);transition:color .2s}
 .tab .pill{width:52px;height:30px;border-radius:15px;display:grid;place-items:center;transition:background .3s var(--ease),transform .3s var(--spring)}
 .tab[aria-current="page"]{color:var(--orange)}
@@ -176,7 +176,7 @@ button.meal:active{transform:scale(.98)}
 .water{display:flex;align-items:center;gap:8px;margin-top:8px;padding:10px 12px;border-radius:var(--r3);background:var(--card);box-shadow:var(--sh1)}
 .water button.ml{padding:10px 12px;border-radius:12px;background:color-mix(in srgb,var(--water) 18%,var(--field));color:var(--water);font-weight:800;transition:transform .2s var(--spring)}
 .water button.ml:active{transform:scale(.9)}
-.grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:8px}
+.grid4{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-top:8px}
 .tile{display:flex;flex-direction:column;align-items:center;gap:6px;padding:12px 2px;border-radius:var(--r2);background:var(--card);box-shadow:var(--sh1);font-size:12px;font-weight:600;transition:transform .2s var(--spring)}
 .tile:active{transform:scale(.92)}
 
@@ -229,7 +229,7 @@ button.meal:active{transform:scale(.98)}
 .in:focus{outline:none;border-color:var(--orange)}
 .in.big{font:800 30px var(--display);text-align:center;padding:12px}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-.grid4f{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.grid4f{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
 .grid4f .in{padding:12px 8px;text-align:center}
 .chips{display:flex;flex-wrap:wrap;gap:6px}
 .chip{padding:8px 13px;border-radius:999px;border:1.5px solid var(--line-2);background:var(--field);font-weight:600;font-size:14px;transition:background .2s,border-color .2s,color .2s,transform .2s var(--spring)}
@@ -335,7 +335,7 @@ button.meal:active{transform:scale(.98)}
 .ob-nav .ghost{flex:0 0 auto;padding:15px 20px}
 
 /* планы: неделя полосой дней */
-.wk{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
+.wk{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}
 .wk-d{display:flex;flex-direction:column;align-items:center;gap:1px;padding:8px 0 7px;border-radius:var(--r2);background:var(--card);box-shadow:var(--sh1);transition:background .25s var(--ease),color .2s,transform .2s var(--spring)}
 .wk-d:active{transform:scale(.94)}
 .wk-d span{font:700 10px var(--sans);text-transform:uppercase;letter-spacing:.06em;color:var(--text-2)}
@@ -494,7 +494,7 @@ button.meal:active{transform:scale(.98)}
 .app.wide .day:not(.wide-page) .dayhead .nav:hover{background:var(--track)}
 
 /* выбор темы */
-.seg3{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;padding:4px;border-radius:var(--r2);background:var(--field);border:1.5px solid var(--line)}
+.seg3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;padding:4px;border-radius:var(--r2);background:var(--field);border:1.5px solid var(--line)}
 .seg3 button{display:flex;flex-direction:column;align-items:center;gap:8px;padding:12px 6px 10px;border-radius:11px;font-size:13px;font-weight:600;color:var(--text-2);transition:background .25s var(--ease),color .2s,transform .2s var(--spring)}
 .seg3 button:active{transform:scale(.95)}
 .seg3 button.on{background:var(--card);color:var(--text);box-shadow:var(--sh2)}
@@ -590,7 +590,7 @@ button.meal:active{transform:scale(.98)}
 .mile span{font-size:12.5px;color:var(--text-2)}
 .mile.goal{background:var(--peach);border-color:var(--orange)}
 .mile.goal b{color:var(--on-peach)}
-.dos{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.dos{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
 @media (max-width:899px){.dos{grid-template-columns:1fr}}
 .do{position:relative;overflow:hidden;display:flex;flex-direction:column;padding:18px 20px;border-radius:var(--r3)}
 .do-k{font:700 11px var(--sans);letter-spacing:.14em;text-transform:uppercase;color:var(--fg-2)}
@@ -783,7 +783,7 @@ button.meal:active{transform:scale(.98)}
 .aw-level span{font:700 11px var(--sans);letter-spacing:.14em;text-transform:uppercase;color:var(--text-2)}
 .aw-level b{font:800 64px/1 var(--display);color:var(--orange)}
 .aw-level small{font-size:12.5px;color:var(--text-2);max-width:200px}
-.aw-tiers{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.aw-tiers{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
 .aw-tiers>div{display:flex;flex-direction:column;align-items:center;gap:4px;padding:12px 6px;border-radius:var(--r2);background:var(--field)}
 .aw-tiers i{width:22px;height:22px;border-radius:50%;background:var(--mc);box-shadow:inset 0 -3px 0 rgba(0,0,0,.18)}
 .aw-tiers b{font:800 22px var(--display)}
@@ -1670,7 +1670,7 @@ mark.hit{background:#F6D96B;color:inherit;border-radius:3px;padding:0 1px}
 .goal-ups{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:12px}
 .goal-ups>span{font:700 11px var(--sans);letter-spacing:.12em;text-transform:uppercase;color:var(--text-3);margin-right:4px}
 .goal-ups .chip{font-size:12.5px;padding:6px 11px}
-.mcal{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
+.mcal{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}
 .mcal-wd{text-align:center;font:700 10px var(--sans);text-transform:uppercase;letter-spacing:.06em;color:var(--text-3);padding-bottom:2px}
 .mcal-c{min-height:58px;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:3px;padding:6px 2px;border-radius:12px;background:var(--field);border:1px solid var(--line);color:inherit}
 .mcal-c.pad{background:none;border:0}
@@ -1744,13 +1744,13 @@ a.row{color:inherit;text-decoration:none}
 .pv-ic{flex:none;width:36px;height:36px;border-radius:11px;display:grid;place-items:center;background:var(--card);border:1px solid var(--line)}
 a.btn-accent{text-decoration:none}
 /* учёба: конспекты и вопросы с вариантами */
-.add3{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px}
-.add3-b{display:flex;flex-direction:column;align-items:center;gap:4px;padding:14px 8px;border-radius:var(--r2);border:1.5px dashed var(--line-2);background:var(--field);color:var(--text);text-align:center;transition:border-color .2s,transform .2s var(--spring)}
+.add3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-bottom:14px}
+.add3-b{display:flex;flex-direction:column;align-items:center;gap:4px;padding:14px 8px;border-radius:var(--r2);border:1.5px dashed var(--line-2);background:var(--field);color:var(--text);text-align:center;min-width:0;transition:border-color .2s,transform .2s var(--spring)}
 .add3-b:active{transform:scale(.97)}
 .add3-b:hover{border-color:var(--study)}
 .add3-b .ic{width:24px;height:24px;color:var(--study)}
 .add3-b b{font-size:14px}
-.add3-b small{font-size:11.5px;color:var(--text-3);max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.add3-b small{font-size:11.5px;line-height:1.25;color:var(--text-3);max-width:100%;overflow-wrap:anywhere}
 .mt-list{display:flex;flex-direction:column;gap:8px}
 .mt{padding:12px;border-radius:var(--r2);background:var(--field);border:1px solid var(--line);display:flex;flex-direction:column;gap:10px}
 .mt-head{display:flex;align-items:center;gap:12px}
