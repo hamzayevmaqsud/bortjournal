@@ -1,6 +1,5 @@
 /** «Ещё»: профиль и нормы, подписка, разделы Pro, установка на телефон, выход */
 import { useEffect, useState } from 'react';
-import { ThemeToggle } from '../components/ThemeToggle';
 import { api, ApiError, type Me } from '../lib/api';
 import { fmt, fmt1 } from '../lib/format';
 import { Icon } from '../components/Icon';
@@ -44,10 +43,10 @@ export function ThemePick({ me, onSaved }: { me: Me; onSaved: (s: Record<string,
 export type MoreSummary = Partial<Record<string, string>>;
 // разделы, которые на компьютере уже есть в нижней панели — в «Ещё» их не дублируем
 const IN_DOCK = new Set(['goal', 'gym', 'study', 'budget', 'books', 'stats']);
-export function More({ me, wide = false, summary = {}, onPaywall, onPro, onProfile, onSettings, onInstall, onSaved, onLogout, onFeedback, onAdmin }: { me: Me; wide?: boolean; summary?: MoreSummary; onFeedback?: () => void; onAdmin?: () => void; onPaywall: (focus?: string) => void; onPro: (what: string) => void; onProfile: () => void; onSettings: () => void; onInstall: () => void; onLogout: () => void; onSaved?: (s: Record<string, unknown>) => void }) {
+export function More({ me, wide = false, summary = {}, onPaywall, onPro, onProfile, onSettings, onInstall, onLogout, onFeedback, onAdmin }: { me: Me; wide?: boolean; summary?: MoreSummary; onFeedback?: () => void; onAdmin?: () => void; onPaywall: (focus?: string) => void; onPro: (what: string) => void; onProfile: () => void; onSettings: () => void; onInstall: () => void; onLogout: () => void; onSaved?: (s: Record<string, unknown>) => void }) {
   const s = me.profile?.settings ?? {}, sub = me.subscription, [pw, setPw] = useState(false);
   return <div className="day more-page">
-    <header className="dayhead"><div className="daytitle"><span>ещё</span><b>{s.name || me.username}</b></div>{!wide && <ThemeToggle onSaved={onSaved} />}</header>
+    <header className="dayhead"><div className="daytitle"><span>ещё</span><b>{s.name || me.username}</b></div></header>
     <button className="profile-card" onClick={onProfile} aria-label="Профиль">
       <span className="avatar">{(s.name || me.username).slice(0, 1).toUpperCase()}</span>
       <span className="mid"><b>{s.name || me.username}</b><small>{fmt(s.kcal ?? 2000)} ккал{s.protein ? ` · белок ${fmt(s.protein)} г` : ''} · {fmt1((s.water ?? 2000) / 1000)} л · {fmt(s.steps ?? 8000)} шагов</small></span>

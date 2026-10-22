@@ -2056,6 +2056,16 @@ input:-webkit-autofill,input:-webkit-autofill:hover,input:-webkit-autofill:focus
   .wall-col.c2 .wall-track{margin-top:-380px}
   .wall-track img{margin:0 0 10px}
 }
+/* стена постеров: движение задаёт JS (колёсико разгоняет); CSS-анимации и паузы выключены, края уже */
+.wall-track{animation:none!important;will-change:transform}
+.login-scene:focus-within .wall-track{animation-play-state:running}
+@media (min-width:900px){
+  .login-scene{grid-template-columns:minmax(0,1fr) minmax(380px,440px);column-gap:clamp(24px,3vw,56px);padding-inline:clamp(16px,3vw,48px)}
+  .login-art{margin-left:calc(-1 * clamp(16px,3vw,48px));margin-right:-120px;
+    -webkit-mask-image:linear-gradient(180deg,transparent,#000 12%,#000 88%,transparent),linear-gradient(90deg,transparent,#000 8%);
+    mask-image:linear-gradient(180deg,transparent,#000 12%,#000 88%,transparent),linear-gradient(90deg,transparent,#000 8%)}
+  .wall{justify-content:flex-end;padding-right:90px}
+}
 /* перетаскивание задач в «Планах»: строка тянется, день недели и «Без даты» подсвечиваются под курсором */
 @media (hover:hover) and (pointer:fine){.task[draggable=true]{cursor:grab}.task[draggable=true] .tt{cursor:pointer}}
 .task.dragging{opacity:.45}

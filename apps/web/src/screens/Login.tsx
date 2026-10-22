@@ -15,17 +15,61 @@ const N = 23;
 const srcSet = (k: number) => `/lumi/posters/${k}-240.webp 240w, /lumi/posters/${k}-400.webp 400w`;
 const SIZES = '(min-width: 900px) 200px, 80px';
 const PHONE = typeof matchMedia !== 'undefined' && matchMedia('(max-width: 899px)').matches;
-// у каждой колонки свои постеры: соседние по цвету — в разных колонках; на телефоне — одна лента
-const COLS = (PHONE ? [0] : [0, 1, 2]).map(c => Array.from({ length: N }, (_, k) => k + 1).filter(k => (k - 1) % 3 === c));
-// скорость у всех колонок одна (секунд на постер); старт с разных точек цикла — колонки сразу заполнены
-const PER = 11, START = [0.3, 0.55, 0.12];
+const PER = 11;                        // секунд на постер при обычной скорости — у всех колонок одна скорость
+const START = [0.3, 0.55, 0.12, 0.8, 0.4, 0.68, 0.2];
 
-/** стена постеров: колонки медленно едут навстречу друг другу; при «меньше движения» стоит, при фокусе в форме — замирает */
+/** сколько колонок нужно, чтобы стена заполнила левую часть экрана (на телефоне — одна лента) */
+const colCount = () => {
+  if (PHONE) return 1;
+  const w = innerWidth, poster = Math.min(200, Math.max(150, w * 0.13)) + 10;
+  return Math.max(3, Math.min(8, Math.ceil((w - 440 - 80) * 1.2 / poster)));
+};
+/** постеры по колонкам: соседние по цвету — в разных колонках; короткая колонка повторяется, чтобы лента была длиннее экрана */
+const lay = (cols: number) => Array.from({ length: cols }, (_, c) => {
+  const own = Array.from({ length: N }, (_, k) => k + 1).filter(k => (k - 1) % cols === c);
+  let col = own; while (col.length < (PHONE ? 7 : 6)) col = [...col, ...own];
+  return col;
+});
+
+/**
+ * Стена постеров. Движение — своим циклом (requestAnimationFrame), а не CSS: так колёсико мыши может разгонять ленту
+ * без рывков. Колесо вниз — быстрее вперёд, вверх — назад; разгон плавно гаснет до обычной скорости. Анимация не останавливается.
+ */
 function PosterWall() {
-  return <aside className="login-art" aria-hidden="true">
-    <div className="wall">{COLS.map((col, c) => <div key={c} className={`wall-col c${c}`}>
-      <div className="wall-track" style={{ animationDuration: `${col.length * PER}s`, animationDelay: `${-col.length * PER * START[c]!}s` }}>
-        {[...col, ...col].map((n, k) => <img key={k} srcSet={srcSet(n)} sizes={SIZES} src={`/lumi/posters/${n}-400.webp`} alt="" decoding="async" fetchPriority={k < 4 ? 'auto' : 'low'} />)}
+  const box = useRef<HTMLDivElement>(null), [cols, setCols] = useState(colCount);
+  useEffect(() => { const f = () => setCols(colCount()); addEventListener('resize', f); return () => removeEventListener('resize', f); }, []);
+  const lists = lay(cols);
+  useEffect(() => {
+    const root = box.current; if (!root) return;
+    const tracks = [...root.querySelectorAll<HTMLElement>('.wall-track')].map((el, c) => ({ el, n: lists[c]!.length, len: 0, pos: -1, dir: c % 2 ? -1 : 1, start: START[c % START.length]! }));
+    const measure = () => tracks.forEach(t => {
+      t.len = (PHONE ? t.el.scrollWidth : t.el.scrollHeight) / 2;
+      if (t.pos < 0) t.pos = t.len * t.start;
+    });
+    measure();
+    let boost = 0, last = performance.now(), raf = 0;
+    const tick = (now: number) => {
+      const dt = Math.min(0.05, (now - last) / 1000); last = now;
+      boost *= Math.pow(0.15, dt);                         // разгон гаснет примерно за 2 секунды
+      for (const t of tracks) {
+        if (!t.len) continue;
+        const v = t.len / (t.n * PER) * (1 + boost) * t.dir;  // пикселей в секунду
+        t.pos = ((t.pos + v * dt) % t.len + t.len) % t.len;
+        t.el.style.transform = PHONE ? `translate3d(${-t.pos}px,0,0)` : `translate3d(0,${-t.pos}px,0)`;
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    const scene = root.closest('.login-scene') ?? root;
+    const wheel = (e: Event) => { const d = (e as WheelEvent).deltaY; boost = Math.max(-14, Math.min(14, boost + Math.sign(d) * Math.min(Math.abs(d), 160) / 40)); };
+    scene.addEventListener('wheel', wheel, { passive: true });
+    addEventListener('resize', measure);
+    return () => { cancelAnimationFrame(raf); scene.removeEventListener('wheel', wheel); removeEventListener('resize', measure); };
+  }, [cols]); // eslint-disable-line react-hooks/exhaustive-deps
+  return <aside className="login-art" aria-hidden="true" ref={box}>
+    <div className="wall">{lists.map((col, c) => <div key={`${cols}-${c}`} className={`wall-col c${c}`}>
+      <div className="wall-track" style={PHONE ? undefined : { marginTop: -(240 + (c % 3) * 70) }}>
+        {[...col, ...col].map((n, k) => <img key={k} srcSet={srcSet(n)} sizes={SIZES} src={`/lumi/posters/${n}-400.webp`} alt="" decoding="async" />)}
       </div>
     </div>)}</div>
   </aside>;

@@ -5,7 +5,6 @@
  * удаление отправляется через 5 секунд, если не нажали «Вернуть».
  */
 import { can } from './lib/features';
-import { ThemeToggle } from './components/ThemeToggle';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { addDays } from '@bortjournal/core';
 import { api, ApiError, flushOutbox, forgetLocal, fromCache, pendingCount, setOwner, type Drink, type FoodDay, type FoodDraft, draftPending, type Meal, type Me, type Subscription, type TaskFull, type Today as TodayData } from './lib/api';
@@ -312,7 +311,6 @@ export function App() {
 
   return <div className={`app ${wide ? 'wide' : ''}`}>
     {wide && <div className="brand"><img className="brand-mark" src="/favicon.svg" alt="" />Lumi</div>}
-    {wide && <ThemeToggle className="corner" onSaved={st => setMe(m => m && m.profile ? { ...m, profile: { ...m.profile, settings: st } } : m)} />}
     {tab in SECTIONS && SECTIONS[tab] && sub.ended && !can(sub, SECTIONS[tab]!) && <button className="ro-bar" onClick={() => open({ kind: 'paywall', focus: SECTION_NAME[tab] })}><Icon name="file" />Только просмотр — Pro закончился. Продлить</button>}
     {queued === 0 && drafts.length > 0 && (() => {
       const ready = drafts.filter(d => d.state === 'ready'), failed = drafts.filter(d => d.state === 'failed'), busy = drafts.filter(draftPending);
