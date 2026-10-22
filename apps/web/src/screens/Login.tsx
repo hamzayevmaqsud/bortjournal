@@ -19,7 +19,9 @@ const LETTERS = 4;                      // L, U, M, I — карточки ло�
 const PHONE_Q = '(max-width: 899px)';
 const isPhone = () => typeof matchMedia !== 'undefined' && matchMedia(PHONE_Q).matches;
 const posterSet = (k: number) => `/lumi/posters/${k}-240.webp 240w, /lumi/posters/${k}-400.webp 400w, /lumi/posters/${k}-560.webp 560w`;
-const letterSet = (k: number) => `/lumi/logo/${k}-240.webp 240w, /lumi/logo/${k}-400.webp 400w, /lumi/logo/${k}.webp 612w`;
+// ?v= — после замены картинок логотипа браузер не покажет старые из кэша
+const LOGO_V = 'main';
+const letterSet = (k: number) => `/lumi/logo/${k}-240.webp?v=${LOGO_V} 240w, /lumi/logo/${k}-400.webp?v=${LOGO_V} 400w, /lumi/logo/${k}.webp?v=${LOGO_V} 612w`;
 /** форма справа: ширина — как в стилях (.lw-scene .login); поле — отступ справа и зазор до стены, они равны */
 /** на высоких экранах форма крупнее целиком (zoom), чтобы не теряться рядом с большими карточками */
 const formZoom = () => (innerWidth >= 1800 ? Math.min(1.3, Math.max(1, innerHeight / 1080)) : 1);
@@ -144,7 +146,7 @@ function PosterWall() {
     <div className="lw-wall">{lanes.map((lane, c) => <div key={`${phone}-${n}-${c}`} className="lw-col" style={{ ['--g' as string]: `${GAP[c % GAP.length]}px` }}>
       <div className="lw-track">
         {[...lane, ...lane].map((it, k) => 'letter' in it
-          ? <img key={k} className="letter" data-k={it.letter - 1} style={{ ['--r' as string]: `${LETTER_ROT[it.letter - 1]}deg` }} srcSet={letterSet(it.letter)} sizes={sizes} src={`/lumi/logo/${it.letter}.webp`} alt="" draggable={false} decoding="async" fetchPriority="high" />
+          ? <img key={k} className="letter" data-k={it.letter - 1} style={{ ['--r' as string]: `${LETTER_ROT[it.letter - 1]}deg` }} srcSet={letterSet(it.letter)} sizes={sizes} src={`/lumi/logo/${it.letter}.webp?v=${LOGO_V}`} alt="" draggable={false} decoding="async" fetchPriority="high" />
           : <img key={k} srcSet={posterSet(it.poster)} sizes={sizes} src={`/lumi/posters/${it.poster}-400.webp`} alt="" draggable={false} decoding="async" />)}
       </div>
     </div>)}</div>
