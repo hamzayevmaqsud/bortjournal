@@ -65,4 +65,6 @@ export interface AppModule {
   totals?(db: Tx, userId: string): Promise<Totals>;
   /** напоминания на «сейчас» (ctx.now) — ядро само проверит время, повторы и настройки */
   remind?(ctx: DayContext & { min: number }): Promise<Nudge[]>;
+  /** фоновые задания модуля: один проход по всему, чему пора (at — «сейчас»). Вызывает воркер, не API. Возвращает число обработанных */
+  work?(db: DB, at?: Date): Promise<number>;
 }

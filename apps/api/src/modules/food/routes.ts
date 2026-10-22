@@ -4,6 +4,7 @@ import { bad, dayParam, guard, hmParam, idParam, notFound, uid } from '../../cor
 import type { DB } from '../../db/index.js';
 import { addDrink, addMeal, dayFood, deleteEntry, myFoods, updateDrink, updateMeal, type MealInput } from './service.js';
 import { aiEnabled, recognizeFood } from './ai.js';
+import { createDraft, getDraft, listDrafts } from './drafts.js';
 import { takeAi } from '../../core/ai-quota.js';
 import { requireUser } from '../../core/auth.js';
 import { requireFeature } from '../../core/billing.js';
@@ -75,6 +76,21 @@ export async function foodRoutes(app: FastifyInstance, { db }: { db: DB }) {
     await takeAi(db, uid(req), 'food');
     return recognizeFood({ image, mime, note, scale: String(b.scale ?? ''), answers: (Array.isArray(b.answers) ? b.answers : []).slice(0, 8).map(a => String(a).slice(0, 200)) });
   });
+
+  // Pro: фото еды в фоне — черновик приёма, разбирает воркер
+  app.post('/drafts', { preHandler: pro, bodyLimit: 12 * 1024 * 1024 }, async (req, reply) => {
+    if (!aiEnabled()) return reply.code(503).send({ error: 'Распознавание не настроено: на сервере нет ключа ИИ.' });
+    const b = (req.body ?? {}) as Record<string, unknown>;
+    const mime = String(b.mime ?? ''), image = typeof b.image === 'string' ? b.image : '';
+    if (!/^image\/(jpeg|png|webp)$/.test(mime)) throw bad('Нужна картинка JPEG, PNG или WebP.');
+    if (image.length < 100 || image.length > 11e6) throw bad('Фото пустое или слишком большое.');
+    await takeAi(db, uid(req), 'food');
+    const draft = await createDraft(db, uid(req), { day: dayParam(b.day), time: hmParam(b.time), slot: SLOTS.has(String(b.slot)) ? String(b.slot) : null,
+      image, mime, note: String(b.note ?? '').trim().slice(0, 300), scale: String(b.scale ?? '').slice(0, 20) });
+    return reply.code(201).send(draft);
+  });
+  app.get('/drafts', { preHandler: pro }, async req => ({ items: await listDrafts(db, uid(req)) }));
+  app.get('/drafts/:id', { preHandler: pro }, async (req, reply) => (await getDraft(db, uid(req), idParam((req.params as any).id))) ?? notFound(reply));
 
   app.delete('/entries/:id', { preHandler }, async (req, reply) => {
     if (!(await deleteEntry(db, uid(req), idParam((req.params as any).id)))) return notFound(reply);

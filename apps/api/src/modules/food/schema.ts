@@ -1,6 +1,6 @@
 /** Еда: приёмы пищи, напитки, «мои блюда» и наборы-избранное */
 import { sql } from 'drizzle-orm';
-import { date, doublePrecision, index, integer, jsonb, pgTable, text, uniqueIndex } from 'drizzle-orm/pg-core';
+import { date, doublePrecision, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
 import { createdAt, hhmm, id, legacyId, owner, updatedAt } from '../../db/columns.js';
 
 export const meals = pgTable('food_meals', {
@@ -58,3 +58,28 @@ export const mealSets = pgTable('food_meal_sets', {
   items: jsonb('items').$type<Array<{ name: string; kcal: number; protein: number; fat: number; carbs: number }>>().notNull(),
   createdAt: createdAt()
 }, t => [uniqueIndex('food_meal_sets_legacy_uq').on(t.userId, t.legacyId).where(sql`${t.legacyId} is not null`)]);
+
+/**
+ * Черновик приёма: фото еды, которое разбирает воркер. Таблица одновременно и очередь (ADR-0002):
+ * queued → working → ready | failed. Фото хранится, пока черновик не подтверждён или не удалён.
+ */
+export const drafts = pgTable('food_drafts', {
+  id: id(), userId: owner(),
+  /** день и время фото — станут днём и временем приёма */
+  day: date('day', { mode: 'string' }).notNull(),
+  time: hhmm('time'),
+  slot: text('slot'),
+  image: text('image'),
+  mime: text('mime').notNull(),
+  note: text('note').notNull().default(''),
+  scale: text('scale').notNull().default(''),
+  answers: jsonb('answers').$type<string[]>().notNull().default([]),
+  /** queued | working | ready | failed */
+  state: text('state').notNull().default('queued'),
+  attempts: integer('attempts').notNull().default(0),
+  nextAt: timestamp('next_at', { withTimezone: true }).notNull().defaultNow(),
+  startedAt: timestamp('started_at', { withTimezone: true }),
+  result: jsonb('result').$type<{ isFood: boolean; items: unknown[]; questions: Array<{ text: string; options: string[] }>; comment: string }>(),
+  error: text('error'),
+  createdAt: createdAt(), updatedAt: updatedAt()
+}, t => [index('food_drafts_user_day_idx').on(t.userId, t.day), index('food_drafts_queue_idx').on(t.state, t.nextAt)]);
