@@ -2,36 +2,34 @@
  * Вход и регистрация Lumi. Слева (на телефоне — сверху) колода постеров, справа форма.
  * После регистрации — анкета; 7 дней Pro начинаются сразу.
  */
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { AppleMark, GoogleMark, startUrl, takeAuthResult, useProviders } from '../lib/oauth';
 import { TRIAL_DAYS } from '@bortjournal/core';
 import { api, ApiError } from '../lib/api';
 import { Icon } from '../components/Icon';
 
 const POSTERS = [1, 2, 3, 4, 5, 6, 7, 8].map(n => `/lumi/posters/${n}.webp`);
-const STILL = typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-/** колода постеров: текущий в центре, соседние веером по бокам; смена раз в 6 секунд. Размер не больше родного — без мыла */
-function Posters() {
-  const [i, setI] = useState(() => Math.floor(Math.random() * POSTERS.length));
-  useEffect(() => {
-    POSTERS.forEach(src => { const im = new Image(); im.src = src; });
-    if (STILL) return;
-    const t = setInterval(() => setI(x => (x + 1) % POSTERS.length), 6000);
-    return () => clearInterval(t);
-  }, []);
-  const n = POSTERS.length, cls = (k: number) => k === i ? 'on' : k === (i + n - 1) % n ? 'prev' : k === (i + 1) % n ? 'next' : '';
+/**
+ * Стена постеров: три колонки медленно едут навстречу друг другу (на телефоне — одна лента вбок).
+ * Каждый постер не крупнее родного размера, поэтому чёткий. При «меньше движения» стена стоит.
+ */
+const COLS = [0, 3, 6].map(start => POSTERS.map((_, k) => POSTERS[(start + k) % POSTERS.length]!));
+function PosterWall() {
   return <aside className="login-art" aria-hidden="true">
-    <div className="deck">{POSTERS.map((src, k) => <img key={src} src={src} alt="" className={cls(k)} decoding="async" />)}</div>
-    <div className="login-dots">{POSTERS.map((_, k) => <i key={k} className={k === i ? 'on' : ''} />)}</div>
+    <div className="wall">{COLS.map((col, c) => <div key={c} className={`wall-col c${c}`}>
+      <div className="wall-track">{[...col, ...col].map((src, k) => <img key={k} src={src} alt="" decoding="async" loading={k < 4 ? 'eager' : 'lazy'} />)}</div>
+    </div>)}</div>
   </aside>;
 }
+const SECTIONS: Array<[string, string, string]> = [['food', 'Еда', 'var(--food)'], ['drop', 'Вода', 'var(--water)'], ['plans', 'Планы', 'var(--orange)'], ['study', 'Учёба', 'var(--study)'], ['gym', 'Зал', 'var(--gym)'], ['money', 'Бюджет', 'var(--money)'], ['books', 'Книги', 'var(--books)']];
 
 export function Login({ onDone }: { onDone: () => void }) {
   const [mode, setMode] = useState<'in' | 'up'>('in');
   const [show, setShow] = useState(false), [u, setU] = useState(''), [p, setP] = useState(''), [mail, setMail] = useState(''), [err, setErr] = useState(() => takeAuthResult()?.error ?? ''), [busy, setBusy] = useState(false);
   const pv = useProviders(), any = pv.google || pv.apple, [forgot, setForgot] = useState(false), [sent, setSent] = useState('');
-  const brand = <div className="login-brand"><b>Lumi</b></div>;
+  const brand = <div className="login-brand"><b>Lumi</b><span>дневник, который ведёт тебя</span></div>;
+  const chips = <div className="login-chips">{SECTIONS.map(([ic, n, c]) => <span key={n} style={{ ['--c' as string]: c }}><Icon name={ic} />{n}</span>)}</div>;
   const legal = <p className="legal-links">Продолжая, ты принимаешь <a href="/terms.html" target="_blank" rel="noopener">условия</a> и <a href="/privacy.html" target="_blank" rel="noopener">политику конфиденциальности</a>.</p>;
 
   const card = forgot ? <>
@@ -48,6 +46,7 @@ export function Login({ onDone }: { onDone: () => void }) {
     {brand}
     <h1>{up ? 'Зажжём твой первый день' : 'С возвращением'}</h1>
     <p>{up ? `Еда, вода, шаги, задачи, цель и статистика — бесплатно навсегда. Всё остальное — ${TRIAL_DAYS} дней бесплатно.` : 'Lumi сохранил твой день. Войди, чтобы продолжить.'}</p>
+    {chips}
     {any && <div className="pv-btns">
       {pv.apple && <a className="pv-btn pv-apple" href={startUrl('apple')}><AppleMark />{up ? 'Создать через Apple' : 'Войти через Apple'}</a>}
       {pv.google && <a className="pv-btn pv-google" href={startUrl('google')}><GoogleMark />{up ? 'Создать через Google' : 'Войти через Google'}</a>}
@@ -77,7 +76,7 @@ export function Login({ onDone }: { onDone: () => void }) {
   </>; })();
 
   return <div className="login-scene">
-    <Posters />
+    <PosterWall />
     <main className="login">{card}{legal}</main>
   </div>;
 }
