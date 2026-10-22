@@ -95,7 +95,8 @@ export async function buildApp({ db, serveWeb = fs.existsSync(WEB_DIST) }: { db:
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   (await import('./core/env.js')).loadEnv();
-  const { db } = connect();
+  // строку подключения берём после loadEnv: DATABASE_URL из .env читается при запуске, а не при импорте модуля
+  const { db } = connect(process.env.DATABASE_URL);
   const app = await buildApp({ db });
   await app.listen({ port: Number(process.env.API_PORT ?? 4000), host: process.env.API_HOST ?? '127.0.0.1' });
   if (process.env.REMINDERS !== 'off') startReminders(db, m => app.log.error(m));
