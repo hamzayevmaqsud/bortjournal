@@ -1,6 +1,6 @@
 {
   "appId": "az.nanopay.bortjournal",
-  "appName": "Бортжурнал",
+  "appName": "Lumi",
   "webDir": "www",
   "server": {
     "url": "https://maksuds-macbook-pro.tailec5b6a.ts.net:8443/m",
