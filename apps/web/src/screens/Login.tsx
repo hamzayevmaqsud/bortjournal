@@ -19,7 +19,7 @@ const LETTERS = 4;                      // L, U, M, I — карточки ло�
 const PHONE_Q = '(max-width: 899px)';
 const isPhone = () => typeof matchMedia !== 'undefined' && matchMedia(PHONE_Q).matches;
 const posterSet = (k: number) => `/lumi/posters/${k}-240.webp 240w, /lumi/posters/${k}-400.webp 400w, /lumi/posters/${k}-560.webp 560w`;
-const letterSet = (k: number) => `/lumi/logo/${k}-240.webp 240w, /lumi/logo/${k}.webp 306w`;
+const letterSet = (k: number) => `/lumi/logo/${k}-240.webp 240w, /lumi/logo/${k}-400.webp 400w, /lumi/logo/${k}.webp 612w`;
 /** форма справа: ширина и отступ — как в стилях (.lw-scene .login) */
 const formW = () => Math.min(600, Math.max(460, innerWidth * 0.34)), formRight = () => Math.min(110, Math.max(24, innerWidth * 0.05));
 /** место слева от формы, где стоит стена */
