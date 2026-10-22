@@ -97,8 +97,9 @@ const hmMin = (s: string | null | undefined) => { const m = /^(\d{1,2}):(\d{2})/
 const fmtL = (ml: number) => (Math.round(ml / 100) / 10).toString().replace('.', ',');
 /** напоминания еды: обед не записан; вода — с 10 до 21, если отстаёшь от равномерного графика и давно не пил */
 export async function foodRemind(ctx: DayContext & { min: number }): Promise<Nudge[]> {
-  const { db, userId, now, min } = ctx, { meals: ms, drinks: ds, totals } = await dayFood(db, userId, now.day), out: Nudge[] = [];
-  if (!ms.length) out.push({ key: 'food', kind: 'food', title: 'Записать обед?', body: 'Сегодня ещё нет записей еды — хватит фото или пары слов.', url: '/#food', at: 13 * 60 + 30 });
+  const { db, userId, now, min } = ctx, { meals: ms, drinks: ds, drafts: dr, totals } = await dayFood(db, userId, now.day), out: Nudge[] = [];
+  // фото, ждущее подтверждения, — уже запись: «не ел» было бы неправдой
+  if (!ms.length && !dr.length) out.push({ key: 'food', kind: 'food', title: 'Записать обед?', body: 'Сегодня ещё нет записей еды — хватит фото или пары слов.', url: '/#food', at: 13 * 60 + 30 });
   if (min >= 10 * 60 && min < 21 * 60) {
     const norm = (await foodToday({ ...ctx, day: now.day })).norm.water || 2000, expect = norm * Math.min(1, Math.max(0, (min / 60 - 8) / 13));
     const last = Math.max(-1, ...ds.filter(d => d.hyd > 0).map(d => hmMin(d.time) ?? -1));
