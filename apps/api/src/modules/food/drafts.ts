@@ -52,6 +52,14 @@ export async function answerDraft(db: Tx, userId: string, id: string, answers: s
   return (await db.select({ id: drafts.id }).from(drafts).where(owned(userId, id))).length ? 'busy' as const : null;
 }
 
+/** «Повторить»: только неудавшийся черновик, попытки с нуля, лимит ИИ не тратится. null — нет такого, 'busy' — не неудавшийся */
+export async function retryDraft(db: Tx, userId: string, id: string) {
+  const [row] = await db.update(drafts).set({ state: 'queued', attempts: 0, nextAt: sql`now()`, error: null })
+    .where(and(owned(userId, id), eq(drafts.state, 'failed'))).returning();
+  if (row) return draftView(row);
+  return (await db.select({ id: drafts.id }).from(drafts).where(owned(userId, id))).length ? 'busy' as const : null;
+}
+
 export async function createDraft(db: Tx, userId: string, v: DraftInput) {
   const [row] = await db.insert(drafts).values({ userId, ...v }).returning();
   return draftView(row!);
@@ -64,13 +72,17 @@ export async function listDrafts(db: Tx, userId: string) {
   return (await db.select().from(drafts).where(eq(drafts.userId, userId)).orderBy(asc(drafts.createdAt))).map(draftView);
 }
 
-/** забрать один черновик из очереди: queued, время пришло; skip locked — два воркера не возьмут один и тот же.
+/** попыток разбора и паузы перед повтором (после 1-й и 2-й неудачи); черновик в «разбирается» дольше STALE — воркер упал */
+const ATTEMPTS = 3, PAUSE_SEC = [30, 120], STALE_MIN = 5;
+
+/** забрать один черновик: из очереди, когда пришло время, или зависший после падения воркера. skip locked — два воркера не возьмут один.
  *  «Сейчас» — время базы (часы Node и Postgres могут расходиться); at задают тесты, чтобы прокрутить время вперёд */
-async function claim(db: DB, at?: Date) {
-  const now = at ? sql`${at.toISOString()}::timestamptz` : sql`now()`;
+async function claim(db: DB, now: ReturnType<typeof sql>) {
   const res = await db.execute<{ id: string }>(sql`
     update ${drafts} set state = 'working', attempts = ${drafts.attempts} + 1, started_at = ${now}
-    where ${drafts.id} = (select id from ${drafts} where ${drafts.state} = 'queued' and ${drafts.nextAt} <= ${now}
+    where ${drafts.id} = (select id from ${drafts}
+      where (${drafts.state} = 'queued' and ${drafts.nextAt} <= ${now})
+         or (${drafts.state} = 'working' and ${drafts.startedAt} < ${now} - make_interval(mins => ${STALE_MIN}))
       order by ${drafts.nextAt} for update skip locked limit 1)
     returning ${drafts.id} as id`);
   const id = res.rows[0]?.id;
@@ -78,6 +90,9 @@ async function claim(db: DB, at?: Date) {
   const [row] = await db.select().from(drafts).where(eq(drafts.id, id));
   return row ?? null;
 }
+
+/** сбой, после которого повтор может помочь: лимит, недоступность, сеть. Отказ по содержимому (400/403) — нет */
+const retryable = (e: unknown) => { const st = (e as { upstream?: number }).upstream; return st === undefined || st === 429 || st >= 500; };
 
 /** напоминание «Фото разобрано»: что нашлось и сколько калорий, а если есть вопрос — сам вопрос */
 async function notifyReady(db: DB, d: Draft, r: AiResult) {
@@ -92,12 +107,23 @@ async function notifyReady(db: DB, d: Draft, r: AiResult) {
 
 /** один проход: разобрать все черновики, которым пора. Возвращает, сколько обработано */
 export async function workDrafts(db: DB, at?: Date) {
+  const now = at ? sql`${at.toISOString()}::timestamptz` : sql`now()`;
   let n = 0;
-  for (let d = await claim(db, at); d; d = await claim(db, at)) {
-    const result = await recognizeFood({ image: d.image, mime: d.mime, note: d.note, scale: d.scale, answers: d.answers });
+  for (let d = await claim(db, now); d; d = await claim(db, now)) {
+    n++;
+    let result: AiResult;
+    try { result = await recognizeFood({ image: d.image, mime: d.mime, note: d.note, scale: d.scale, answers: d.answers }); }
+    catch (e) {
+      const msg = (e as Error).message || 'ИИ недоступен.';
+      if (retryable(e) && d.attempts < ATTEMPTS)
+        await db.update(drafts).set({ state: 'queued', error: msg, nextAt: sql`${now} + make_interval(secs => ${PAUSE_SEC[d.attempts - 1] ?? PAUSE_SEC.at(-1)!})` }).where(eq(drafts.id, d.id));
+      else await db.update(drafts).set({ state: 'failed', error: msg }).where(eq(drafts.id, d.id));
+      continue;
+    }
+    // «не еда» — повтор не поможет: черновик сразу не удался, с объяснением ИИ
+    if (!result.isFood) { await db.update(drafts).set({ state: 'failed', result, error: result.comment || 'На фото не нашлось еды.' }).where(eq(drafts.id, d.id)); continue; }
     await db.update(drafts).set({ state: 'ready', result, error: null }).where(eq(drafts.id, d.id));
     await notifyReady(db, d, result);
-    n++;
   }
   return n;
 }

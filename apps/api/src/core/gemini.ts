@@ -24,6 +24,8 @@ export async function gemini(parts: unknown[], schema: unknown, { timeout = 60e3
     const part = data?.candidates?.[0]?.content?.parts?.find((p: any) => typeof p.text === 'string' && !p.thought);
     try { return JSON.parse(part?.text || ''); } catch { last = { status: 502, message: 'ИИ вернул непонятный ответ.' }; }
   }
-  throw new HttpError(last?.status === 429 ? 429 : 502,
-    last?.status === 429 ? 'Лимит ИИ на сейчас исчерпан. Попробуй через минуту.' : last?.status === 400 || last?.status === 403 ? `ИИ отклонил запрос: ${last.message}` : last?.message || 'ИИ недоступен.');
+  // upstream — статус ответа Gemini: фоновые задания по нему решают, повторять ли (429/5xx/сеть — да, 400/403 — нет)
+  throw Object.assign(new HttpError(last?.status === 429 ? 429 : 502,
+    last?.status === 429 ? 'Лимит ИИ на сейчас исчерпан. Попробуй через минуту.' : last?.status === 400 || last?.status === 403 ? `ИИ отклонил запрос: ${last.message}` : last?.message || 'ИИ недоступен.'),
+    { upstream: last?.status });
 }

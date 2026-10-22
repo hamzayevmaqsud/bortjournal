@@ -4,7 +4,7 @@ import { bad, dayParam, guard, hmParam, HttpError, idParam, notFound, uid } from
 import type { DB } from '../../db/index.js';
 import { addDrink, addMeal, dayFood, deleteEntry, myFoods, updateDrink, updateMeal, type MealInput } from './service.js';
 import { aiEnabled, recognizeFood } from './ai.js';
-import { answerDraft, createDraft, deleteDraft, getDraft, listDrafts, takeReadyDraft } from './drafts.js';
+import { answerDraft, createDraft, deleteDraft, getDraft, listDrafts, retryDraft, takeReadyDraft } from './drafts.js';
 import { takeAi } from '../../core/ai-quota.js';
 import { requireUser } from '../../core/auth.js';
 import { requireFeature } from '../../core/billing.js';
@@ -102,6 +102,11 @@ export async function foodRoutes(app: FastifyInstance, { db }: { db: DB }) {
     if (!answers.length) throw bad('Нужен хотя бы один ответ.');
     const r = await answerDraft(db, uid(req), idParam((req.params as any).id), answers);
     if (r === 'busy') return reply.code(409).send({ error: 'Фото ещё разбирается — ответить можно, когда разбор готов.' });
+    return r ?? notFound(reply);
+  });
+  app.post('/drafts/:id/retry', { preHandler: pro }, async (req, reply) => {
+    const r = await retryDraft(db, uid(req), idParam((req.params as any).id));
+    if (r === 'busy') return reply.code(409).send({ error: 'Повторить можно только неудавшийся разбор.' });
     return r ?? notFound(reply);
   });
   app.delete('/drafts/:id', { preHandler: pro }, async (req, reply) => (await deleteDraft(db, uid(req), idParam((req.params as any).id))) ? { ok: true } : notFound(reply));
