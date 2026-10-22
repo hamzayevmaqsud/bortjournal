@@ -3,6 +3,7 @@
  * планы, мои упражнения с рекордами, журнал. Идущая тренировка — по подходам: прошлый раз подсказкой, отметка подхода
  * включает отдых, черновик хранится в базе (начал на телефоне — видно на компьютере).
  */
+import { useQuick } from '../lib/quick';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { EQUIP, EXERCISES, GYM_GROUPS, KIND_NAMES, setText, workoutTitle, type Exercise, type GymKind } from '@bortjournal/core';
 import { api, ApiError } from '../lib/api';
@@ -176,7 +177,7 @@ function PlanForm({ plan, from, onDone }: { plan?: any; from?: { title: string; 
 }
 
 /* ---------------- экран ---------------- */
-export function Gym({ wide, version, onBack, onChanged, restSec }: { wide: boolean; version: number; onBack: () => void; onChanged: () => void; restSec?: number }) {
+export function Gym({ wide, version, onBack, onChanged, restSec, quick }: { wide: boolean; version: number; onBack: () => void; onChanged: () => void; restSec?: number; quick?: number }) {
   const [shown, setShown] = useState(8);
   const toast = useToast(), [o, setO] = useState<any>(null), [live, setLiveState] = useState<Live | null>(null), [sheet, setSheet] = useState<null | { kind: 'info'; key: string } | { kind: 'plan'; plan?: any; from?: any } | { kind: 'start' }>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout>>(undefined), loaded = useRef(false);
@@ -185,6 +186,7 @@ export function Gym({ wide, version, onBack, onChanged, restSec }: { wide: boole
     catch (e) { toast(e instanceof ApiError ? e.message : 'Не получилось загрузить', { err: true }); }
   }, [toast]);
   useEffect(() => { load(); }, [load, version]);
+  useQuick(quick, !!o, () => { if (!live) setSheet({ kind: 'start' }); });
   // черновик — в базу через секунду после последней правки
   const setLive = (l: Live | null, save = false) => {
     setLiveState(l); clearTimeout(saveTimer.current);

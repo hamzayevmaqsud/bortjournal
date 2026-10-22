@@ -2,6 +2,7 @@
  * «Бюджет» (раздел Pro) — по мотивам Budget OK: сумма на месяц делится на оставшиеся дни. Сколько можно потратить
  * сегодня, что будет завтра, остаток месяца, запись расхода и дохода по категориям, траты по дням и по категориям.
  */
+import { useQuick } from '../lib/quick';
 import { useCallback, useEffect, useState } from 'react';
 import { addDays, CURRENCIES, MONEY_CATS, parseAmount } from '@bortjournal/core';
 import { api, ApiError } from '../lib/api';
@@ -54,10 +55,11 @@ function EntryForm({ day, cur, entry, onDone }: { day: string; cur: string; entr
   </form>;
 }
 
-export function Budget({ wide, version, onBack, onChanged }: { wide: boolean; version: number; onBack: () => void; onChanged: () => void }) {
+export function Budget({ wide, version, onBack, onChanged, quick }: { wide: boolean; version: number; onBack: () => void; onChanged: () => void; quick?: number }) {
   const toast = useToast(), [day, setDay] = useState<string | null>(null), [o, setO] = useState<any>(null), [sheet, setSheet] = useState<null | 'settings' | { entry: any }>(null);
   const load = useCallback(async () => { try { setO(await api<any>(`/api/budget/overview${day ? `?day=${day}` : ''}`)); } catch (e) { toast(e instanceof ApiError ? e.message : 'Не получилось загрузить', { err: true }); } }, [day, toast]);
   useEffect(() => { load(); }, [load, version]);
+  useQuick(quick, !!o, () => { const i = document.querySelector<HTMLInputElement>('.screen[data-pos="center"] .m-amount input'); i?.scrollIntoView({ block: 'center', behavior: 'smooth' }); i?.focus({ preventScroll: true }); });
   const done = () => { setSheet(null); load(); onChanged(); };
   const remove = async (e: any) => { try { await api(`/api/budget/entries/${e.id}`, { method: 'DELETE' }); toast('Запись удалена'); done(); } catch (x) { toast(x instanceof ApiError ? x.message : 'Не получилось', { err: true }); } };
 

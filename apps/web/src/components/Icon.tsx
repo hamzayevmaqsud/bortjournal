@@ -1,5 +1,7 @@
 const P: Record<string, string> = {
   today: '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>',
+  // напольные весы: корпус и стрелка шкалы
+  scale: '<rect x="3.5" y="3.5" width="17" height="17" rx="4.5"/><path d="M8.5 9a5 5 0 0 1 7 0"/><path d="M12 9.8l1.4-2"/>',
   plans: '<rect x="4" y="4.5" width="16" height="16" rx="3"/><path d="M8 3v3M16 3v3M4 9.5h16M8.5 14l2 2 4-4"/>',
   task: '<rect x="4" y="4.5" width="16" height="16" rx="3"/><path d="M8.5 13l2.5 2.5 5-5"/>',
   plus: '<path d="M12 5v14M5 12h14"/>',

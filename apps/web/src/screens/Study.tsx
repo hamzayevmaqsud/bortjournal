@@ -4,6 +4,7 @@
  * «Вопросы» — то, что пора повторить сегодня: верно — вопрос вернётся позже, неверно — завтра.
  * Дневник занятий с минутами и график — как раньше.
  */
+import { useQuick } from '../lib/quick';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, ApiError } from '../lib/api';
 import { fmt, plural } from '../lib/format';
@@ -279,11 +280,12 @@ function Overview({ o, open, onQuiz, onObsQuiz, onReload }: { o: any; open: (s: 
   </div>;
 }
 
-export function Study({ wide, version, tab: start, onBack, onChanged }: { wide: boolean; version: number; tab?: 'study' | 'quiz'; onBack: () => void; onChanged: () => void }) {
+export function Study({ wide, version, tab: start, onBack, onChanged, quick }: { wide: boolean; version: number; tab?: 'study' | 'quiz'; onBack: () => void; onChanged: () => void; quick?: number }) {
   const toast = useToast(), [tab, setTab] = useState<'study' | 'quiz'>(start ?? 'study'), [o, setO] = useState<any>(null), [v, setV] = useState(0), [sheet, setSheet] = useState<SheetState>(null);
   const load = useCallback(async () => { try { setO(await api<any>('/api/study/overview')); } catch (e) { fail(toast, e, 'Не получилось загрузить'); } }, [toast]);
   useEffect(() => { load(); }, [load, version, v]);
   useEffect(() => { if (start) setTab(start); }, [start]);
+  useQuick(quick, !!o, () => { setTab('study'); setSheet({ kind: 'session' }); });
   // пока ИИ составляет вопросы — обновляем прогресс
   const working = !!o && [...o.materials, ...o.notes.map((n: any) => n.material).filter(Boolean)].some((m: Material) => m.quizStatus === 'working');
   useEffect(() => { if (!working) return; const t = setInterval(() => setV(x => x + 1), 3000); return () => clearInterval(t); }, [working]);

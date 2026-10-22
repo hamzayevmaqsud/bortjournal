@@ -249,7 +249,7 @@ export function App() {
   };
   const pro = (what: string, at?: string, inDay?: string) => { if (!can(sub, what)) { open({ kind: 'paywall', focus: what }); return; } if (PRO_OPEN[what]) { const next = PRO_OPEN[what]!(at, inDay); if ((next.kind === 'ai') && !me?.profile?.settings?.aiConsent) { open({ kind: 'aiConsent', then: next }); return; } open(next); return; } if (PRO_TABS[what]) { close(); const [t, st] = PRO_TABS[what]!.split(':'); if (t === 'study') setStudyTab(st as 'study' | 'quiz'); else setStatsTab(st as StatsTab | undefined); go(t!); return; } close(); toast(`«${what}» скоро появится`); };
   const setSub = (s: Subscription) => { setMe(m => m ? { ...m, subscription: s } : m); setDays({}); if (day) loadDay(day); };
-  const [back, setBack] = useState('today'), [statsTab, setStatsTab] = useState<StatsTab | undefined>(), [studyTab, setStudyTab] = useState<'study' | 'quiz' | undefined>();
+  const [quick, setQuick] = useState<{ tab: string; t: number } | null>(null), [back, setBack] = useState('today'), [statsTab, setStatsTab] = useState<StatsTab | undefined>(), [studyTab, setStudyTab] = useState<'study' | 'quiz' | undefined>();
   const go = (name: string) => {
     if (name === 'add') { open({ kind: 'add' }); return; }
     // подписка кончилась — свои записи смотреть можно; не было подписки — сначала тарифы
@@ -291,7 +291,9 @@ export function App() {
   const logout = async () => { await api('/api/auth/logout', { method: 'POST' }).catch(() => {}); forgetLocal(); setMe(null); setDays({}); setDay(null); setToday(null); setTab('today'); };
   const pos = (name: string) => name === tab ? 'center' : ORDER.indexOf(name) < ORDER.indexOf(tab) ? 'left' : 'right';
   const foodPart = data?.parts.food, body = data?.parts.body;
-  const lockTile = (name: string, ic: string, c: string) => <button key={name} className="tile" onClick={() => pro(name, sheet.kind === 'add' ? sheet.at : undefined)}><span className="chip-ic" style={{ ['--c' as string]: c }}><Icon name={ic} /></span>{name}{!can(sub, name) && <span className="lock">PRO</span>}</button>;
+  // плитка листа «Записать»: раздел открывается сразу на действии (тренировка, занятие, расход, страница книги)
+  const QUICK: Record<string, string> = { 'Зал': 'gym', 'Учёба': 'study', 'Трата': 'budget', 'Чтение': 'books' };
+  const lockTile = (name: string, ic: string, c: string) => <button key={name} className="tile" onClick={() => { if (QUICK[name] && can(sub, name)) setQuick({ tab: QUICK[name]!, t: Date.now() }); pro(name, sheet.kind === 'add' ? sheet.at : undefined); }}><span className="chip-ic" style={{ ['--c' as string]: c }}><Icon name={ic} /></span>{name}{!can(sub, name) && <span className="lock">PRO</span>}</button>;
 
   return <div className={`app ${wide ? 'wide' : ''}`}>
     {wide && <div className="brand"><i><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l1.6 6.4L20 12l-6.4 1.6L12 21l-1.6-7.4L4 12l6.4-2.6z" fill="currentColor" /></svg></i>Бортжурнал</div>}
@@ -324,22 +326,22 @@ export function App() {
       </section>
       <section className="screen" data-pos={pos('study')} aria-hidden={tab !== 'study'}>
         <Boundary name="study" onFeedback={() => open({ kind: 'feedback' })}>
-        {tab === 'study' && <Study wide={wide} version={version} tab={studyTab} onBack={() => setTab(back)} onChanged={() => { setStill(true); if (day) loadDay(day); setTimeout(checkAwards, 600); }} />}
+        {tab === 'study' && <Study wide={wide} version={version} tab={studyTab} quick={quick?.tab === 'study' ? quick.t : undefined} onBack={() => setTab(back)} onChanged={() => { setStill(true); if (day) loadDay(day); setTimeout(checkAwards, 600); }} />}
         </Boundary>
       </section>
       <section className="screen" data-pos={pos('gym')} aria-hidden={tab !== 'gym'}>
         <Boundary name="gym" onFeedback={() => open({ kind: 'feedback' })}>
-        {tab === 'gym' && <Gym wide={wide} version={version} restSec={Number(me.profile?.settings?.rest) || 90} onBack={() => setTab(back)} onChanged={() => { setStill(true); if (day) loadDay(day); setTimeout(checkAwards, 600); }} />}
+        {tab === 'gym' && <Gym wide={wide} version={version} quick={quick?.tab === 'gym' ? quick.t : undefined} restSec={Number(me.profile?.settings?.rest) || 90} onBack={() => setTab(back)} onChanged={() => { setStill(true); if (day) loadDay(day); setTimeout(checkAwards, 600); }} />}
         </Boundary>
       </section>
       <section className="screen" data-pos={pos('budget')} aria-hidden={tab !== 'budget'}>
         <Boundary name="budget" onFeedback={() => open({ kind: 'feedback' })}>
-        {tab === 'budget' && <Budget wide={wide} version={version} onBack={() => setTab(back)} onChanged={() => { setStill(true); if (day) loadDay(day); }} />}
+        {tab === 'budget' && <Budget wide={wide} version={version} quick={quick?.tab === 'budget' ? quick.t : undefined} onBack={() => setTab(back)} onChanged={() => { setStill(true); if (day) loadDay(day); }} />}
         </Boundary>
       </section>
       <section className="screen" data-pos={pos('books')} aria-hidden={tab !== 'books'}>
         <Boundary name="books" onFeedback={() => open({ kind: 'feedback' })}>
-        {tab === 'books' && <Books wide={wide} version={version} onBack={() => setTab(back)} onChanged={() => { setStill(true); if (day) loadDay(day); setTimeout(checkAwards, 600); }} />}
+        {tab === 'books' && <Books wide={wide} version={version} quick={quick?.tab === 'books' ? quick.t : undefined} onBack={() => setTab(back)} onChanged={() => { setStill(true); if (day) loadDay(day); setTimeout(checkAwards, 600); }} />}
         </Boundary>
       </section>
       <section className="screen" data-pos={pos('goal')} aria-hidden={tab !== 'goal'}>
@@ -391,7 +393,7 @@ export function App() {
           <button className="ml" onClick={() => open({ kind: 'drink', at: sheet.at })} aria-label="Другой напиток">…</button>
         </div>
         <div className="grid4">
-          <button className="tile" onClick={() => open({ kind: 'weight' })}><span className="chip-ic" style={{ ['--c' as string]: 'var(--navy)' }}><Icon name="today" /></span>Вес</button>
+          <button className="tile" onClick={() => open({ kind: 'weight' })}><span className="chip-ic" style={{ ['--c' as string]: 'var(--navy)' }}><Icon name="scale" /></span>Вес</button>
           <button className="tile" onClick={() => open({ kind: 'steps' })}><span className="chip-ic" style={{ ['--c' as string]: 'var(--steps)' }}><Icon name="steps" /></span>Шаги</button>
           <button className="tile" onClick={() => open({ kind: 'task', day })}><span className="chip-ic" style={{ ['--c' as string]: 'var(--quiz)' }}><Icon name="task" /></span>Задача</button>
           {lockTile('Поиск еды', 'search', 'var(--food)')}

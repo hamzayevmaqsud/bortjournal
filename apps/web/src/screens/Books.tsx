@@ -3,6 +3,7 @@
  * «Полка» — фильтры, сортировка, прочитанное по годам; «Цитаты». Карточка книги — статус, оценка, мысли,
  * цитаты, история чтения. Добавление — поиском в Open Library (обложка, автор, страницы) или вручную, своё фото обложки.
  */
+import { useQuick } from '../lib/quick';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, ApiError } from '../lib/api';
 import { fmt, fmt1, plural } from '../lib/format';
@@ -193,11 +194,16 @@ function Quotes({ version, onOpen }: { version: number; onOpen: (id: string) => 
     <figcaption><button onClick={() => onOpen(q.book.id)}>{q.book.title}</button>{q.book.author ? ` · ${q.book.author}` : ''}{q.page ? ` · стр. ${q.page}` : ''}</figcaption></figure>)}</div>;
 }
 
-export function Books({ wide, version: outer, onBack, onChanged }: { wide: boolean; version: number; onBack: () => void; onChanged: () => void }) {
+export function Books({ wide, version: outer, onBack, onChanged, quick }: { wide: boolean; version: number; onBack: () => void; onChanged: () => void; quick?: number }) {
   const toast = useToast(), [tab, setTab] = useState<'now' | 'shelf' | 'quotes'>('now'), [o, setO] = useState<any>(null), [v, setV] = useState(0);
   const [sheet, setSheet] = useState<null | { kind: 'book'; id: string } | { kind: 'form'; b?: any } | { kind: 'goal' }>(null), [goal, setGoal] = useState('');
   const load = useCallback(async () => { try { setO(await api<any>('/api/books/overview')); } catch (e) { toast(e instanceof ApiError ? e.message : 'Не получилось загрузить', { err: true }); } }, [toast]);
   useEffect(() => { load(); }, [load, outer, v]);
+  useQuick(quick, !!o, () => {
+    if (!o?.reading?.length) { setSheet({ kind: 'form' }); return; }
+    setTab('now');
+    requestAnimationFrame(() => { const i = document.querySelector<HTMLInputElement>('.screen[data-pos="center"] .bk-log-in input'); i?.scrollIntoView({ block: 'center', behavior: 'smooth' }); i?.focus({ preventScroll: true }); });
+  });
   const changed = () => { setV(x => x + 1); onChanged(); };
   const head = <header className="dayhead">
     {!wide && <button className="nav" onClick={onBack} aria-label="Назад"><Icon name="chevL" /></button>}
