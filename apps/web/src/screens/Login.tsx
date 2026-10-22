@@ -12,6 +12,8 @@ import { ThemeToggle } from '../components/ThemeToggle';
 
 // 23 постера по кругу оттенков (собираются из Documents/Lumi/login page): 240 и 400 px — показываем не крупнее
 const N = 23;
+// какие постеры на стене (номера файлов): одна гамма с логотипом — тёплые пейзажи и закаты
+const PICK = [1, 3, 5, 6, 7, 9, 13, 14, 15, 17, 19, 20, 22, 23];
 const PER = 11;                         // секунд на постер — у всех лент одна скорость
 const LETTERS = 4;                      // L, U, M, I — карточки логотипа (public/lumi/logo)
 const PHONE_Q = '(max-width: 899px)';
@@ -34,7 +36,7 @@ type Item = { letter: number } | { poster: number };
 const lanesOf = (n: number, phone: boolean): Item[][] => {
   const min = phone ? 10 : Math.ceil(innerHeight * 1.5 / (cardW() * 1308 / 736)) + 2;
   return Array.from({ length: n }, (_, c) => {
-    const own: Item[] = Array.from({ length: N }, (_, k) => k + 1).filter(k => (k - 1) % n === c).map(poster => ({ poster }));
+    const own: Item[] = PICK.filter((_, k) => k % n === c).map(poster => ({ poster }));
     let lane = own; while (lane.length < min) lane = [...lane, ...own];
     return lane;
   });
@@ -95,12 +97,12 @@ function PosterWall() {
     const root = box.current; if (!root || !letterAt) return;
     const tracks = tracksRef.current, per = tracks.map((_, c) => lanes[c]!.length * PER);
     let boost = 0, target = 0, last = performance.now(), raf = 0;
-    const born = root.dataset.resumed ? -1e9 : performance.now() + 900;   // при первом показе LUMI читается, потом ленты трогаются
+    const born = root.dataset.resumed ? -1e9 : performance.now() + 1400;   // при первом показе LUMI читается, потом ленты трогаются
     const tick = (now: number) => {
       const dt = Math.min(0.05, (now - last) / 1000); last = now;
       boost += (target - boost) * (1 - Math.pow(0.002, dt));   // разгон набирается плавно, без рывка
       target *= Math.pow(0.15, dt);
-      const g = Math.max(0, Math.min(1, (now - born) / 2200)), ease = g * g * (3 - 2 * g);
+      const g = Math.max(0, Math.min(1, (now - born) / 3200)), ease = g * g * (3 - 2 * g);
       tracks.forEach((t, c) => {
         if (!t.len) return;
         t.pos = ((t.pos + t.len / per[c]! * (ease + boost) * t.dir * dt) % t.len + t.len) % t.len;
@@ -142,14 +144,16 @@ export function Login({ onDone }: { onDone: () => void }) {
   const [mode, setMode] = useState<'in' | 'up'>(() => (new URLSearchParams(location.search).get('mode') === 'signup' || !seen() ? 'up' : 'in'));
   const [show, setShow] = useState(false), [u, setU] = useState(''), [p, setP] = useState(''), [mail, setMail] = useState(''), [err, setErr] = useState(() => takeAuthResult()?.error ?? ''), [busy, setBusy] = useState(false);
   const pv = useProviders(), any = pv.google || pv.apple, [forgot, setForgot] = useState(false), [sent, setSent] = useState('');
+  const [focus, setFocus] = useState(''), [withMail, setWithMail] = useState(false);
   const pass = useRef<HTMLInputElement>(null), title = useRef<HTMLHeadingElement>(null), first = useRef(true);
   // смена экрана (вход ↔ новый пароль) — фокус на заголовок, а не в никуда
   useEffect(() => { if (first.current) { first.current = false; return; } title.current?.focus(); }, [forgot]);
 
-  const brand = <div className="login-brand"><img className="login-mark" src="/favicon.svg" alt="" /><div><b>Lumi</b><span>дневник, который ведёт тебя</span></div></div>;
+  const brand = <div className="login-brand"><img className="login-mark" src="/favicon.svg" alt="" /><b>Lumi</b></div>;
   const legal = <p className="legal-links">Продолжая, ты принимаешь <a href="/terms.html" target="_blank" rel="noopener">условия</a> и <a href="/privacy.html" target="_blank" rel="noopener">политику конфиденциальности</a>.</p>;
-  const errBox = <div className="err" id="login-err" role="alert">{err}</div>;
+  const errBox = err ? <div className="err" id="login-err" role="alert">{err}</div> : <div id="login-err" role="alert" className="sr-only" />;
   const bad = err ? { 'aria-invalid': true, 'aria-describedby': 'login-err' } : {};
+  const on = (k: string) => ({ onFocus: () => setFocus(k), onBlur: () => setFocus(f => (f === k ? '' : f)) });
 
   const card = forgot ? <>
     {brand}
@@ -164,17 +168,18 @@ export function Login({ onDone }: { onDone: () => void }) {
     <button type="button" className="forgot" style={{ alignSelf: 'center' }} onClick={() => { setForgot(false); setSent(''); setErr(''); }}>← Ко входу</button>
   </> : (() => { const up = mode === 'up'; return <>
     {brand}
-    <h1 ref={title} tabIndex={-1}>{up ? 'Зажжём твой первый день' : 'С\u00a0возвращением'}</h1>
-    <p>{up ? `Еда, вода, задачи и статистика — бесплатно навсегда. Остальное — ${TRIAL_DAYS} дней Pro.` : 'Маяк горит — твой день на месте.'}</p>
+    {/* переключатель — над заголовком, который он меняет */}
+    <div className="seg2 tabs2" role="group" aria-label="Вход или регистрация">
+      <button type="button" aria-pressed={!up} className={!up ? 'on' : ''} onClick={() => { setMode('in'); setErr(''); }}>Войти</button>
+      <button type="button" aria-pressed={up} className={up ? 'on' : ''} onClick={() => { setMode('up'); setErr(''); }}>Создать аккаунт</button>
+    </div>
+    <h1 ref={title} tabIndex={-1}>{up ? 'Один дневник на\u00a0весь день' : 'С\u00a0возвращением'}</h1>
+    <p>{up ? 'Еда, вода, шаги, задачи и учёба — всё в одном месте.' : 'Маяк горит — твой день на месте.'}</p>
     {any && <div className="pv-btns">
       {pv.apple && <a className="pv-btn pv-apple" href={startUrl('apple')}><AppleMark />{up ? 'Создать через Apple' : 'Войти через Apple'}</a>}
       {pv.google && <a className="pv-btn pv-google" href={startUrl('google')}><GoogleMark />{up ? 'Создать через Google' : 'Войти через Google'}</a>}
       <div className="pv-or"><span>или по логину</span></div>
     </div>}
-    <div className="seg2" role="group" aria-label="Вход или регистрация">
-      <button type="button" aria-pressed={!up} className={!up ? 'on' : ''} onClick={() => { setMode('in'); setErr(''); }}>Войти</button>
-      <button type="button" aria-pressed={up} className={up ? 'on' : ''} onClick={() => { setMode('up'); setErr(''); }}>Создать аккаунт</button>
-    </div>
     <form onSubmit={async e => {
       e.preventDefault(); setBusy(true); setErr('');
       try {
@@ -183,28 +188,32 @@ export function Login({ onDone }: { onDone: () => void }) {
         markSeen(); onDone();
       } catch (x) {
         setErr(x instanceof ApiError ? x.message : 'Не получилось.');
-        // неверный пароль — сразу можно перепечатать
-        setTimeout(() => { pass.current?.focus(); pass.current?.select(); });
+        setTimeout(() => pass.current?.focus());   // неверный пароль — сразу можно перепечатать
       }
       finally { setBusy(false); }
     }}>
       <label className="sr-only" htmlFor="login-user">Логин</label>
-      <input id="login-user" name="username" autoComplete="username" placeholder="Логин" value={u} onChange={e => { setU(e.target.value); if (err) setErr(''); }} required autoCapitalize="none" spellCheck={false} pattern={up ? "[A-Za-z0-9._-]{3,32}" : undefined} aria-describedby={up ? "user-hint" : undefined} {...(err ? bad : {})} />
-      {up && <small className="field-hint" id="user-hint">3–32 символа: латиница, цифры, точка, дефис или подчёркивание</small>}
-      {up && <><label className="sr-only" htmlFor="login-mail">Почта, необязательно</label>
-        <input id="login-mail" name="email" type="email" autoComplete="email" placeholder="Почта — по желанию" value={mail} onChange={e => setMail(e.target.value)} /></>}
+      <input id="login-user" name="username" autoComplete="username" placeholder="Логин" value={u} onChange={e => { setU(e.target.value); if (err) setErr(''); }} required autoCapitalize="none" spellCheck={false} pattern={up ? '[A-Za-z0-9._-]{3,32}' : undefined} aria-describedby={up ? 'user-hint' : undefined} {...on('u')} {...bad} />
+      {/* подсказки — только пока поле в фокусе, чтобы форма не казалась длинной */}
+      {up && focus === 'u' && <small className="field-hint" id="user-hint">3–32 символа: латиница, цифры, . _ -</small>}
       <label className="sr-only" htmlFor="login-pass">Пароль</label>
-      <div className="pw-field"><input ref={pass} id="login-pass" name="password" type={show ? 'text' : 'password'} autoComplete={up ? 'new-password' : 'current-password'} placeholder="Пароль" value={p} onChange={e => { setP(e.target.value); if (err) setErr(''); }} required minLength={up ? 8 : undefined} aria-describedby={up ? 'pw-hint' : err ? 'login-err' : undefined} aria-invalid={err ? true : undefined} />
+      <div className="pw-field"><input ref={pass} id="login-pass" name="password" type={show ? 'text' : 'password'} autoComplete={up ? 'new-password' : 'current-password'} placeholder="Пароль" value={p} onChange={e => { setP(e.target.value); if (err) setErr(''); }} required minLength={up ? 8 : undefined} aria-describedby={err ? 'login-err' : up ? 'pw-hint' : undefined} aria-invalid={err ? true : undefined} {...on('p')} />
         <button type="button" className="pw-eye" onClick={() => setShow(x => !x)} aria-label={show ? 'Скрыть пароль' : 'Показать пароль'} aria-pressed={show}><Icon name={show ? 'eyeOff' : 'eye'} /></button></div>
-      {up && <small className={`field-hint ${p.length >= 8 ? 'ok' : ''}`} id="pw-hint">{p.length >= 8 ? '✓ 8 символов или больше' : `Минимум 8 символов${p ? ` · ещё ${8 - p.length}` : ''}`}</small>}
-      {!up && <button type="button" className="forgot" onClick={() => { setForgot(true); setErr(''); }}>Забыли пароль?</button>}
+      {up && (focus === 'p' || (p.length > 0 && p.length < 8)) && <small className={`field-hint ${p.length >= 8 ? 'ok' : ''}`} id="pw-hint">{p.length >= 8 ? '✓ 8 символов или больше' : `Минимум 8 символов${p ? ` · ещё ${8 - p.length}` : ''}`}</small>}
+      {up && (withMail
+        ? <><label className="sr-only" htmlFor="login-mail">Почта, необязательно</label>
+          <input id="login-mail" name="email" type="email" autoComplete="email" placeholder="Почта — для восстановления пароля" value={mail} onChange={e => setMail(e.target.value)} autoFocus /></>
+        : <button type="button" className="forgot add-mail" onClick={() => setWithMail(true)}>+ Добавить почту для восстановления</button>)}
       {errBox}
+      {!up && <button type="button" className="forgot" onClick={() => { setForgot(true); setErr(''); }}>Забыли пароль?</button>}
       <button type="submit" disabled={busy}>{busy ? (up ? 'Создаю…' : 'Вхожу…') : up ? 'Создать аккаунт' : 'Войти'}</button>
+      {up && <p className="trust">Без карты · {TRIAL_DAYS} дней Pro бесплатно</p>}
     </form>
   </>; })();
 
   return <div className="login-scene lw-scene">
     <PosterWall />
-    <main className="login"><ThemeToggle className="in-card" />{card}{legal}</main>
+    <ThemeToggle className="corner" />
+    <main className="login">{card}{legal}</main>
   </div>;
 }
