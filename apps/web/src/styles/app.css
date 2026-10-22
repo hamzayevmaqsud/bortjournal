@@ -1975,3 +1975,8 @@ a.btn-accent{text-decoration:none}
   .login-lumi{position:relative;right:auto;top:auto;width:132px;height:132px;margin:-8px 0 -6px -8px}
 }
 @media (prefers-reduced-motion:reduce){.login-art img{transition:none;transform:none}.login-lumi img{animation:none}}
+/* перетаскивание задач в «Планах»: строка тянется, день недели и «Без даты» подсвечиваются под курсором */
+@media (hover:hover) and (pointer:fine){.task[draggable=true]{cursor:grab}.task[draggable=true] .tt{cursor:pointer}}
+.task.dragging{opacity:.45}
+.wk-d.drop{outline:2px dashed var(--orange);outline-offset:2px;background:color-mix(in srgb,var(--orange) 12%,transparent)}
+.panel.drop{outline:2px dashed var(--orange);outline-offset:-6px}

@@ -94,6 +94,20 @@ export function Plans({ today, sub, version, onAdd, onOpen, onPro, onChanged }: 
     try { await api('/api/plans/tasks', { method: 'POST', body: { title: t, day: d } }); setTitle(''); buzz([8, 30, 8]); changed(); }
     catch (e) { toast(e instanceof ApiError ? e.message : 'Не получилось', { err: true }); } finally { setBusy(false); }
   };
+  // перетаскивание задачи на день недели или в «Без даты» (мышью, на компьютере)
+  const [over, setOver] = useState<string | null>(null);
+  const moveTo = async (id: string, d: string | null) => {
+    const t = (items ?? []).find(x => x.id === id); if (!t || t.day === d) return;
+    setItems(xs => xs?.map(x => x.id === id ? { ...x, day: d } : x) ?? xs);
+    try { await api(`/api/plans/tasks/${id}`, { method: 'PUT', body: { title: t.title, day: d, time: d ? t.time : null, prio: t.prio, note: t.note ?? '' } }); buzz(8); toast(d ? `«${t.title}» → ${dayTitle(d, today).toLowerCase()}` : `«${t.title}» — без даты`); }
+    catch (e) { toast(e instanceof ApiError ? e.message : 'Не получилось перенести', { err: true }); }
+    changed();
+  };
+  const drop = (d: string | null) => ({
+    onDragOver: (e: React.DragEvent) => { if (e.dataTransfer.types.includes('text/x-task')) { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; setOver(d ?? 'none'); } },
+    onDragLeave: () => setOver(o => o === (d ?? 'none') ? null : o),
+    onDrop: (e: React.DragEvent) => { e.preventDefault(); setOver(null); const id = e.dataTransfer.getData('text/x-task'); if (id) moveTo(id, d); }
+  });
   const moveOverdue = async () => {
     const list = overdue; setOverdue([]);
     for (const t of list) await api(`/api/plans/tasks/${t.id}`, { method: 'PUT', body: { title: t.title, day: today, time: t.time, prio: t.prio, note: t.note ?? '' } }).catch(() => {});
@@ -114,7 +128,7 @@ export function Plans({ today, sub, version, onAdd, onOpen, onPro, onChanged }: 
     return <>
       <div className="wk-bar">
         <button className="nav" onClick={() => setDay(addDays(day, -7))} aria-label="Прошлая неделя"><Icon name="chevL" /></button>
-        <div className="wk" role="tablist">{week.map((d, i) => { const n = ofDay(d), dn = n.filter(t => t.done).length; return <button key={d} role="tab" aria-selected={d === day} className={`wk-d ${d === day ? 'on' : ''} ${d === today ? 'today' : ''}`} onClick={() => setDay(d)}>
+        <div className="wk" role="tablist">{week.map((d, i) => { const n = ofDay(d), dn = n.filter(t => t.done).length; return <button key={d} role="tab" aria-selected={d === day} className={`wk-d ${d === day ? 'on' : ''} ${d === today ? 'today' : ''} ${over === d ? 'drop' : ''}`} onClick={() => setDay(d)} {...drop(d)}>
           <span>{d === today ? 'сег' : WD[i]}</span><b>{parseDay(d).getUTCDate()}</b><i className={n.length && dn === n.length ? 'all' : ''}>{n.length ? `${dn}/${n.length}` : '·'}</i></button>; })}</div>
         <button className="nav" onClick={() => setDay(addDays(day, 7))} aria-label="Следующая неделя"><Icon name="chev" /></button>
       </div>
@@ -126,14 +140,14 @@ export function Plans({ today, sub, version, onAdd, onOpen, onPro, onChanged }: 
           <button type="button" className="more-btn" onClick={() => onAdd(day)} aria-label="Время, повтор, цель, заметка" title="Время, повтор, цель, заметка">•••</button>
           <button className="primary" disabled={!title.trim() || busy} aria-label="Добавить"><Icon name="plus" /></button>
         </form>
-        {items === null ? <div className="skel" style={{ height: 90 }} /> : <Tasks tasks={list} onToggle={toggle} onOpen={id => { const t = list.find(x => x.id === id); if (t) onOpen(t); }} empty={day === today ? 'На сегодня задач нет — добавь первую выше.' : 'На этот день задач нет.'} />}
+        {items === null ? <div className="skel" style={{ height: 90 }} /> : <Tasks draggable tasks={list} onToggle={toggle} onOpen={id => { const t = list.find(x => x.id === id); if (t) onOpen(t); }} empty={day === today ? 'На сегодня задач нет — добавь первую выше.' : 'На этот день задач нет.'} />}
       </section>
       {pro && <button className="goal-sum" onClick={() => openGoals('week', day)}>
         <span className="chip-ic" style={{ ['--c' as string]: 'var(--orange)' }}><Icon name="target" /></span>
         <span className="mid"><b>Цели недели</b><small>{weekGoals.length ? `${wgDone} из ${weekGoals.length} выполнено · ${weekGoals.slice(0, 2).map(g => g.title).join(', ')}` : 'поставь 1–3 цели на неделю'}</small></span><Icon name="chev" className="ic chev" /></button>}
-      <section className="panel">
+      <section className={`panel ${over === 'none' ? 'drop' : ''}`} {...drop(null)}>
         <div className="panel-h"><h2>Без даты</h2><small>{undated.length ? `${undated.length} ${plural(undated.length, 'задача', 'задачи', 'задач')}` : ''}</small></div>
-        <Tasks tasks={undated} onToggle={toggle} onOpen={id => { const t = undated.find(x => x.id === id); if (t) onOpen(t); }} empty="То, что сделать когда-нибудь." />
+        <Tasks draggable tasks={undated} onToggle={toggle} onOpen={id => { const t = undated.find(x => x.id === id); if (t) onOpen(t); }} empty="То, что сделать когда-нибудь." />
         <button className="add-row" onClick={() => onAdd(null)}><Icon name="plus" />Задача без даты</button>
       </section>
       <section className="panel">

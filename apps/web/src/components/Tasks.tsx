@@ -9,7 +9,8 @@ import { Icon } from './Icon';
 
 const sorted = (ts: Task[]) => [...ts].sort((a, b) => Number(a.done) - Number(b.done) || (a.time ?? '99').localeCompare(b.time ?? '99'));
 
-export function Tasks({ tasks, onToggle, onOpen, empty = 'Задач на этот день нет. Поставить можно в «Планах».' }: { tasks: Task[]; onToggle: (id: string) => void; onOpen?: (id: string) => void; empty?: string }) {
+/** draggable — задачу можно перетащить мышью на другой день (в «Планах»): id уходит в dataTransfer как text/x-task */
+export function Tasks({ tasks, onToggle, onOpen, draggable, empty = 'Задач на этот день нет. Поставить можно в «Планах».' }: { tasks: Task[]; onToggle: (id: string) => void; onOpen?: (id: string) => void; draggable?: boolean; empty?: string }) {
   const box = useRef<HTMLDivElement>(null), prev = useRef(new Map<string, number>());
   const [order, setOrder] = useState(() => sorted(tasks).map(t => t.id));
   const byId = new Map(tasks.map(t => [t.id, t]));
@@ -39,7 +40,7 @@ export function Tasks({ tasks, onToggle, onOpen, empty = 'Задач на это
 
   if (!tasks.length) return <p className="hint" style={{ textAlign: 'left', margin: 2 }}>{empty}</p>;
   return <div className="tasks" ref={box}>
-    {order.map(id => byId.get(id)).filter((t): t is Task => !!t).map(t => <div key={t.id} data-id={t.id} className={`task ${t.done ? 'done' : ''}`}>
+    {order.map(id => byId.get(id)).filter((t): t is Task => !!t).map(t => <div key={t.id} data-id={t.id} className={`task ${t.done ? 'done' : ''}`} draggable={draggable} onDragStart={draggable ? e => { e.dataTransfer.setData('text/x-task', t.id); e.dataTransfer.effectAllowed = 'move'; e.currentTarget.classList.add('dragging'); } : undefined} onDragEnd={draggable ? e => e.currentTarget.classList.remove('dragging') : undefined}>
       <button className="cbx" aria-label={t.done ? 'Вернуть' : 'Сделано'} aria-pressed={t.done} onClick={() => { buzz(t.done ? 8 : [10, 30, 10]); onToggle(t.id); }}><Icon name="check" className="" /></button>
       <span className="tt" onClick={() => onOpen?.(t.id)} style={onOpen ? { cursor: 'pointer' } : undefined}>{t.prio && <b className="prio">!</b>}{t.title}{t.repeat && <Icon name="repeat" className="ic rep" />}</span>
       {t.time && <span className="meta">{t.time}</span>}
