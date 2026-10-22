@@ -65,18 +65,19 @@ function SectionsForm({ me, onSaved }: { me: Me; onSaved: (s: Record<string, unk
   </div>;
 }
 
-function DeleteForm({ username, hasPassword, onDeleted }: { username: string; hasPassword: boolean; onDeleted: () => void }) {
+function DeleteForm({ username, hasPassword, onDeleted, wipe }: { username: string; hasPassword: boolean; onDeleted: () => void; wipe?: boolean }) {
   const [v, setV] = useState({ name: '', password: '' }), [err, setErr] = useState(''), [busy, setBusy] = useState(false);
   return <form className="form" onSubmit={async e => {
     e.preventDefault(); setErr(''); setBusy(true);
-    try { await api('/api/account/delete', { method: 'POST', body: hasPassword ? { password: v.password } : { confirm: v.name } }); forgetLocal(); onDeleted(); }
+    try { await api(wipe ? '/api/account/wipe' : '/api/account/delete', { method: 'POST', body: hasPassword ? { password: v.password } : { confirm: v.name } }); if (wipe) location.reload(); else { forgetLocal(); onDeleted(); } }
     catch (x) { setErr(x instanceof ApiError ? x.message : 'Не получилось'); } finally { setBusy(false); }
   }}>
-    <p className="del-warn">Аккаунт и <b>все записи</b> — еда, тренировки, учёба, бюджет, книги, планы — удалятся навсегда, вернуть их будет нельзя. Если данные могут пригодиться, сначала выгрузи их.</p>
+    {wipe ? <p className="del-warn"><b>Все записи</b> — еда, тренировки, учёба, бюджет, книги, планы, награды — удалятся навсегда. Аккаунт, анкета, подписка и вход останутся: можно начать с чистого листа. Если данные могут пригодиться, сначала выгрузи их.</p>
+    : <p className="del-warn">Аккаунт и <b>все записи</b> — еда, тренировки, учёба, бюджет, книги, планы — удалятся навсегда, вернуть их будет нельзя. Если данные могут пригодиться, сначала выгрузи их.</p>}
     <label className="fld"><span>Напиши логин «{username}», чтобы подтвердить</span><input className="in" autoComplete="off" autoCapitalize="none" value={v.name} onChange={e => setV({ ...v, name: e.target.value })} /></label>
     {hasPassword && <label className="fld"><span>Пароль</span><input className="in" type="password" autoComplete="current-password" value={v.password} onChange={e => setV({ ...v, password: e.target.value })} /></label>}
     {err && <p className="form-err">{err}</p>}
-    <button className="primary danger-bg" disabled={busy || v.name.trim().toLowerCase() !== username.toLowerCase() || (hasPassword && !v.password)}>Удалить аккаунт навсегда</button>
+    <button className="primary danger-bg" disabled={busy || v.name.trim().toLowerCase() !== username.toLowerCase() || (hasPassword && !v.password)}>{wipe ? 'Стереть все записи' : 'Удалить аккаунт навсегда'}</button>
   </form>;
 }
 
@@ -85,7 +86,7 @@ export function Profile({ me, wide, onBack, onSaved, onRedo, onReminders, onFeed
   onReminders: () => void; onFeedback?: () => void; onPaywall: () => void; onLogout: () => void; onDeleted: () => void;
 }) {
   const toast = useToast(), s = me.profile?.settings ?? {}, p = me.profile, sub = me.subscription;
-  const [acc, setAcc] = useState<Account | null>(null), [devs, setDevs] = useState<Device[]>([]), [allDevs, setAllDevs] = useState(false), [sheet, setSheet] = useState<null | 'password' | 'delete' | 'voice' | 'obsidian'>(null);
+  const [acc, setAcc] = useState<Account | null>(null), [devs, setDevs] = useState<Device[]>([]), [allDevs, setAllDevs] = useState(false), [sheet, setSheet] = useState<null | 'password' | 'delete' | 'wipe' | 'voice' | 'obsidian'>(null);
   const [name, setName] = useState(String(s.name ?? '')), [email, setEmail] = useState('');
   const load = useCallback(async () => {
     try { const a = await api<Account>('/api/account'); setAcc(a); setEmail(a.email ?? ''); } catch { /* без сети — покажем то, что есть */ }
@@ -171,14 +172,16 @@ export function Profile({ me, wide, onBack, onSaved, onRedo, onReminders, onFeed
         <a className="pf-row" href="/privacy.html" target="_blank" rel="noopener"><span className="mid"><b>Конфиденциальность и условия</b><small>что храним, кому передаём, твои права</small></span><Icon name="chev" className="ic chev" /></a>
         <a className="pf-row" href="/api/export" download><span className="mid"><b>Выгрузить мои данные</b><small>всё, что записано, — одним файлом JSON</small></span><Icon name="chev" className="ic chev" /></a>
         <button className="pf-row" onClick={onLogout}><span className="mid"><b>Выйти</b><small>на этом устройстве</small></span><Icon name="chev" className="ic chev" /></button>
+        <button className="pf-row pf-danger" onClick={() => setSheet('wipe')}><span className="mid"><b>Стереть все записи</b><small>начать с чистого листа — аккаунт и подписка остаются</small></span><Icon name="chev" className="ic chev" /></button>
         <button className="pf-row pf-danger" onClick={() => setSheet('delete')}><span className="mid"><b>Удалить аккаунт</b><small>вместе со всеми записями, без возврата</small></span><Icon name="chev" className="ic chev" /></button>
       </div>
     </section>
 
-    <Sheet open={!!sheet} onClose={() => setSheet(null)} tall={sheet === 'voice' || sheet === 'obsidian'} title={sheet === 'voice' ? 'Голос и календарь' : sheet === 'obsidian' ? 'Obsidian' : sheet === 'delete' ? 'Удалить аккаунт' : acc && !acc.hasPassword ? 'Задать пароль' : 'Сменить пароль'}>
+    <Sheet open={!!sheet} onClose={() => setSheet(null)} tall={sheet === 'voice' || sheet === 'obsidian'} title={sheet === 'voice' ? 'Голос и календарь' : sheet === 'obsidian' ? 'Obsidian' : sheet === 'delete' ? 'Удалить аккаунт' : sheet === 'wipe' ? 'Стереть все записи' : acc && !acc.hasPassword ? 'Задать пароль' : 'Сменить пароль'}>
       {sheet === 'password' && <PasswordForm first={acc ? !acc.hasPassword : false} onDone={() => { setSheet(null); load(); }} />}
       {sheet === 'voice' && <VoiceSetup />}
       {sheet === 'obsidian' && <ObsidianSetup />}
+      {sheet === 'wipe' && <DeleteForm wipe username={me.username} hasPassword={acc?.hasPassword ?? true} onDeleted={() => setSheet(null)} />}
       {sheet === 'delete' && <DeleteForm username={me.username} hasPassword={acc?.hasPassword ?? true} onDeleted={onDeleted} />}
     </Sheet>
   </div>;

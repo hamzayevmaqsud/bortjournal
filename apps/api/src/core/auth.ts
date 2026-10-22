@@ -190,6 +190,26 @@ export async function authRoutes(app: FastifyInstance, { db }: { db: DB }) {
     return { ok: true };
   });
 
+  // стереть все записи, оставив аккаунт: вход, анкету, подписку, устройства, ключи и счётчик ИИ.
+  // Таблицы с записями находятся по столбцу user_id — новый модуль не забудется; дочерние уходят каскадом
+  app.post('/api/account/wipe', async (req, reply) => {
+    if (!need(req, reply)) return;
+    const b = (req.body ?? {}) as { password?: unknown; confirm?: unknown }, password = String(b.password ?? '').slice(0, 512);
+    if (tooMany(`wipe:${req.userId}`)) return reply.code(429).send({ error: 'Слишком много попыток. Подожди 15 минут.' });
+    const [u] = await db.select({ hash: users.passwordHash, username: users.username }).from(users).where(eq(users.id, req.userId!));
+    const ok = u?.hash ? await verifyPassword(password, u.hash) : String(b.confirm ?? '').trim().toLowerCase() === u?.username.toLowerCase();
+    if (!ok) { fail(`wipe:${req.userId}`); return reply.code(400).send({ error: u?.hash ? 'Пароль неверный.' : 'Логин не совпадает.' }); }
+    const KEEP = ['users', 'sessions', 'profiles', 'entitlements', 'push_subscriptions', 'api_tokens', 'auth_identities', 'password_resets', 'ai_usage', 'feedback', 'integrations', 'activity_weeks'];
+    await db.transaction(async tx => {
+      const t = await tx.execute<{ name: string }>(sql`select table_name as name from information_schema.columns where column_name = 'user_id' and table_schema = current_schema() order by table_name`);
+      for (const { name } of t.rows) if (!KEEP.includes(name)) await tx.execute(sql`delete from ${sql.identifier(name)} where user_id = ${req.userId!}`);
+    });
+    const data = fileURLToPath(new URL('../../../../data/', import.meta.url));
+    if (/^[0-9a-f-]{36}$/.test(req.userId!)) for (const dir of [process.env.STUDY_FILES_DIR || path.join(data, 'study-files'), path.join(process.env.COVERS_DIR || path.join(data, 'covers-next'), 'u')])
+      fs.rmSync(path.join(dir, req.userId!), { recursive: true, force: true });
+    return { ok: true };
+  });
+
   app.get('/api/me', async (req, reply) => {
     if (!req.userId) return reply.code(401).send({ error: 'Нужно войти.' });
     // часовой пояс приходит с устройства: по нему считаются «сегодня», «сейчас» и напоминания

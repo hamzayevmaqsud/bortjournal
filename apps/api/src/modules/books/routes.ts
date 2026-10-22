@@ -15,11 +15,11 @@ import { userContext } from '../../core/context.js';
 import { bad, idParam, notFound, uid } from '../../core/http.js';
 import { profiles } from '../../core/schema.js';
 import type { DB, Tx } from '../../db/index.js';
+import { COVERS } from './files.js';
 import { bookQuotes, books, readingLog } from './schema.js';
 
 const STATUS = ['reading', 'want', 'done', 'drop'], FORMAT = ['paper', 'ebook', 'audio'];
 const ROOT = fileURLToPath(new URL('../../../../../', import.meta.url));
-const COVERS = () => process.env.COVERS_DIR || path.join(ROOT, 'data', 'covers-next');
 const OLD_CAT = () => path.join(ROOT, 'data', 'covers', 'cat'); // кэш старого журнала — читаем, не пишем
 const isbn10 = (s: string) => { const d = String(s).replace(/[^0-9X]/gi, '').toUpperCase(); if (d.length === 10) return d; if (d.length === 13 && d.startsWith('978')) { const c = d.slice(3, 12), sum = [...c].reduce((a, x, i) => a + (10 - i) * +x, 0), ch = (11 - sum % 11) % 11; return c + (ch === 10 ? 'X' : String(ch)); } return null; };
 const pct = (b: { status: string; pages: number | null; currentPage: number }) => b.status === 'done' ? 100 : b.pages ? Math.min(100, Math.round(b.currentPage / b.pages * 100)) : 0;

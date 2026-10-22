@@ -51,6 +51,23 @@ describe('аккаунт', () => {
     expect((await as(c)('GET', '/api/today')).statusCode).toBe(401);
     expect((await r('GET', '/api/today')).statusCode).toBe(200);
   });
+  it('стереть все записи: нужен пароль; аккаунт, анкета, вход и подписка остаются, чужое не задето', async () => {
+    const r = as(await login('owner')), o = as(await login('other'));
+    await r('POST', '/api/food/drinks', { day: '2026-01-01', type: 'water', ml: 300 });
+    await r('POST', '/api/plans/tasks', { title: 'Позвонить', day: '2026-01-01' });
+    await o('POST', '/api/food/drinks', { day: '2026-01-01', type: 'water', ml: 200 });
+    expect((await r('POST', '/api/account/wipe', { password: 'nope' })).statusCode).toBe(400);
+    expect((await r('POST', '/api/account/wipe', { password: 'secret12' })).json()).toMatchObject({ ok: true });
+    const [u] = await conn.db.select().from(s.users).where(eq(s.users.username, 'owner'));
+    expect((await conn.db.select().from(s.drinks).where(eq(s.drinks.userId, u!.id)))).toHaveLength(0);
+    expect((await conn.db.select().from(s.tasks).where(eq(s.tasks.userId, u!.id)))).toHaveLength(0);
+    expect((await conn.db.select().from(s.events).where(eq(s.events.userId, u!.id)))).toHaveLength(0);
+    expect((await conn.db.select().from(s.profiles).where(eq(s.profiles.userId, u!.id)))[0]?.heightCm).toBe(180);
+    expect((await conn.db.select().from(s.entitlements).where(eq(s.entitlements.userId, u!.id))).length).toBeGreaterThan(0);
+    expect((await r('GET', '/api/today')).statusCode).toBe(200); // всё ещё вошёл
+    expect((await conn.db.select().from(s.drinks)).length).toBe(1); // у другого запись цела
+    await conn.db.delete(s.drinks);
+  });
   it('удаление аккаунта: нужен пароль, записи уходят вместе с ним', async () => {
     const r = as(await login('owner'));
     await r('POST', '/api/food/drinks', { day: '2026-01-01', type: 'water', ml: 300 });

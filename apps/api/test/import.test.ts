@@ -4,6 +4,7 @@
  * повторный запуск — ничего не менять.
  */
 import { count, eq, sql } from 'drizzle-orm';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -53,7 +54,7 @@ const state = {
     { id: 'x3', date: '2026-10-12', kind: 'in', cat: 'salary', amount: 1000 },
     { id: 'x4', date: '2026-10-12', kind: 'out', cat: 'food', amount: 0 }
   ],
-  books: [{ id: 'b1', title: 'Атомные привычки', author: 'Клир', pages: 320, page: 180, status: 'reading', format: 'paper', owned: true, rating: 4, cover: { ol: 123, isbn: ['0735211299', 'bad'] }, added: '2026-09-01', started: '2026-09-02', quotes: [{ id: 'q1', text: 'Системы важнее целей', page: '27', date: '2026-09-10' }] }],
+  books: [{ id: 'b1', title: 'Атомные привычки', author: 'Клир', pages: 320, page: 180, status: 'reading', format: 'paper', owned: true, rating: 4, cover: { ol: 123, isbn: ['0735211299', 'bad'] }, added: '2026-09-01', started: '2026-09-02', quotes: [{ id: 'q1', text: 'Системы важнее целей', page: '27', date: '2026-09-10' }] }, { id: 'b2', title: 'Своя обложка', status: 'want', cover: { mine: 1, v: 5 } }, { id: 'b3', title: 'Обложка потерялась', status: 'want', cover: { mine: 1 } }],
   readLog: [{ id: 'r1', date: '2026-10-12', book: 'b1', pages: 25 }, { id: 'r2', date: '2026-10-12', book: 'нет такой', pages: 10 }],
   goals: [{ id: 'g1', period: 'month', key: '2026-10', title: 'Похудеть на 2 кг', done: false, parentId: null }, { id: 'g2', period: 'week', key: '2026-W42', title: 'Три тренировки', done: true, parentId: 'g1' }],
   series: [{ id: 'r1x', title: 'Зарядка', time: '07:00', rule: { kind: 'weekdays', days: [] }, start: '2026-10-12', skip: ['2026-10-13'] }],
@@ -73,6 +74,10 @@ beforeAll(async () => {
   fs.writeFileSync(path.join(dir, 'users.json'), JSON.stringify({ test: { salt: 'a'.repeat(32), hash: 'b'.repeat(128), created: '2026-09-01T00:00:00Z' } }));
   fs.writeFileSync(path.join(dir, 'state', 'test.json'), JSON.stringify({ rev: 1, state }));
   fs.writeFileSync(path.join(dir, 'push.json'), JSON.stringify({ test: { tz: 240, subs: [{ endpoint: 'https://fcm.googleapis.com/x', keys: { p256dh: 'p', auth: 'a' } }] } }));
+  // своя обложка старого журнала: data/covers/u/<sha(логин)[:16]>/<id книги>.jpg
+  const own = path.join(dir, 'covers', 'u', crypto.createHash('sha256').update('test').digest('hex').slice(0, 16));
+  fs.mkdirSync(own, { recursive: true }); fs.writeFileSync(path.join(own, 'b2.jpg'), Buffer.from([0xff, 0xd8, 1, 2, 3]));
+  process.env.COVERS_DIR = path.join(dir, 'covers-next');
   conn = await freshDb();
 }, 60000);
 afterAll(async () => { await conn?.pool.end(); fs.rmSync(dir, { recursive: true, force: true }); });
@@ -112,8 +117,13 @@ describe('перенос из старого журнала', () => {
     expect(t?.seriesId).toBeTruthy();
     const [plan] = await conn.db.select().from(s.workoutPlans);
     expect(plan?.weekdays).toEqual([1, 4]);
-    const [b] = await conn.db.select().from(s.books);
+    const bs = await conn.db.select().from(s.books), b = bs.find(x => x.legacyId === 'b1');
     expect(b?.coverIsbn).toEqual(['0735211299']);
+    // своя обложка скопирована к новой версии; без файла — обложки нет, а не битая ссылка
+    const mine = bs.find(x => x.legacyId === 'b2')!, lost = bs.find(x => x.legacyId === 'b3')!;
+    expect(mine.coverKey).toBe(path.join('u', mine.userId, `${mine.id}.jpg`));
+    expect([...fs.readFileSync(path.join(process.env.COVERS_DIR!, mine.coverKey!))]).toEqual([0xff, 0xd8, 1, 2, 3]);
+    expect(lost.coverKey).toBeNull();
   });
   it('пароль, часовой пояс и бесплатный доступ ко всем модулям', async () => {
     const [u] = await conn.db.select().from(s.users);

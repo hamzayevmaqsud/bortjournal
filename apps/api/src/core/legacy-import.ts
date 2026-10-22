@@ -37,7 +37,7 @@ export async function importLegacy(db: DB, dataDir: string, opts: { only?: strin
         const userId = found
           ? (await tx.update(users).set({ passwordHash: hash, tzOffset }).where(sql`${users.id} = ${found.id}`).returning({ id: users.id }))[0]!.id
           : (await tx.insert(users).values({ username, passwordHash: hash, createdAt: acc.created ? new Date(acc.created) : new Date(), tzOffset }).returning({ id: users.id }))[0]!.id;
-        const ctx = { db: tx, userId, warn: (m: string) => warnings.push(m) };
+        const ctx = { db: tx, userId, warn: (m: string) => warnings.push(m), dataDir, username };
 
         const p = dict(st.profile), s = dict(st.settings);
         const prof = {

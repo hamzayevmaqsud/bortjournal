@@ -1,16 +1,20 @@
 /** Перенос книг: полка, цитаты (пересоздаются целиком), журнал чтения */
-import { count, eq, inArray, sql } from 'drizzle-orm';
+import crypto from 'node:crypto';
+import fs from 'node:fs';
+import path from 'node:path';
+import { and, count, eq, inArray, sql } from 'drizzle-orm';
 import { recordEvents } from '../../core/events.js';
 import { isDay, list, num, optStr, str, uniqById } from '../../core/legacy.js';
 import type { ImportCheck, ImportContext, LegacyState } from '../../core/module.js';
 import { upsertByLegacy } from '../../db/upsert.js';
+import { COVERS } from './files.js';
 import { bookQuotes, books, readingLog } from './schema.js';
 
 const STATUS = new Set(['reading', 'want', 'done', 'drop']);
 const day = (v: unknown) => (isDay(v) ? v : null);
 const validBooks = (st: LegacyState) => uniqById(list(st.books)).filter(b => str(b?.title));
 
-export async function importBooks({ db, userId, warn }: ImportContext, st: LegacyState) {
+export async function importBooks({ db, userId, warn, dataDir, username }: ImportContext, st: LegacyState) {
   const bs = validBooks(st);
   const ids = await upsertByLegacy(db, books, bs.map(b => ({
     userId, legacyId: String(b.id), title: str(b.title, 200), author: optStr(b.author, 160), pages: num(b.pages) ? Math.round(num(b.pages)) : null, currentPage: Math.round(num(b.page)),
@@ -20,6 +24,17 @@ export async function importBooks({ db, userId, warn }: ImportContext, st: Legac
     addedOn: day(b.added), startedOn: day(b.started), finishedOn: day(b.finished), notes: optStr(b.notes, 5000)
   })));
   const bookIds = [...ids.values()];
+  // свои обложки: файл старого журнала копируется к новой версии; нет файла — нет и обложки
+  const oldDir = dataDir && username ? path.join(dataDir, 'covers', 'u', crypto.createHash('sha256').update(username).digest('hex').slice(0, 16)) : null;
+  for (const b of bs.filter(x => x.cover?.mine)) {
+    const id = ids.get(String(b.id))!, src = oldDir ? path.join(oldDir, `${String(b.id).replace(/[^a-z0-9]/gi, '')}.jpg`) : '';
+    let key: string | null = null;
+    if (src && fs.existsSync(src)) {
+      key = path.join('u', userId, `${id}.jpg`);
+      fs.mkdirSync(path.join(COVERS(), 'u', userId), { recursive: true }); fs.copyFileSync(src, path.join(COVERS(), key));
+    } else warn(`книги: своя обложка «${str(b.title, 60)}» не нашлась — книга без обложки`);
+    await db.update(books).set({ coverKey: key }).where(and(eq(books.id, id), eq(books.userId, userId)));
+  }
   if (bookIds.length) await db.delete(bookQuotes).where(inArray(bookQuotes.bookId, bookIds));
   const qs = bs.flatMap(b => list(b.quotes).filter(q => str(q?.text)).map(q => ({ bookId: ids.get(String(b.id))!, legacyId: optStr(q.id), text: str(q.text, 1200), page: optStr(q.page, 10), addedOn: day(q.date) })));
   if (qs.length) await db.insert(bookQuotes).values(qs);
