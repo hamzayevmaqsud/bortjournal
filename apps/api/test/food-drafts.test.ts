@@ -69,9 +69,9 @@ beforeAll(async () => {
   pushSrv = http.createServer((req, res) => { const parts: Buffer[] = []; req.on('data', c => parts.push(c)); req.on('end', () => { pushes.push(decrypt(Buffer.concat(parts))); res.writeHead(201).end(); }); });
   await new Promise<void>(r => pushSrv.listen(0, '127.0.0.1', r));
   pushUrl = `http://127.0.0.1:${(pushSrv.address() as any).port}/push`;
-  Object.assign(process.env, { GEMINI_API_KEY: 'test-key', GEMINI_BASE_URL: `http://127.0.0.1:${(fake.address() as any).port}`, GEMINI_MODEL: 'test-model' });
+  Object.assign(process.env, { GEMINI_API_KEY: 'test-key', GEMINI_BASE_URL: `http://127.0.0.1:${(fake.address() as any).port}`, GEMINI_MODEL: 'test-model', GEMINI_RETRY_MS: '0' });
 }, 60000);
-afterAll(async () => { delete process.env.GEMINI_API_KEY; delete process.env.GEMINI_BASE_URL; delete process.env.GEMINI_MODEL; fake?.close(); pushSrv?.close(); await app?.close(); await conn?.pool.end(); });
+afterAll(async () => { delete process.env.GEMINI_API_KEY; delete process.env.GEMINI_BASE_URL; delete process.env.GEMINI_MODEL; delete process.env.GEMINI_RETRY_MS; fake?.close(); pushSrv?.close(); await app?.close(); await conn?.pool.end(); });
 beforeEach(() => { replies = []; calls = []; pushes = []; });
 
 describe('фото еды в фоне', () => {
@@ -213,21 +213,22 @@ describe('сбои и «Повторить»', () => {
   const get = (id: string) => as('other', 'GET', `/api/food/drafts/${id}`).then(r => r.json());
 
   it('ИИ недоступен: три попытки с паузой, потом «не удался»; «Повторить» не тратит лимит', async () => {
-    replies = [{ status: 503 }, { status: 503 }, { status: 503 }];
+    // перегрузка (503): внутри попытки — ещё один быстрый повтор, поэтому запросов вдвое больше попыток
+    replies = Array.from({ length: 6 }, () => ({ status: 503 }));
     const d = (await as('other', 'POST', '/api/food/drafts', PHOTO)).json();
     const used = (await as('other', 'GET', '/api/ai/quota')).json().kinds.food.used;
 
     await runJobsOnce(conn.db);
     expect(await get(d.id)).toMatchObject({ state: 'queued', attempts: 1 });
     await runJobsOnce(conn.db);
-    expect(calls).toHaveLength(1); // пауза ещё не прошла
+    expect(calls).toHaveLength(2); // пауза ещё не прошла
     await runJobsOnce(conn.db, later(60));
     expect(await get(d.id)).toMatchObject({ state: 'queued', attempts: 2 });
     await runJobsOnce(conn.db, later(600));
     const failed = await get(d.id);
     expect(failed.state).toBe('failed');
     expect(failed.error).toBeTruthy();
-    expect(calls).toHaveLength(3);
+    expect(calls).toHaveLength(6);
 
     expect((await as('other', 'POST', `/api/food/drafts/${d.id}/retry`)).json()).toMatchObject({ state: 'queued', attempts: 0 });
     await runJobsOnce(conn.db);
