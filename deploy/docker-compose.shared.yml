@@ -95,6 +95,22 @@ services:
     cpus: 0.5
     mem_limit: 256m
 
+  # админка базы (pgweb): только 127.0.0.1 на сервере — открывается с Mac через SSH (scripts/lumi-db.sh)
+  dbadmin:
+    image: sosedoff/pgweb:0.16.2
+    restart: unless-stopped
+    environment:
+      PGWEB_DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@db:5432/lumi?sslmode=disable
+      DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@db:5432/lumi?sslmode=disable
+    ports:
+      - "127.0.0.1:4011:8081"
+    depends_on:
+      db:
+        condition: service_healthy
+    profiles: ["dbadmin"]
+    cpus: 0.5
+    mem_limit: 256m
+
 volumes:
   db:
   data:

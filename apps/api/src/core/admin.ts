@@ -1,7 +1,7 @@
 /**
  * Обратная связь и админка беты.
  * «Написать разработчику» — отзыв с контекстом (экран, версия, устройство); если задан Telegram-бот
- * (TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID), отзыв сразу приходит и туда.
+ * (TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID), отзыв сразу приходит и туда; если подключена почта и задан ADMIN_EMAIL — и на почту.
  * Админка (логины из ADMIN_USERS через запятую): пользователи и их активность, расход ИИ, регистрации, отзывы. Демо без регистрации в ней не считаются.
  */
 import { desc, eq, sql } from 'drizzle-orm';
@@ -9,6 +9,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type { DB } from '../db/index.js';
 import { requireUser } from './auth.js';
 import { bad, idParam, notFound } from './http.js';
+import { mailEnabled, sendMail } from './mail.js';
 import { feedback, users } from './schema.js';
 
 export const isAdminName = (username: string | undefined | null) => !!username && (process.env.ADMIN_USERS ?? '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean).includes(username.toLowerCase());
@@ -33,6 +34,8 @@ export async function adminRoutes(app: FastifyInstance, { db }: { db: DB }) {
     const [u] = await db.select({ username: users.username }).from(users).where(eq(users.id, req.userId!));
     await db.insert(feedback).values({ userId: req.userId!, text, context });
     void telegram(`Lumi — отзыв от @${u?.username ?? '?'} (${context.screen || 'экран ?'})\n\n${text}\n\n${context.device}`);
+    // и на почту админа (ADMIN_EMAIL), если почта подключена
+    if (process.env.ADMIN_EMAIL && mailEnabled()) void sendMail(process.env.ADMIN_EMAIL, `Lumi: отзыв от @${u?.username ?? '?'}`, `${text}\n\nЭкран: ${context.screen || '—'}\nУстройство: ${context.device}`).catch(e => req.log.warn({ err: (e as Error).message }, 'отзыв: письмо не ушло'));
     return reply.code(201).send({ ok: true });
   });
 
@@ -59,14 +62,19 @@ export async function adminRoutes(app: FastifyInstance, { db }: { db: DB }) {
     const since = sql`current_date - 13`;
     const signups = (await db.execute<{ day: string; n: number }>(sql`select created_at::date::text as day, count(*)::int as n from users where created_at::date >= ${since} and demo_until is null group by 1 order by 1`)).rows;
     const active = (await db.execute<{ day: string; n: number }>(sql`select day::text as day, count(distinct user_id)::int as n from events where day >= ${since} and day <= current_date and user_id in (select id from users where demo_until is null) group by 1 order by 1`)).rows;
+    // заходили по дням: открыли приложение хоть раз за день (не только те, кто что-то записал)
+    const visits = (await db.execute<{ day: string; n: number }>(sql`select v.day::text as day, count(*)::int as n from user_visits v join users u on u.id = v.user_id where v.day >= ${since} and u.demo_until is null group by 1 order by 1`)).rows;
+    // демо без регистрации живут сутки (потом удаляются), поэтому это «открывали демо за последние сутки»
+    const [demo] = (await db.execute<{ n: number }>(sql`select count(*)::int as n from users where demo_until is not null`)).rows;
     const ai = (await db.execute<{ day: string; kind: string; n: number }>(sql`select day::text as day, kind, sum(count)::int as n from ai_usage where day >= ${since} group by 1, 2 order by 1`)).rows;
     const fb = await db.select({ id: feedback.id, text: feedback.text, context: feedback.context, done: feedback.done, createdAt: feedback.createdAt, username: users.username })
       .from(feedback).leftJoin(users, eq(users.id, feedback.userId)).orderBy(feedback.done, desc(feedback.createdAt)).limit(200);
-    const dayAgo = Date.now() - 864e5, weekAgo = Date.now() - 7 * 864e5;
+    const dayAgo = Date.now() - 864e5, weekAgo = Date.now() - 7 * 864e5, monthAgo = Date.now() - 30 * 864e5, nowAgo = Date.now() - 15 * 60e3;
+    const seenAfter = (t: number) => people.filter(p => p.lastSeenAt && Date.parse(p.lastSeenAt) > t).length;
     return {
-      totals: { users: people.length, active1: people.filter(p => p.lastSeenAt && Date.parse(p.lastSeenAt) > dayAgo).length, active7: people.filter(p => p.lastSeenAt && Date.parse(p.lastSeenAt) > weekAgo).length,
+      totals: { users: people.length, online: seenAfter(nowAgo), active1: seenAfter(dayAgo), active7: seenAfter(weekAgo), active30: seenAfter(monthAgo), demo1: demo?.n ?? 0,
         onboarded: people.filter(p => p.onboarded).length, ai7: people.reduce((a, p) => a + (p.ai7 ?? 0), 0), feedbackNew: fb.filter(f => !f.done).length },
-      people, signups, active, ai, feedback: fb
+      people, signups, active, visits, ai, feedback: fb
     };
   });
   app.post('/api/admin/feedback/:id/done', { preHandler: admin }, async (req, reply) => {

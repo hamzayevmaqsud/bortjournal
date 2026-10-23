@@ -1,6 +1,6 @@
 /**
- * Восстановление пароля. «Забыли пароль?» — по логину или почте; письмо со ссылкой уходит через Resend
- * (RESEND_API_KEY, MAIL_FROM), если почта у аккаунта есть. Ответ всегда одинаковый — по нему не узнать,
+ * Восстановление пароля. «Забыли пароль?» — по логину или почте; письмо со ссылкой уходит через Gmail или Resend
+ * (см. mail.ts), если почта у аккаунта есть. Ответ всегда одинаковый — по нему не узнать,
  * есть ли такой аккаунт. Пока почта не подключена, админ делает ссылку в админке и пересылает человеку сам.
  * Ссылка живёт 30 минут и срабатывает один раз; после сброса все устройства выходят.
  */
@@ -11,25 +11,20 @@ import type { DB } from '../db/index.js';
 import { isAdminName } from './admin.js';
 import { hashPassword, startSession } from './auth.js';
 import { bad, idParam, notFound } from './http.js';
+import { mailEnabled, sendMail } from './mail.js';
 import { passwordResets, sessions, users } from './schema.js';
 import { publicBase } from './tokens.js';
 
 const sha = (s: string) => crypto.createHash('sha256').update(s).digest('hex');
 const TTL = 30 * 60e3;
-export const mailEnabled = () => !!(process.env.RESEND_API_KEY && process.env.MAIL_FROM);
 
 async function makeLink(db: DB, req: FastifyRequest, userId: string) {
   const raw = crypto.randomBytes(24).toString('base64url');
   await db.insert(passwordResets).values({ tokenHash: sha(raw), userId, expiresAt: new Date(Date.now() + TTL) });
   return `${publicBase(req)}/#reset=${raw}`;
 }
-async function sendMail(to: string, link: string) {
-  const r = await fetch('https://api.resend.com/emails', {
-    method: 'POST', signal: AbortSignal.timeout(15000), headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ from: process.env.MAIL_FROM, to, subject: 'Lumi: новый пароль',
-      text: `Кто-то (надеемся, ты) попросил сменить пароль в Lumi.\n\nОткрой ссылку, чтобы задать новый пароль — она работает 30 минут:\n${link}\n\nЕсли это был не ты — просто ничего не делай, пароль останется прежним.` })
-  });
-  if (!r.ok) throw new Error(`почта: ${r.status}`);
+async function sendResetMail(to: string, link: string) {
+  await sendMail(to, 'Lumi: новый пароль', `Кто-то (надеемся, ты) попросил сменить пароль в Lumi.\n\nОткрой ссылку, чтобы задать новый пароль — она работает 30 минут:\n${link}\n\nЕсли это был не ты — просто ничего не делай, пароль останется прежним.`);
 }
 
 export async function resetRoutes(app: FastifyInstance, { db }: { db: DB }) {
@@ -42,7 +37,7 @@ export async function resetRoutes(app: FastifyInstance, { db }: { db: DB }) {
     if (limited(`ip:${req.ip}`) || limited(`l:${login}`)) return reply.code(429).send({ error: 'Слишком много попыток. Попробуй через час.' });
     const [u] = await db.select({ id: users.id, email: users.email }).from(users).where(sql`lower(${users.username}) = ${login} or lower(${users.email}) = ${login}`).limit(1);
     if (u?.email && mailEnabled()) {
-      try { await sendMail(u.email, await makeLink(db, req, u.id)); } catch (e) { req.log.warn({ err: (e as Error).message }, 'сброс пароля: письмо не ушло'); }
+      try { await sendResetMail(u.email, await makeLink(db, req, u.id)); } catch (e) { req.log.warn({ err: (e as Error).message }, 'сброс пароля: письмо не ушло'); }
     }
     return { ok: true, mail: mailEnabled(), message: mailEnabled() ? 'Если у аккаунта указана почта, мы отправили на неё ссылку. Проверь «Входящие» и «Спам».' : 'Письма пока не отправляются. Напиши в бета-группу или разработчику — он пришлёт ссылку для нового пароля.' };
   });

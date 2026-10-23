@@ -45,4 +45,11 @@ describe('отзывы и админка', () => {
     expect((await as('boss')('POST', `/api/admin/feedback/${f.id}/done`)).json().done).toBe(true);
     expect((await as('boss')('GET', '/api/admin/overview')).json().totals.feedbackNew).toBe(0);
   });
+  it('заходы: человек считается один раз за день; онлайн и 30 дней', async () => {
+    await as('tester')('GET', '/api/me'); await as('tester')('GET', '/api/me');
+    const o = (await as('boss')('GET', '/api/admin/overview')).json();
+    expect(o.totals).toMatchObject({ online: 2, active30: 2, demo1: 0 });
+    expect(o.visits.reduce((a: number, r: any) => a + r.n, 0)).toBe(2);
+    expect((await conn.db.select().from(s.userVisits)).length).toBe(2);
+  });
 });

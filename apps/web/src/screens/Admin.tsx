@@ -32,10 +32,12 @@ export function Admin({ wide, onBack }: { wide: boolean; onBack: () => void }) {
     </header>
     <div className="kpis">
       <div className="kpi"><span>Людей</span><b>{d.totals.users}</b><small>анкету прошли {d.totals.onboarded}</small></div>
-      <div className="kpi"><span>Заходили</span><b>{d.totals.active1}</b><small>за сутки · за неделю {d.totals.active7}</small></div>
+      <div className="kpi"><span>Сейчас в Lumi</span><b>{d.totals.online}</b><small>за 15 минут · демо за сутки {d.totals.demo1}</small></div>
+      <div className="kpi"><span>Заходили</span><b>{d.totals.active1}</b><small>за сутки · 7 дн. {d.totals.active7} · 30 дн. {d.totals.active30}</small></div>
       <div className="kpi"><span>ИИ за 7 дней</span><b>{fmt(d.totals.ai7)}</b><small>обращений</small></div>
       <div className="kpi"><span>Отзывы</span><b>{d.totals.feedbackNew}</b><small>не разобрано</small></div>
     </div>
+    <section className="panel"><div className="panel-h"><h2>Заходили по дням</h2><small>открыли приложение</small></div><Bars rows={series(d.visits ?? [])} color="var(--navy)" every={2} /></section>
     <section className="panel"><div className="panel-h"><h2>Активные по дням</h2><small>сделали хоть одну запись</small></div><Bars rows={series(d.active)} color="var(--good)" every={2} /></section>
     <section className="panel"><div className="panel-h"><h2>Регистрации</h2></div><Bars rows={series(d.signups)} color="var(--orange)" every={2} /></section>
     <section className="panel"><div className="panel-h"><h2>ИИ по дням</h2><small>еда, вопросы, голос, шпаргалки</small></div><Bars rows={series(d.ai)} color="var(--quiz)" every={2} /></section>

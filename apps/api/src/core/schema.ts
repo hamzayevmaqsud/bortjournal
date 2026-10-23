@@ -71,6 +71,12 @@ export const aiUsage = pgTable('ai_usage', {
   count: integer('count').notNull().default(0)
 }, t => [primaryKey({ columns: [t.userId, t.day, t.kind] })]);
 
+/** Заходы: человек отмечается один раз за местный день — для админки (сколько людей заходили по дням) */
+export const userVisits = pgTable('user_visits', {
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  day: date('day', { mode: 'string' }).notNull()
+}, t => [primaryKey({ columns: [t.userId, t.day] }), index('user_visits_day_idx').on(t.day)]);
+
 /**
  * Личные ключи для внешних клиентов: «Команды» на iPhone (голосовая запись) и подписка календаря.
  * В базе — только sha256 ключа; сам ключ показывается один раз при создании.

@@ -3,7 +3,7 @@
   "appName": "Lumi",
   "webDir": "www",
   "server": {
-    "url": "https://maksuds-macbook-pro.tailec5b6a.ts.net:8443/m",
+    "url": "https://lumi-journal.com/m",
     "errorPath": "offline.html"
   },
   "ios": {
