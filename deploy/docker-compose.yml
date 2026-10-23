@@ -2,6 +2,9 @@
 # Запуск: cd deploy && cp .env.example .env && (заполнить) && docker compose up -d --build
 # Подробно — docs/deploy.md
 
+# своё имя проекта: иначе Docker назовёт его по папке («deploy») и он может совпасть с чужим проектом на том же сервере
+name: lumi
+
 services:
   db:
     image: postgres:18
