@@ -26,6 +26,8 @@ export const users = pgTable('users', {
   lastSeenAt: timestamp('last_seen_at', { withTimezone: true }),
   /** демо без регистрации: до этого времени живёт, потом удаляется воркером; null — настоящий аккаунт */
   demoUntil: timestamp('demo_until', { withTimezone: true }),
+  /** админ: видит админку беты (статистика, отзывы, ссылки сброса пароля). Ещё админы — логины из ADMIN_USERS */
+  isAdmin: boolean('is_admin').notNull().default(false),
   deletedAt: timestamp('deleted_at', { withTimezone: true })
 }, t => [
   uniqueIndex('users_username_uq').on(sql`lower(${t.username})`),

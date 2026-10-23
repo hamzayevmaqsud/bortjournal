@@ -1,5 +1,6 @@
 /** Отзывы и админка: отзыв с контекстом, админка только для ADMIN_USERS, активность и расход ИИ, отметка «разобрано» */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { eq } from 'drizzle-orm';
 import { hashPassword } from '../src/core/auth.js';
 import { grantFree } from '../src/core/entitlements.js';
 import * as s from '../src/schema.js';
@@ -44,6 +45,19 @@ describe('отзывы и админка', () => {
     expect(f.context.device).toMatch(/iPhone/);
     expect((await as('boss')('POST', `/api/admin/feedback/${f.id}/done`)).json().done).toBe(true);
     expect((await as('boss')('GET', '/api/admin/overview')).json().totals.feedbackNew).toBe(0);
+  });
+  it('админ по флагу в базе; подписки, способы входа, устройства, разделы', async () => {
+    expect((await as('tester')('GET', '/api/admin/overview')).statusCode).toBe(404);
+    await conn.db.update(s.users).set({ isAdmin: true }).where(eq(s.users.username, 'tester'));
+    const o = (await as('tester')('GET', '/api/admin/overview')).json();
+    expect((await as('tester')('GET', '/api/me')).json().admin).toBe(true);
+    expect(o.billing).toMatchObject({ active: 0, buyersEver: 0, mrr: 0 });
+    expect(o.logins.password).toBe(2);
+    expect(Object.values(o.devices as Record<string, number>).reduce((a, n) => a + n, 0)).toBe(2); // вход без user-agent — «другое»
+    expect(o.devices['другое']).toBe(2);
+    expect(o.sections.tasks).toBeGreaterThanOrEqual(1);
+    expect(o.retention).toMatchObject({ cohort: 0, back: 0 });
+    await conn.db.update(s.users).set({ isAdmin: false }).where(eq(s.users.username, 'tester'));
   });
   it('заходы: человек считается один раз за день; онлайн и 30 дней', async () => {
     await as('tester')('GET', '/api/me'); await as('tester')('GET', '/api/me');

@@ -11,6 +11,7 @@ import { Icon } from '../components/Icon';
 import { useToast } from '../components/Toasts';
 
 const ago = (iso: string | null) => { if (!iso) return 'не заходил'; const m = Math.round((Date.now() - Date.parse(iso)) / 60e3); return m < 2 ? 'сейчас' : m < 60 ? `${m} мин назад` : m < 1440 ? `${Math.round(m / 60)} ч назад` : `${Math.round(m / 1440)} дн. назад`; };
+const money = (n: number) => `${(Math.round(n * 100) / 100).toLocaleString('ru-RU', { minimumFractionDigits: n % 1 ? 2 : 0, maximumFractionDigits: 2 })} $`;
 const SECT: Record<string, string> = { food: 'еда', water: 'вода', steps: 'шаги', tasks: 'задачи', gym: 'зал', study: 'учёба', budget: 'бюджет', books: 'книги' };
 
 export function Admin({ wide, onBack }: { wide: boolean; onBack: () => void }) {
@@ -34,12 +35,27 @@ export function Admin({ wide, onBack }: { wide: boolean; onBack: () => void }) {
       <div className="kpi"><span>Людей</span><b>{d.totals.users}</b><small>анкету прошли {d.totals.onboarded}</small></div>
       <div className="kpi"><span>Сейчас в Lumi</span><b>{d.totals.online}</b><small>за 15 минут · демо за сутки {d.totals.demo1}</small></div>
       <div className="kpi"><span>Заходили</span><b>{d.totals.active1}</b><small>за сутки · 7 дн. {d.totals.active7} · 30 дн. {d.totals.active30}</small></div>
+      <div className="kpi"><span>Купили Pro</span><b>{d.billing.active}</b><small>{d.billing.beta ? 'бета: Pro у всех бесплатно' : `≈ ${money(d.billing.mrr)} в месяц`}</small></div>
+      <div className="kpi"><span>Вернулись</span><b>{d.retention.cohort ? `${Math.round(d.retention.back / d.retention.cohort * 100)}%` : '—'}</b><small>{d.retention.back} из {d.retention.cohort} · с нами &gt; недели</small></div>
       <div className="kpi"><span>ИИ за 7 дней</span><b>{fmt(d.totals.ai7)}</b><small>обращений</small></div>
       <div className="kpi"><span>Отзывы</span><b>{d.totals.feedbackNew}</b><small>не разобрано</small></div>
     </div>
     <section className="panel"><div className="panel-h"><h2>Заходили по дням</h2><small>открыли приложение</small></div><Bars rows={series(d.visits ?? [])} color="var(--navy)" every={2} /></section>
     <section className="panel"><div className="panel-h"><h2>Активные по дням</h2><small>сделали хоть одну запись</small></div><Bars rows={series(d.active)} color="var(--good)" every={2} /></section>
     <section className="panel"><div className="panel-h"><h2>Регистрации</h2></div><Bars rows={series(d.signups)} color="var(--orange)" every={2} /></section>
+    <section className="panel"><div className="panel-h"><h2>Подписки и покупки</h2><small>{d.billing.beta ? 'бета: оплата выключена' : 'по прейскуранту, без комиссий'}</small></div>
+      <div className="ad-nums ad-stats">{([['сейчас Pro', d.billing.active], ['месяц', d.billing.month], ['год', d.billing.year], ['свой набор', d.billing.custom], ['отменили продление', d.billing.cancelled], ['закончились', d.billing.expired], ['покупателей всего', d.billing.buyersEver], ['пробный сейчас', d.billing.trialActive], ['пробовали всего', d.billing.trialEver]] as Array<[string, number]>).map(([n, v]) => <span key={n} className={v ? '' : 'zero'}><b>{fmt(v)}</b>{n}</span>)}
+        <span><b>{money(d.billing.mrr)}</b>в месяц</span><span><b>{money(d.billing.boughtTotal)}</b>куплено на сумму</span>
+        {(['web', 'apple', 'google'] as const).map(k => <span key={k} className={d.billing.bySource[k] ? '' : 'zero'}><b>{d.billing.bySource[k]}</b>{({ web: 'сайт', apple: 'App Store', google: 'Google Play' })[k]}</span>)}</div>
+      <Bars rows={series(d.purchases)} color="var(--orange)" every={2} />
+    </section>
+    <section className="panel"><div className="panel-h"><h2>Как и откуда</h2><small>способы входа · устройства · разделы</small></div>
+      <div className="ad-nums ad-stats">
+        {([['пароль', d.logins.password], ['Google', d.logins.google], ['Apple', d.logins.apple]] as Array<[string, number]>).map(([n, v]) => <span key={n} className={v ? '' : 'zero'}><b>{fmt(v)}</b>{n}</span>)}
+        {Object.entries(d.devices as Record<string, number>).sort((a, b) => b[1] - a[1]).map(([n, v]) => <span key={n}><b>{fmt(v)}</b>{n}</span>)}
+      </div>
+      <div className="ad-nums ad-stats">{Object.entries(d.sections as Record<string, number>).sort((a, b) => b[1] - a[1]).map(([k, v]) => <span key={k}><b>{fmt(v)}</b>{SECT[k] ?? k}</span>)}</div>
+    </section>
     <section className="panel"><div className="panel-h"><h2>ИИ по дням</h2><small>еда, вопросы, голос, шпаргалки</small></div><Bars rows={series(d.ai)} color="var(--quiz)" every={2} /></section>
 
     <section className="panel"><div className="panel-h"><h2>Отзывы</h2><small>{d.feedback.length}</small></div>

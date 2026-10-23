@@ -2,16 +2,20 @@
  * Обратная связь и админка беты.
  * «Написать разработчику» — отзыв с контекстом (экран, версия, устройство); если задан Telegram-бот
  * (TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID), отзыв сразу приходит и туда; если подключена почта и задан ADMIN_EMAIL — и на почту.
- * Админка (логины из ADMIN_USERS через запятую): пользователи и их активность, расход ИИ, регистрации, отзывы. Демо без регистрации в ней не считаются.
+ * Админка (флаг users.is_admin или логины из ADMIN_USERS): пользователи и их активность, подписки и покупки, расход ИИ, регистрации, отзывы. Демо без регистрации в ней не считаются.
  */
 import { desc, eq, sql } from 'drizzle-orm';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import { customPrice, PRICES, type PriceId } from '@bortjournal/core';
 import type { DB } from '../db/index.js';
 import { requireUser } from './auth.js';
+import { betaOn } from './billing.js';
 import { bad, idParam, notFound } from './http.js';
 import { mailEnabled, sendMail } from './mail.js';
 import { feedback, users } from './schema.js';
 
+/** админ — по флагу в базе (users.is_admin) или по логину из ADMIN_USERS */
+export const isAdmin = (u?: { username?: string | null; isAdmin?: boolean | null } | null) => !!u && (!!u.isAdmin || isAdminName(u.username));
 export const isAdminName = (username: string | undefined | null) => !!username && (process.env.ADMIN_USERS ?? '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean).includes(username.toLowerCase());
 const clip = (v: unknown, n: number) => String(v ?? '').replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, n);
 
@@ -41,8 +45,8 @@ export async function adminRoutes(app: FastifyInstance, { db }: { db: DB }) {
 
   const admin = async (req: FastifyRequest, reply: FastifyReply) => {
     if (!req.userId) return reply.code(401).send({ error: 'Нужно войти.' });
-    const [u] = await db.select({ username: users.username }).from(users).where(eq(users.id, req.userId));
-    if (!isAdminName(u?.username)) return reply.code(404).send({ error: 'Нет такого метода.' });
+    const [u] = await db.select({ username: users.username, isAdmin: users.isAdmin }).from(users).where(eq(users.id, req.userId));
+    if (!isAdmin(u)) return reply.code(404).send({ error: 'Нет такого метода.' });
   };
   app.get('/api/admin/overview', { preHandler: admin }, async () => {
     const people = (await db.execute<Record<string, any>>(sql`
@@ -66,14 +70,53 @@ export async function adminRoutes(app: FastifyInstance, { db }: { db: DB }) {
     const visits = (await db.execute<{ day: string; n: number }>(sql`select v.day::text as day, count(*)::int as n from user_visits v join users u on u.id = v.user_id where v.day >= ${since} and u.demo_until is null group by 1 order by 1`)).rows;
     // демо без регистрации живут сутки (потом удаляются), поэтому это «открывали демо за последние сутки»
     const [demo] = (await db.execute<{ n: number }>(sql`select count(*)::int as n from users where demo_until is not null`)).rows;
+    // подписки и покупки (без демо): пробный период, купленный Pro и свои наборы; цены — по прейскуранту
+    const paid = (await db.execute<{ source: string; plan: string | null; features: string[] | null; active: boolean; autoRenew: boolean; createdAt: string }>(sql`
+      select e.source, e.plan, e.features, (e.expires_at is null or e.expires_at > now()) as active, e.auto_renew as "autoRenew", e.created_at as "createdAt"
+      from entitlements e join users u on u.id = e.user_id
+      where u.demo_until is null and e.module = 'pro' and e.source in ('web', 'apple', 'google')`)).rows;
+    const [trial] = (await db.execute<{ active: number; ever: number }>(sql`
+      select count(*) filter (where e.expires_at > now())::int as active, count(*)::int as ever
+      from entitlements e join users u on u.id = e.user_id where u.demo_until is null and e.module = 'pro' and e.source = 'trial'`)).rows;
+    const priceOf = (r: { plan: string | null; features: string[] | null }) => { const plan: PriceId = r.plan === 'year' ? 'year' : 'month'; return r.features?.length ? customPrice(r.features, plan).price : PRICES[plan].price; };
+    const live = paid.filter(r => r.active), round = (n: number) => Math.round(n * 100) / 100;
+    const purchases = (await db.execute<{ day: string; n: number }>(sql`
+      select e.created_at::date::text as day, count(*)::int as n from entitlements e join users u on u.id = e.user_id
+      where u.demo_until is null and e.module = 'pro' and e.source in ('web', 'apple', 'google') and e.created_at::date >= ${since} group by 1 order by 1`)).rows;
+    const billing = {
+      beta: betaOn(), trialActive: trial?.active ?? 0, trialEver: trial?.ever ?? 0,
+      buyersEver: paid.length, active: live.length, month: live.filter(r => r.plan !== 'year').length, year: live.filter(r => r.plan === 'year').length,
+      custom: live.filter(r => r.features?.length).length, cancelled: live.filter(r => !r.autoRenew).length, expired: paid.length - live.length,
+      bySource: Object.fromEntries(['web', 'apple', 'google'].map(k => [k, live.filter(r => r.source === k).length])),
+      // выручка в месяц: месячные — их цена, годовые — цена / 12; оценка, без возвратов и комиссий магазинов
+      mrr: round(live.reduce((a, r) => a + (r.plan === 'year' ? priceOf(r) / 12 : priceOf(r)), 0)),
+      boughtTotal: round(paid.reduce((a, r) => a + priceOf(r), 0))
+    };
+    // как входят: пароль, Google, Apple (у человека может быть несколько способов)
+    const [logins] = (await db.execute<{ password: number; google: number; apple: number }>(sql`
+      select count(*) filter (where u.password_hash is not null)::int as password,
+        count(*) filter (where exists (select 1 from auth_identities a where a.user_id = u.id and a.provider = 'google'))::int as google,
+        count(*) filter (where exists (select 1 from auth_identities a where a.user_id = u.id and a.provider = 'apple'))::int as apple
+      from users u where u.demo_until is null`)).rows;
+    // с каких устройств сидят: по открытым сессиям, человек считается один раз на тип устройства
+    const agents = (await db.execute<{ userId: string; ua: string | null }>(sql`
+      select distinct s.user_id as "userId", s.user_agent as ua from sessions s join users u on u.id = s.user_id where u.demo_until is null and s.expires_at > now()`)).rows;
+    const kindOf = (ua: string | null) => !ua ? 'другое' : /iPhone/.test(ua) ? 'iPhone' : /iPad/.test(ua) ? 'iPad' : /Android/.test(ua) ? 'Android' : /Macintosh|Mac OS X/.test(ua) ? 'Mac' : /Windows/.test(ua) ? 'Windows' : /Linux/.test(ua) ? 'Linux' : 'другое';
+    const devices: Record<string, number> = {};
+    for (const k of new Set(agents.map(a => `${a.userId}|${kindOf(a.ua)}`))) { const kind = k.split('|')[1]!; devices[kind] = (devices[kind] ?? 0) + 1; }
     const ai = (await db.execute<{ day: string; kind: string; n: number }>(sql`select day::text as day, kind, sum(count)::int as n from ai_usage where day >= ${since} group by 1, 2 order by 1`)).rows;
     const fb = await db.select({ id: feedback.id, text: feedback.text, context: feedback.context, done: feedback.done, createdAt: feedback.createdAt, username: users.username })
       .from(feedback).leftJoin(users, eq(users.id, feedback.userId)).orderBy(feedback.done, desc(feedback.createdAt)).limit(200);
     const dayAgo = Date.now() - 864e5, weekAgo = Date.now() - 7 * 864e5, monthAgo = Date.now() - 30 * 864e5, nowAgo = Date.now() - 15 * 60e3;
     const seenAfter = (t: number) => people.filter(p => p.lastSeenAt && Date.parse(p.lastSeenAt) > t).length;
+    // какие разделы выбирают в анкете; возвращаются ли: из тех, кто с нами больше недели, сколько заходили за последние 7 дней
+    const sections: Record<string, number> = {};
+    for (const p of people) if (Array.isArray(p.sections)) for (const k of p.sections) sections[k] = (sections[k] ?? 0) + 1;
+    const old = people.filter(p => Date.parse(p.createdAt) < weekAgo), back = old.filter(p => p.lastSeenAt && Date.parse(p.lastSeenAt) > weekAgo).length;
     return {
       totals: { users: people.length, online: seenAfter(nowAgo), active1: seenAfter(dayAgo), active7: seenAfter(weekAgo), active30: seenAfter(monthAgo), demo1: demo?.n ?? 0,
         onboarded: people.filter(p => p.onboarded).length, ai7: people.reduce((a, p) => a + (p.ai7 ?? 0), 0), feedbackNew: fb.filter(f => !f.done).length },
+      retention: { cohort: old.length, back }, billing, purchases, logins, devices, sections,
       people, signups, active, visits, ai, feedback: fb
     };
   });

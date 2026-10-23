@@ -8,7 +8,7 @@ import crypto from 'node:crypto';
 import { and, eq, gt, isNull, sql } from 'drizzle-orm';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type { DB } from '../db/index.js';
-import { isAdminName } from './admin.js';
+import { isAdmin } from './admin.js';
 import { hashPassword, startSession } from './auth.js';
 import { bad, idParam, notFound } from './http.js';
 import { mailEnabled, sendMail } from './mail.js';
@@ -60,8 +60,8 @@ export async function resetRoutes(app: FastifyInstance, { db }: { db: DB }) {
   // админ: ссылка для сброса — переслать человеку в мессенджере, пока почта не подключена
   app.post('/api/admin/users/:id/reset-link', async (req, reply) => {
     if (!req.userId) return reply.code(401).send({ error: 'Нужно войти.' });
-    const [me] = await db.select({ username: users.username }).from(users).where(eq(users.id, req.userId));
-    if (!isAdminName(me?.username)) return reply.code(404).send({ error: 'Нет такого метода.' });
+    const [me] = await db.select({ username: users.username, isAdmin: users.isAdmin }).from(users).where(eq(users.id, req.userId));
+    if (!isAdmin(me)) return reply.code(404).send({ error: 'Нет такого метода.' });
     const id = idParam((req.params as { id?: string }).id);
     const [u] = await db.select({ id: users.id, username: users.username }).from(users).where(eq(users.id, id));
     if (!u) return notFound(reply);

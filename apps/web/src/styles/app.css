@@ -2240,3 +2240,7 @@ input:-webkit-autofill,input:-webkit-autofill:hover,input:-webkit-autofill:focus
 .tl-allday span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
 .brand i{font:800 16px var(--display);letter-spacing:-.02em}
+/* админка: блоки цифр подписок и устройств — крупнее, с отступом от графика */
+.ad-stats{margin:4px 0 12px;gap:8px}
+.ad-stats span{padding:6px 12px;font-size:13px;background:color-mix(in srgb,var(--text) 5%,var(--card))}
+.ad-stats span b{font-size:15px}
