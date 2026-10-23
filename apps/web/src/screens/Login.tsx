@@ -7,7 +7,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { AppleMark, GoogleMark, startUrl, takeAuthResult, useProviders } from '../lib/oauth';
 import { TRIAL_DAYS } from '@bortjournal/core';
 import { api, ApiError } from '../lib/api';
-import { Icon } from '../components/Icon';
+import { PasswordInput } from '../components/PasswordInput';
 import { ThemeToggle } from '../components/ThemeToggle';
 
 // 23 постера по кругу оттенков (собираются из Documents/Lumi/login page): 240 и 400 px — показываем не крупнее
@@ -171,8 +171,8 @@ export function Login({ onDone }: { onDone: () => void }) {
   const [mode, setMode] = useState<'in' | 'up'>(() => (new URLSearchParams(location.search).get('mode') === 'signup' || !seen() ? 'up' : 'in'));
   const [show, setShow] = useState(false), [u, setU] = useState(''), [p, setP] = useState(''), [mail, setMail] = useState(''), [err, setErr] = useState(() => takeAuthResult()?.error ?? ''), [busy, setBusy] = useState(false);
   const pv = useProviders(), any = pv.google || pv.apple, [forgot, setForgot] = useState(false), [sent, setSent] = useState('');
-  const [focus, setFocus] = useState(''), [withMail, setWithMail] = useState(false), [caps, setCaps] = useState(false);
-  const pass = useRef<HTMLInputElement>(null), title = useRef<HTMLHeadingElement>(null), first = useRef(true);
+  const [focus, setFocus] = useState(''), [p2, setP2] = useState(''), [caps, setCaps] = useState(false);
+  const pass = useRef<HTMLInputElement>(null), pass2 = useRef<HTMLInputElement>(null), mailRef = useRef<HTMLInputElement>(null), title = useRef<HTMLHeadingElement>(null), first = useRef(true);
   // смена экрана (вход ↔ новый пароль) — фокус на заголовок, а не в никуда
   useEffect(() => { if (first.current) { first.current = false; return; } title.current?.focus(); }, [forgot]);
 
@@ -180,6 +180,7 @@ export function Login({ onDone }: { onDone: () => void }) {
   const legal = <p className="legal-links">Продолжая, ты принимаешь <a href="/terms.html" target="_blank" rel="noopener">условия</a> и <a href="/privacy.html" target="_blank" rel="noopener">политику конфиденциальности</a>.</p>;
   const errBox = err ? <div className="err" id="login-err" role="alert">{err}</div> : <div id="login-err" role="alert" className="sr-only" />;
   const bad = err ? { 'aria-invalid': true, 'aria-describedby': 'login-err' } : {};
+  const byMail = u.includes('@');
   const on = (k: string) => ({ onFocus: () => setFocus(k), onBlur: () => setFocus(f => (f === k ? '' : f)) });
 
   const card = forgot ? <>
@@ -205,13 +206,17 @@ export function Login({ onDone }: { onDone: () => void }) {
     {any && <div className="pv-btns">
       {pv.apple && <a className="pv-btn pv-apple" href={startUrl('apple')}><AppleMark />{up ? 'Создать через Apple' : 'Войти через Apple'}</a>}
       {pv.google && <a className="pv-btn pv-google" href={startUrl('google')}><GoogleMark />{up ? 'Создать через Google' : 'Войти через Google'}</a>}
-      <div className="pv-or"><span>или по логину</span></div>
+      <div className="pv-or"><span>или по логину и паролю</span></div>
     </div>}
     <form onSubmit={async e => {
-      e.preventDefault(); setBusy(true); setErr('');
+      e.preventDefault();
+      // регистрация: пароль дважды и почта обязательна (если логин — сама почта, она и есть почта для восстановления)
+      if (up && p !== p2) { setErr('Пароли не совпадают.'); pass2.current?.focus(); return; }
+      if (up && !byMail && !mail.trim()) { setErr('Укажи почту — по ней восстановим пароль.'); mailRef.current?.focus(); return; }
+      setBusy(true); setErr('');
       try {
-        if (up) await api('/api/auth/register', { method: 'POST', body: { username: u, password: p, email: mail, tz: -new Date().getTimezoneOffset() } });
-        else await api('/api/auth/login', { method: 'POST', body: { username: u, password: p } });
+        if (up) await api('/api/auth/register', { method: 'POST', body: { username: u.trim(), password: p, password2: p2, email: byMail ? '' : mail.trim(), tz: -new Date().getTimezoneOffset() } });
+        else await api('/api/auth/login', { method: 'POST', body: { username: u.trim(), password: p } });
         markSeen(); onDone();
       } catch (x) {
         setErr(x instanceof ApiError ? x.message : 'Не получилось.');
@@ -219,25 +224,25 @@ export function Login({ onDone }: { onDone: () => void }) {
       }
       finally { setBusy(false); }
     }}>
-      <label className="sr-only" htmlFor="login-user">Логин</label>
-      <input id="login-user" name="username" autoComplete="username" placeholder="Логин" value={u} onChange={e => { setU(e.target.value); if (err) setErr(''); }} onKeyDown={e => { if (e.key === 'Enter' && !p) { e.preventDefault(); pass.current?.focus(); } }} required autoCapitalize="none" spellCheck={false} pattern={up ? '[A-Za-z0-9._-]{3,32}' : undefined} aria-describedby={up ? 'user-hint' : undefined} {...on('u')} {...bad} />
+      <label className="sr-only" htmlFor="login-user">Логин или почта</label>
+      <input id="login-user" name="username" autoComplete={up && byMail ? 'email' : 'username'} inputMode={byMail ? 'email' : undefined} placeholder="Логин или почта" value={u} onChange={e => { setU(e.target.value); if (err) setErr(''); }} onKeyDown={e => { if (e.key === 'Enter' && !p) { e.preventDefault(); pass.current?.focus(); } }} required autoCapitalize="none" spellCheck={false} pattern={up && !byMail ? '[A-Za-z0-9._-]{3,32}' : undefined} aria-describedby={up ? 'user-hint' : undefined} {...on('u')} {...bad} />
       {/* подсказки — только пока поле в фокусе, чтобы форма не казалась длинной */}
-      {up && focus === 'u' && <small className="field-hint" id="user-hint">3–32 символа: латиница, цифры, . _ -</small>}
+      {up && focus === 'u' && <small className="field-hint" id="user-hint">{byMail ? 'Эта почта — и для входа, и для восстановления пароля' : 'Логин: 3–32 символа — латиница, цифры, . _ - · или сразу почта'}</small>}
+      {up && !byMail && <><label className="sr-only" htmlFor="login-mail">Почта</label>
+        <input id="login-mail" ref={mailRef} name="email" type="email" autoComplete="email" autoCapitalize="none" spellCheck={false} placeholder="Почта — чтобы восстановить пароль" value={mail} onChange={e => { setMail(e.target.value); if (err) setErr(''); }} required {...on('m')} /></>}
       <label className="sr-only" htmlFor="login-pass">Пароль</label>
-      <div className="pw-field"><input ref={pass} id="login-pass" name="password" type={show ? 'text' : 'password'} autoComplete={up ? 'new-password' : 'current-password'} placeholder="Пароль" value={p} onChange={e => { setP(e.target.value); if (err) setErr(''); }} required minLength={up ? 8 : undefined} aria-describedby={err ? 'login-err' : up ? 'pw-hint' : undefined} aria-invalid={err ? true : undefined} {...on('p')}
-          onKeyDown={e => setCaps(e.getModifierState('CapsLock'))} onKeyUp={e => setCaps(e.getModifierState('CapsLock'))} />
-        <button type="button" className="pw-eye" onClick={() => setShow(x => !x)} aria-label={show ? 'Скрыть пароль' : 'Показать пароль'} aria-pressed={show}><Icon name={show ? 'eyeOff' : 'eye'} /></button></div>
+      <PasswordInput ref={pass} show={show} onToggle={() => setShow(x => !x)} id="login-pass" name="password" autoComplete={up ? 'new-password' : 'current-password'} placeholder="Пароль" value={p} onChange={e => { setP(e.target.value); if (err) setErr(''); }} required minLength={up ? 8 : undefined} aria-describedby={err ? 'login-err' : up ? 'pw-hint' : undefined} aria-invalid={err ? true : undefined} {...on('p')}
+        onKeyDown={e => setCaps(e.getModifierState('CapsLock'))} onKeyUp={e => setCaps(e.getModifierState('CapsLock'))} />
       {caps && focus === 'p' && <small className="field-hint caps" role="status">Включён Caps Lock</small>}
       {up && (focus === 'p' || p.length > 0) && (() => { const st = strength(p); return <div className="pw-meter" data-s={st}>
         <i /><i /><i />
         <small className={`field-hint ${st === 3 ? 'ok' : ''}`} id="pw-hint">{st ? STRENGTH[st] : `Минимум 8 символов${p ? ` · ещё ${8 - p.length}` : ''}`}</small>
       </div>; })()}
-      {up && (withMail
-        ? <><label className="sr-only" htmlFor="login-mail">Почта, необязательно</label>
-          <input id="login-mail" name="email" type="email" autoComplete="email" placeholder="Почта — для восстановления пароля" value={mail} onChange={e => setMail(e.target.value)} autoFocus /></>
-        : <button type="button" className="forgot add-mail" onClick={() => setWithMail(true)}>+ Добавить почту для восстановления</button>)}
+      {up && <><label className="sr-only" htmlFor="login-pass2">Повтори пароль</label>
+        <PasswordInput ref={pass2} show={show} onToggle={() => setShow(x => !x)} id="login-pass2" name="password2" autoComplete="new-password" placeholder="Повтори пароль" value={p2} onChange={e => { setP2(e.target.value); if (err) setErr(''); }} required aria-describedby="pw2-hint" aria-invalid={p2 && p2 !== p.slice(0, p2.length) ? true : undefined} {...on('p2')} />
+        {p2 && (p2 === p ? <small className="field-hint ok" id="pw2-hint">Пароли совпадают</small> : p2 !== p.slice(0, p2.length) || focus !== 'p2' ? <small className="field-hint bad" id="pw2-hint">Пароли не совпадают</small> : null)}</>}
       {errBox}
-      {!up && <button type="button" className="forgot" onClick={() => { setForgot(true); setErr(''); }}>Забыли пароль?</button>}
+      <button type="button" className="forgot" onClick={() => { setForgot(true); setErr(''); }}>{up ? 'Уже есть аккаунт? Забыли пароль?' : 'Забыли пароль?'}</button>
       <button type="submit" disabled={busy}>{busy ? (up ? 'Создаю…' : 'Вхожу…') : up ? 'Создать аккаунт' : 'Войти'}</button>
       {up && <p className="trust">Без карты · {TRIAL_DAYS} дней Pro бесплатно</p>}
     </form>

@@ -82,7 +82,25 @@ describe('регистрация, пробная неделя и подписк�
   it('проверяет логин, пароль и занятость', async () => {
     expect((await r2('POST', '/api/auth/register', { username: 'a', password: 'secret123' })).statusCode).toBe(400);
     expect((await r2('POST', '/api/auth/register', { username: 'newbie', password: 'short' })).statusCode).toBe(400);
-    expect((await r2('POST', '/api/auth/register', { username: 'maqsud', password: 'secret123' })).statusCode).toBe(409);
+    expect((await r2('POST', '/api/auth/register', { username: 'maqsud', password: 'secret123', email: 'free@example.com' })).statusCode).toBe(409);
+  });
+  it('почта обязательна, пароль — дважды; вместо логина можно почту, войти — по почте', async () => {
+    const reg = (b: object) => app.inject({ method: 'POST', url: '/api/auth/register', headers: H, payload: b as any });
+    const no = await reg({ username: 'nomail', password: 'secret123' });
+    expect(no.statusCode).toBe(400); expect(no.json().error).toMatch(/почт/i);
+    expect((await reg({ username: 'twice', password: 'secret123', password2: 'secret124', email: 't@example.com' })).json().error).toBe('Пароли не совпадают.');
+    expect((await reg({ username: 'bad@', password: 'secret123' })).statusCode).toBe(400);
+    const r = await reg({ username: 'Ali.Valiyev@Example.com', password: 'secret123', password2: 'secret123', email: 'other@example.com' });
+    expect(r.statusCode).toBe(201);
+    expect(r.json().username).toBe('ali.valiyev');
+    const [u] = await conn.db.select().from(s.users).where(eq(s.users.username, 'ali.valiyev'));
+    expect(u!.email).toBe('ali.valiyev@example.com'); // почта из логина главнее поля «почта»
+    expect((await reg({ username: 'someone', password: 'secret123', email: 'ALI.VALIYEV@example.com' })).statusCode).toBe(409); // почта занята
+    const again = await reg({ username: 'ali.valiyev@example.com', password: 'secret123' });
+    expect(again.statusCode).toBe(409);
+    const byMail = await app.inject({ method: 'POST', url: '/api/auth/login', headers: H, payload: { username: 'Ali.Valiyev@example.com', password: 'secret123' } });
+    expect(byMail.statusCode).toBe(200); expect(byMail.json().username).toBe('ali.valiyev');
+    expect((await app.inject({ method: 'POST', url: '/api/auth/login', headers: H, payload: { username: 'ali.valiyev@example.com', password: 'wrong123' } })).statusCode).toBe(401);
   });
   it('регистрирует, входит и даёт 7 дней Pro', async () => {
     const r = await r2('POST', '/api/auth/register', { username: 'newbie', password: 'secret123', email: 'n@example.com', tz: 240 });

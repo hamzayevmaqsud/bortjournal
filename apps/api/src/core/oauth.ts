@@ -17,7 +17,7 @@ import { fileURLToPath } from 'node:url';
 import { and, eq, sql } from 'drizzle-orm';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type { DB } from '../db/index.js';
-import { isHttps, requireUser, startSession } from './auth.js';
+import { freeUsername, isHttps, requireUser, startSession } from './auth.js';
 import { startTrial } from './billing.js';
 import { authIdentities, profiles, users } from './schema.js';
 
@@ -87,17 +87,6 @@ export async function verifyIdToken(p: ProviderId, token: string, audiences: str
 }
 
 /* ---------- новый аккаунт из входа через провайдера ---------- */
-async function freeUsername(db: DB, base: string) {
-  let b = base.toLowerCase().normalize('NFKD').replace(/[^a-z0-9._-]/g, '').replace(/^[._-]+|[._-]+$/g, '').slice(0, 24);
-  if (b.length < 3) b = 'user';
-  b = b.replace(/^demo-/, 'demo'); // demo-… — только для демо
-  for (let i = 0; i < 50; i++) {
-    const name = i ? `${b}${i < 10 ? i : crypto.randomInt(10, 9999)}` : b;
-    const [t] = await db.select({ id: users.id }).from(users).where(sql`lower(${users.username}) = ${name}`).limit(1);
-    if (!t) return name;
-  }
-  return `${b}${crypto.randomBytes(3).toString('hex')}`;
-}
 
 export async function oauthRoutes(app: FastifyInstance, { db }: { db: DB }) {
   // Apple присылает ответ формой (application/x-www-form-urlencoded)

@@ -73,19 +73,44 @@ export function sessionHook(db: DB) {
 /** логины demo-… — только для демо без регистрации: ни войти, ни занять их нельзя */
 export const isDemoName = (username: string) => /^demo-/i.test(username);
 
+const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+
 /**
  * Проверка логина, пароля и почты для нового аккаунта (регистрация и сохранение демо).
- * except — свой id: при сохранении демо своя почта не считается занятой
+ * Почта обязательна — по ней восстанавливается пароль. Вместо логина можно написать почту:
+ * тогда она и есть почта для восстановления, а логин придумывается из её начала (ali.valiyev@… → ali.valiyev).
+ * password2 — повтор пароля: если прислан, должен совпасть. except — свой id: при сохранении демо своя почта не считается занятой
  */
 export async function newAccount(db: Tx, body: Record<string, unknown>, except?: string): Promise<{ username: string; password: string; email: string } | { status: number; error: string }> {
-  const username = String(body.username ?? '').trim(), password = String(body.password ?? ''), email = String(body.email ?? '').trim().toLowerCase();
-  if (!/^[A-Za-z0-9._-]{3,32}$/.test(username)) return { status: 400, error: 'Логин: 3–32 символа — латиница, цифры, точка, дефис или подчёркивание.' };
-  if (isDemoName(username)) return { status: 400, error: 'Логины на «demo-» заняты под демо — выбери другой.' };
+  const login = String(body.username ?? '').trim(), password = String(body.password ?? '');
+  const byMail = login.includes('@');
+  const email = (byMail ? login : String(body.email ?? '')).trim().toLowerCase();
+  if (byMail ? !EMAIL_RE.test(email) : !/^[A-Za-z0-9._-]{3,32}$/.test(login)) return { status: 400, error: byMail ? 'Почта выглядит неверно.' : 'Логин: 3–32 символа — латиница, цифры, точка, дефис или подчёркивание. Или напиши почту.' };
+  if (!byMail && isDemoName(login)) return { status: 400, error: 'Логины на «demo-» заняты под демо — выбери другой.' };
   if (password.length < 8 || password.length > 512) return { status: 400, error: 'Пароль — не короче 8 символов.' };
-  if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return { status: 400, error: 'Почта выглядит неверно.' };
-  const taken = await db.select({ id: users.id }).from(users).where(and(sql`(lower(${users.username}) = lower(${username})${email ? sql` or lower(${users.email}) = ${email}` : sql``})`, except ? sql`${users.id} <> ${except}` : sql`true`)).limit(1);
-  if (taken.length) return { status: 409, error: 'Такой логин или почта уже заняты.' };
-  return { username, password, email };
+  if (body.password2 !== undefined && String(body.password2) !== password) return { status: 400, error: 'Пароли не совпадают.' };
+  if (!email) return { status: 400, error: 'Укажи почту — по ней восстановим пароль, если забудешь.' };
+  if (!EMAIL_RE.test(email) || email.length > 200) return { status: 400, error: 'Почта выглядит неверно.' };
+  const notMe = except ? sql`${users.id} <> ${except}` : sql`true`;
+  const [mailTaken] = await db.select({ id: users.id }).from(users).where(and(sql`lower(${users.email}) = ${email}`, notMe)).limit(1);
+  if (mailTaken) return { status: 409, error: 'На эту почту уже есть аккаунт — войди или восстанови пароль.' };
+  if (byMail) return { username: await freeUsername(db, email.split('@')[0]!), password, email };
+  const [taken] = await db.select({ id: users.id }).from(users).where(and(sql`lower(${users.username}) = lower(${login})`, notMe)).limit(1);
+  if (taken) return { status: 409, error: 'Такой логин уже занят.' };
+  return { username: login, password, email };
+}
+
+/** свободный логин из почты или имени: латиница, цифры, . _ -; занят — с числом на конце */
+export async function freeUsername(db: DB | Tx, base: string) {
+  let b = base.toLowerCase().normalize('NFKD').replace(/[^a-z0-9._-]/g, '').replace(/^[._-]+|[._-]+$/g, '').slice(0, 24);
+  if (b.length < 3) b = 'user';
+  b = b.replace(/^demo-/, 'demo'); // demo-… — только для демо
+  for (let i = 0; i < 50; i++) {
+    const name = i ? `${b}${i < 10 ? i : crypto.randomInt(10, 9999)}` : b;
+    const [t] = await db.select({ id: users.id }).from(users).where(sql`lower(${users.username}) = ${name}`).limit(1);
+    if (!t) return name;
+  }
+  return `${b}${crypto.randomBytes(3).toString('hex')}`;
 }
 
 /** файлы человека вне базы: оригиналы конспектов и свои обложки книг */
@@ -103,15 +128,16 @@ export async function authRoutes(app: FastifyInstance, { db }: { db: DB }) {
     const username = String(body.username ?? '').trim().toLowerCase().slice(0, 64), password = String(body.password ?? '').slice(0, 512);
     const keys = [`ip:${req.ip}`, `ui:${username}|${req.ip}`, `u:${username}`];
     if (tooMany(...keys)) return reply.code(429).send({ error: 'Слишком много попыток. Подожди 15 минут.' });
-    const [u] = await db.select().from(users).where(and(sql`lower(${users.username}) = ${username}`, sql`${users.deletedAt} is null`)).limit(1);
+    // войти можно по логину или по почте
+    const [u] = await db.select().from(users).where(and(sql`(lower(${users.username}) = ${username} or lower(${users.email}) = ${username})`, sql`${users.deletedAt} is null`)).limit(1);
     // demo-… без пароля и под вход не годятся — отвечаем как на неверный пароль
-    if (!(await verifyPassword(password, u?.passwordHash)) || !u || isDemoName(username) || u.demoUntil) { fail(...keys); return reply.code(401).send({ error: 'Неверный логин или пароль.' }); }
+    if (!(await verifyPassword(password, u?.passwordHash)) || !u || isDemoName(u.username) || u.demoUntil) { fail(...keys); return reply.code(401).send({ error: 'Неверный логин или пароль.' }); }
     keys.forEach(k => fails.delete(k));
     await startSession(db, req, reply, u.id);
     return { username: u.username };
   });
 
-  // регистрация: логин, пароль, почта по желанию; сразу 7 дней Pro и вход
+  // регистрация: логин (или почта вместо логина), пароль, почта обязательна; сразу 7 дней Pro и вход
   const regs = new Map<string, { n: number; until: number }>();
   app.post('/api/auth/register', async (req, reply) => {
     const r = regs.get(req.ip);

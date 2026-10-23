@@ -116,7 +116,7 @@ export async function demoRoutes(app: FastifyInstance, { db }: { db: DB }) {
     return reply.code(201).send({ username });
   });
 
-  // сохранить демо как аккаунт: логин, пароль, почта по желанию; записи остаются, пробный Pro — 7 дней с этого момента
+  // сохранить демо как аккаунт: логин (или почта), пароль, почта обязательна; записи остаются, пробный Pro — 7 дней с этого момента
   app.post('/api/auth/claim', async (req, reply) => {
     if (!req.userId) return reply.code(401).send({ error: 'Нужно войти.' });
     const [me] = await db.select({ demo: users.demoUntil }).from(users).where(eq(users.id, req.userId));

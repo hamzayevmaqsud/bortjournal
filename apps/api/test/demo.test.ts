@@ -48,10 +48,10 @@ describe('демо', () => {
   it('сохранить как аккаунт: проверка полей, занятые — 409, записи остаются, вход по паролю', async () => {
     const { cookie } = await demo('10.0.0.2'), r = as(cookie);
     const before = (await r('GET', '/api/plans/tasks?from=2000-01-01&to=2100-01-01')).json().items.length;
-    expect((await r('POST', '/api/auth/claim', { username: 'x', password: 'secret12' })).statusCode).toBe(400);
-    expect((await r('POST', '/api/auth/claim', { username: 'demo-mine', password: 'secret12' })).statusCode).toBe(400);
-    expect((await r('POST', '/api/auth/claim', { username: 'newbie', password: 'short' })).statusCode).toBe(400);
-    expect((await r('POST', '/api/auth/claim', { username: 'TAKEN', password: 'secret12' })).statusCode).toBe(409);
+    expect((await r('POST', '/api/auth/claim', { username: 'x', password: 'secret12', email: 'x1@mail.az' })).statusCode).toBe(400);
+    expect((await r('POST', '/api/auth/claim', { username: 'demo-mine', password: 'secret12', email: 'x2@mail.az' })).statusCode).toBe(400);
+    expect((await r('POST', '/api/auth/claim', { username: 'newbie', password: 'short', email: 'x3@mail.az' })).statusCode).toBe(400);
+    expect((await r('POST', '/api/auth/claim', { username: 'TAKEN', password: 'secret12', email: 'x4@mail.az' })).statusCode).toBe(409);
     expect((await r('POST', '/api/auth/claim', { username: 'newbie', password: 'secret12', email: 'taken@mail.az' })).statusCode).toBe(409);
     const ok = await r('POST', '/api/auth/claim', { username: 'newbie', password: 'secret12', email: 'Me@Mail.az' });
     expect(ok.json()).toEqual({ username: 'newbie' });
@@ -59,7 +59,7 @@ describe('демо', () => {
     expect(me).toMatchObject({ demo: false, username: 'newbie' });
     expect(me.subscription).toMatchObject({ pro: true, source: 'trial', daysLeft: 7 });
     expect((await r('GET', '/api/plans/tasks?from=2000-01-01&to=2100-01-01')).json().items.length).toBe(before);
-    expect((await r('POST', '/api/auth/claim', { username: 'again', password: 'secret12' })).statusCode).toBe(409);
+    expect((await r('POST', '/api/auth/claim', { username: 'again', password: 'secret12', email: 'x5@mail.az' })).statusCode).toBe(409);
     const login = await app.inject({ method: 'POST', url: '/api/auth/login', headers: H, payload: { username: 'newbie', password: 'secret12' } });
     expect(login.statusCode).toBe(200);
     // уже не демо — уборка не тронет
