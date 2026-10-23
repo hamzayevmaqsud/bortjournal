@@ -6,3 +6,13 @@ dist/
 *.tsbuildinfo
 .env.local
 deploy/backups/
+
+# секреты и локальное — никогда в git
+*.pem
+*.key
+*.p8
+*.p12
+client_secret*.json
+*.dump
+*.tgz
+.lumi-server

@@ -3,7 +3,10 @@
 # Сервер общий — рядом работает TaxiPay: до и после сравниваем его контейнеры; если что-то изменилось — громко говорим.
 # Запуск с Mac: scripts/server-deploy.sh
 set -euo pipefail
-SSH=(ssh -i "$HOME/.ssh/lumi_hetzner" -o IdentitiesOnly=yes -o BatchMode=yes root@${LUMI_SERVER:-195.201.164.240})
+# адрес сервера не хранится в репозитории: LUMI_SERVER или файл ~/.lumi-server (например root@1.2.3.4)
+SERVER=${LUMI_SERVER:-$(cat "$HOME/.lumi-server" 2>/dev/null)}
+[ -n "$SERVER" ] || { echo "Укажи сервер: echo root@<ip> > ~/.lumi-server"; exit 1; }
+SSH=(ssh -i "$HOME/.ssh/lumi_hetzner" -o IdentitiesOnly=yes -o BatchMode=yes "$SERVER")
 "${SSH[@]}" 'set -e
 snap() { docker ps -a --format "{{.Names}} {{.Status}}" | grep -v "^lumi-" | sed -E "s/Up [^()]*/Up/" | sort; }
 snap > /tmp/lumi-neighbours-before.txt
