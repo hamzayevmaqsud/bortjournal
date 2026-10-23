@@ -1,0 +1,100 @@
+# Lumi на сервере, где уже работают другие проекты: без Caddy и без портов 80/443.
+# Наружу ничего не открыто — API слушает только 127.0.0.1:4010; в интернет его выводит туннель (Cloudflare Tunnel).
+# Лимиты памяти и процессора — чтобы Lumi ни при каких нагрузках не отнял ресурсы у соседей.
+# Запуск: cd deploy && docker compose -f docker-compose.shared.yml up -d --build
+
+name: lumi
+
+services:
+  db:
+    image: postgres:18
+    restart: unless-stopped
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?впиши POSTGRES_PASSWORD в deploy/.env}
+      POSTGRES_DB: lumi
+      POSTGRES_INITDB_ARGS: --encoding=UTF8 --locale-provider=builtin --builtin-locale=C.UTF-8
+    volumes:
+      - db:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d lumi"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    cpus: 1
+    mem_limit: 1g
+
+  app:
+    build: ..
+    image: lumi-app
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@db:5432/lumi
+      TRUST_PROXY: "true"
+    ports:
+      - "127.0.0.1:4010:4000"
+    volumes:
+      - data:/app/data
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4000/health').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+    cpus: 1.5
+    mem_limit: 1g
+
+  worker:
+    image: lumi-app
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@db:5432/lumi
+    command: ["npx", "tsx", "src/worker.ts"]
+    volumes:
+      - data:/app/data
+    depends_on:
+      app:
+        condition: service_healthy
+    cpus: 0.5
+    mem_limit: 512m
+
+  backup:
+    image: postgres:18
+    restart: unless-stopped
+    environment:
+      PGHOST: db
+      PGUSER: postgres
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      PGDATABASE: lumi
+      KEEP_DAYS: ${BACKUP_KEEP_DAYS:-14}
+    entrypoint: ["sh", "/backup.sh"]
+    volumes:
+      - ./backup.sh:/backup.sh:ro
+      - ./backups:/backups
+      - data:/data:ro
+    depends_on:
+      db:
+        condition: service_healthy
+    cpus: 0.5
+    mem_limit: 256m
+
+  # туннель Cloudflare: исходящее соединение, портов не открывает. Включается, когда в .env есть TUNNEL_TOKEN
+  tunnel:
+    image: cloudflare/cloudflared:2025.10.0
+    restart: unless-stopped
+    command: ["tunnel", "--no-autoupdate", "run"]
+    environment:
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN:-}
+    depends_on:
+      app:
+        condition: service_healthy
+    profiles: ["tunnel"]
+    cpus: 0.5
+    mem_limit: 256m
+
+volumes:
+  db:
+  data:
