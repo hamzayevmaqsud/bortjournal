@@ -180,8 +180,10 @@ export function Login({ onDone }: { onDone: () => void }) {
   // (подсказывает, что маяк — кнопка: сменит тему). Стрела летит ~0,3 с — читается как луч, а не как предмет
   useEffect(() => {
     if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-    let ray: HTMLDivElement | null = null, off = 0;
-    const t = window.setTimeout(() => {
+    let ray: HTMLDivElement | null = null, off = 0, fired = false;
+    const plaque0 = document.querySelector<HTMLElement>('.demo-hero');
+    const shoot = () => {
+      if (fired) return; fired = true;
       const mark = document.querySelector<HTMLElement>('.login-mark-btn'), plaque = document.querySelector<HTMLElement>('.demo-hero');
       if (!mark || !plaque) return;
       const a = plaque.getBoundingClientRect(), b = mark.getBoundingClientRect();
@@ -192,10 +194,14 @@ export function Login({ onDone }: { onDone: () => void }) {
       document.body.append(ray);
       // голова луча долетает до маяка за 55% времени, хвост догоняет и гаснет
       ray.animate([{ clipPath: 'inset(0 100% 0 0)', opacity: 1 }, { clipPath: 'inset(0 0 0 0)', opacity: 1, offset: 0.55 }, { clipPath: 'inset(0 0 0 100%)', opacity: 0.2 }],
-        { duration: 320, easing: 'cubic-bezier(.6,0,.4,1)' }).onfinish = () => { ray?.remove(); ray = null; };
-      window.setTimeout(() => { mark.classList.add('lit'); off = window.setTimeout(() => mark.classList.remove('lit'), 2200); }, 180);
-    }, 2850);
-    return () => { clearTimeout(t); clearTimeout(off); ray?.remove(); };
+        { duration: 550, easing: 'cubic-bezier(.5,0,.5,1)' }).onfinish = () => { ray?.remove(); ray = null; };
+      window.setTimeout(() => { mark.classList.add('lit'); off = window.setTimeout(() => mark.classList.remove('lit'), 2200); }, 300);
+    };
+    // вспышка — ровно когда луч по плашке дошёл до края (конец его анимации), без паузы; таймер — на случай, если анимации не было
+    const onEnd = (e: AnimationEvent) => { if (e.animationName === 'demo-beam') shoot(); };
+    plaque0?.addEventListener('animationend', onEnd);
+    const t = window.setTimeout(shoot, 3200);
+    return () => { clearTimeout(t); clearTimeout(off); plaque0?.removeEventListener('animationend', onEnd); ray?.remove(); };
   }, []);
   // смена экрана (вход ↔ новый пароль) — фокус на заголовок, а не в никуда
   useEffect(() => { if (first.current) { first.current = false; return; } title.current?.focus(); }, [forgot]);

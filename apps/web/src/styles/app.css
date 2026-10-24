@@ -2269,8 +2269,8 @@ input:-webkit-autofill,input:-webkit-autofill:hover,input:-webkit-autofill:focus
 .lw-scene .login .demo-hero:hover{transform:translateY(-1px);box-shadow:0 14px 32px rgba(35,42,56,.34)}
 .lw-scene .login .demo-hero:active{transform:translateY(0)}
 .lw-scene .login .demo-hero::after{content:"";position:absolute;inset:0;background:linear-gradient(100deg,transparent 30%,rgba(255,220,160,.28) 50%,transparent 70%);
-  transform:translateX(-120%);animation:demo-beam 1.6s var(--ease) 1.4s both;pointer-events:none}
-@keyframes demo-beam{to{transform:translateX(120%)}}
+  transform:translateX(-110%);animation:demo-beam 1.05s cubic-bezier(.45,.05,.55,.95) 1.5s both;pointer-events:none}
+@keyframes demo-beam{to{transform:translateX(75%)}}
 .demo-hero-ic{flex:none;display:grid;place-items:center;width:42px;height:42px;border-radius:12px;background:rgba(255,214,150,.16);color:#F4CF74}
 .demo-hero-ic .ic{width:22px;height:22px}
 .demo-hero-t{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
