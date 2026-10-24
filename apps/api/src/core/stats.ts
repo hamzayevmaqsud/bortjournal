@@ -23,7 +23,7 @@ const pct = (v: number) => Math.round(v * 100);
 const wdIdx = (d: string) => (parseDay(d).getUTCDay() + 6) % 7;
 
 /* ---------- факты ---------- */
-async function collect(db: Tx, userId: string, from: string, to: string) {
+export async function collect(db: Tx, userId: string, from: string, to: string) {
   const map = new Map<string, F>();
   for (const m of MODULES_LIST) if (m.daily) for (const r of await m.daily(db, userId, from, to)) {
     const cur = map.get(r.day) ?? { day: r.day };
@@ -40,10 +40,10 @@ async function totals(db: Tx, userId: string) {
 const context = userContext;
 
 /* ---------- оценка дня ---------- */
-/** «день с записями» — одно определение для серии, календаря, года и средних: любая запись, кроме запланированных задач */
-const hasAny = (f?: F) => !!f && !!((f.meals ?? 0) || (f.studyMin ?? 0) || (f.workouts ?? 0) || (f.steps ?? 0) || (f.waterMl ?? 0) || (f.pages ?? 0) || (f.weightKg ?? 0) || (f.tasksDone ?? 0) || (f.quizAnswered ?? 0) || (f.spent ?? 0));
+/** «день с записями» — одно определение для серии, календаря, года, средних и советов: любая запись, кроме запланированных задач */
+export const hasAny = (f?: F) => !!f && !!((f.meals ?? 0) || (f.studyMin ?? 0) || (f.workouts ?? 0) || (f.steps ?? 0) || (f.waterMl ?? 0) || (f.pages ?? 0) || (f.weightKg ?? 0) || (f.tasksDone ?? 0) || (f.quizAnswered ?? 0) || (f.spent ?? 0));
 type Areas = Record<'food' | 'water' | 'steps' | 'study' | 'tasks' | 'quiz', boolean>;
-function tracked(F: Map<string, F>, today: string): Areas {
+export function tracked(F: Map<string, F>, today: string): Areas {
   const ds = days(30, today).map(d => F.get(d)).filter(Boolean) as F[], has = (f: (x: F) => boolean) => ds.some(f);
   return { food: has(x => (x.meals ?? 0) > 0), water: has(x => (x.waterMl ?? 0) > 0), steps: has(x => (x.steps ?? 0) > 0), study: has(x => (x.studyMin ?? 0) > 0), tasks: has(x => (x.tasks ?? 0) > 0), quiz: has(x => (x.quizAnswered ?? 0) > 0) };
 }
@@ -61,16 +61,16 @@ function parts(f: F | undefined, A: Areas, N: Norms): Array<[string, number]> {
   if (A.quiz && f?.quizTotal) out.push(['quiz', (f.quizAnswered ?? 0) / f.quizTotal]);
   return out;
 }
-function score(f: F | undefined, A: Areas, N: Norms) {
+export function score(f: F | undefined, A: Areas, N: Norms) {
   const ps = parts(f, A, N), bonus = ((f?.workouts ?? 0) ? 0.1 : 0) + ((f?.pages ?? 0) ? 0.1 : 0);
   if (!ps.length) return bonus ? Math.min(1, bonus * 3) : 0;
   return Math.min(1, ps.reduce((a, [, v]) => a + v, 0) / ps.length + bonus);
 }
 /** калории дня — как в старом журнале: в норме, если от 70% до 103% */
-const kcalLevel = (kcal: number, norm: number) => { const r = norm ? kcal / norm : 0; return !kcal ? 'none' : r > 1.1 ? 'bad' : r > 1.03 ? 'warn' : r < 0.7 ? 'low' : 'good'; };
+export const kcalLevel = (kcal: number, norm: number) => { const r = norm ? kcal / norm : 0; return !kcal ? 'none' : r > 1.1 ? 'bad' : r > 1.03 ? 'warn' : r < 0.7 ? 'low' : 'good'; };
 
-async function world(db: Tx, userId: string) {
-  const c = await context(db, userId);
+async function world(db: Tx, userId: string, at?: number) {
+  const c = await context(db, userId, at);
   const F = await collect(db, userId, addDays(c.today, -1095), c.today);
   const first = [...F.keys()].filter(d => hasAny(F.get(d))).sort()[0] ?? c.today;
   const A = tracked(F, c.today), sc = (d: string) => score(F.get(d), A, c.norms);
@@ -311,13 +311,15 @@ function weekStats(w: World, mon: string, T: Totals, unlocked: Array<{ key: stri
     stepsAvg: avg(sd), stepsTot: steps.reduce((a, b) => a + b, 0),
     gym: ds.reduce((a, d) => a + (f(d)?.workouts ?? 0), 0), study: ds.reduce((a, d) => a + (f(d)?.studyMin ?? 0), 0),
     tasksAll: ds.reduce((a, d) => a + (f(d)?.tasks ?? 0), 0), tasksDone: ds.reduce((a, d) => a + (f(d)?.tasksDone ?? 0), 0),
+    kcalAvg: avg(food.map(d => f(d)!.kcal ?? 0)), perfect: logged.filter(d => w.sc(d) >= 0.95).length,
     pages: ds.reduce((a, d) => a + (f(d)?.pages ?? 0), 0), booksDone: (T.booksDoneInRange ?? []).filter(b => b.day >= mon && b.day <= addDays(mon, 6)).map(b => b.title),
     weight: ws.length > 1 ? ws.at(-1)! - ws[0]! : null,
     ach: unlocked.filter(u => u.day >= mon && u.day <= addDays(mon, 6)).map(u => `${ACH.find(a => a.k === u.key)?.n ?? u.key} · ${TIERS[u.tier]}`)
   };
 }
-async function review(db: Tx, userId: string, monArg?: string) {
-  const w = await world(db, userId), t = w.today, thisMon = addDays(t, -wdIdx(t));
+/** итог недели; at — «сейчас» (для напоминаний и тестов), facts — сырые цифры недели для «Итога недели» в инсайтах */
+export async function review(db: Tx, userId: string, monArg?: string, at?: number) {
+  const w = await world(db, userId, at), t = w.today, thisMon = addDays(t, -wdIdx(t));
   // по умолчанию — прошлая неделя; в воскресенье — текущая
   const mon = monArg && /^\d{4}-\d{2}-\d{2}$/.test(monArg) && monArg <= thisMon ? addDays(monArg, -wdIdx(monArg)) : wdIdx(t) === 6 ? thisMon : addDays(thisMon, -7);
   const T = await totals(db, userId), aw = await awardsState(db, userId, w);
@@ -350,7 +352,8 @@ async function review(db: Tx, userId: string, monArg?: string) {
       { name: 'Тренировок', value: W.gym, prev: P.gym },
       { name: 'Учёба, ч', value: Math.round(W.study / 6) / 10, prev: Math.round(P.study / 6) / 10 },
       { name: 'Шагов', value: W.stepsTot, prev: P.stepsTot }
-    ], prevLogged: P.logged, wins, misses, focus: focus.slice(0, 2)
+    ], prevLogged: P.logged, wins, misses, focus: focus.slice(0, 2),
+    facts: { ...W, norms: N, areas: A, streak: streaks(w).now, today: t }
   };
 }
 

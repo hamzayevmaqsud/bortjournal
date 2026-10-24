@@ -34,6 +34,7 @@ import { VoiceCapture } from './components/Voice';
 import { AiConsent } from './components/AiConsent';
 import { FeedbackForm } from './components/Feedback';
 import { WhatsNew, shouldShowWhatsNew } from './components/WhatsNew';
+import { WeekRecap } from './components/WeekRecap';
 import { Boundary } from './components/Boundary';
 import { DemoBanner } from './components/DemoBanner';
 import { setSex } from './lib/gender';
@@ -63,8 +64,8 @@ type SheetState =
   | { kind: 'none' } | { kind: 'add'; at?: string } | { kind: 'meal'; at?: string; meal?: Meal; day?: string } | { kind: 'drink'; at?: string; drink?: Drink; day?: string }
   | { kind: 'steps' } | { kind: 'weight' } | { kind: 'task'; day: string | null; task?: TaskFull }
   | { kind: 'paywall'; focus?: string } | { kind: 'settings' } | { kind: 'install' } | { kind: 'reminders' } | { kind: 'voice' } | { kind: 'aiConsent'; then?: SheetState } | { kind: 'feedback' } | { kind: 'whatsnew' }
-  | { kind: 'search'; at?: string; day?: string } | { kind: 'ai'; at?: string; mode: 'photo' | 'text'; day?: string } | { kind: 'draft'; id: string };
-const TITLES: Record<string, string> = { whatsnew: 'Что нового', add: 'Записать', meal: 'Приём пищи', drink: 'Напиток', steps: 'Шаги за день', weight: 'Вес', task: 'Задача', paywall: '', settings: 'Профиль и нормы', install: 'На экран «Домой»', reminders: 'Напоминания', voice: 'Записать голосом', aiConsent: 'ИИ-помощник', feedback: 'Написать разработчику', search: 'Поиск еды', ai: 'Еда по фото или описанию', draft: 'Проверь приём пищи' };
+  | { kind: 'search'; at?: string; day?: string } | { kind: 'ai'; at?: string; mode: 'photo' | 'text'; day?: string } | { kind: 'draft'; id: string } | { kind: 'week'; end?: string };
+const TITLES: Record<string, string> = { whatsnew: 'Что нового', add: 'Записать', meal: 'Приём пищи', drink: 'Напиток', steps: 'Шаги за день', weight: 'Вес', task: 'Задача', paywall: '', settings: 'Профиль и нормы', install: 'На экран «Домой»', reminders: 'Напоминания', voice: 'Записать голосом', aiConsent: 'ИИ-помощник', feedback: 'Написать разработчику', search: 'Поиск еды', ai: 'Еда по фото или описанию', draft: 'Проверь приём пищи', week: 'Итог недели' };
 
 export function App() {
   const toast = useToast(), wide = useWide();
@@ -77,7 +78,7 @@ export function App() {
   const openDraftLink = (h: string) => { const id = draftLink(h); if (!id) return false; goRef.current('food'); openRef.current({ kind: 'draft', id }); history.replaceState(null, '', location.pathname); return true; };
   // уведомление ведёт в раздел: «/#plans» при открытии или сообщение от service worker, если окно уже открыто
   useEffect(() => {
-    const nav = (h: string) => { if (openGcalBack(h) || openDraftLink(h)) return; if (h === 'voice') { openRef.current({ kind: 'voice' }); history.replaceState(null, '', location.pathname); return; } if (ORDER.includes(h)) { goRef.current(h); history.replaceState(null, '', location.pathname); } };
+    const nav = (h: string) => { if (openGcalBack(h) || openDraftLink(h)) return; if (h === 'voice' || h === 'week') { openRef.current({ kind: h }); history.replaceState(null, '', location.pathname); return; } if (ORDER.includes(h)) { goRef.current(h); history.replaceState(null, '', location.pathname); } };
     const onMsg = (e: MessageEvent) => { if (typeof e.data?.nav === 'string') nav(e.data.nav); };
     const onHash = () => nav(location.hash.slice(1));
     navigator.serviceWorker?.addEventListener('message', onMsg); addEventListener('hashchange', onHash);
@@ -104,7 +105,7 @@ export function App() {
   const ready = !!me?.profile?.heightCm;
   // ссылка для нового пароля: /#reset=…
   const [resetToken, setResetToken] = useState(() => /^#reset=([\w-]{20,})$/.exec(location.hash)?.[1] ?? '');
-  useEffect(() => { const h = location.hash.slice(1); if (!ready) return; if (openGcalBack(h)) { /* вернулись от Google */ } else if (openDraftLink(h)) { /* открыт черновик */ } else if (h === 'voice') { openRef.current({ kind: 'voice' }); history.replaceState(null, '', location.pathname); } else if (ORDER.includes(h)) { goRef.current(h); history.replaceState(null, '', location.pathname); } }, [ready]);
+  useEffect(() => { const h = location.hash.slice(1); if (!ready) return; if (openGcalBack(h)) { /* вернулись от Google */ } else if (openDraftLink(h)) { /* открыт черновик */ } else if (h === 'voice' || h === 'week') { openRef.current({ kind: h }); history.replaceState(null, '', location.pathname); } else if (ORDER.includes(h)) { goRef.current(h); history.replaceState(null, '', location.pathname); } }, [ready]);
   // вернулись после привязки Google или Apple из профиля — сказать, что вышло, и открыть профиль
   useEffect(() => { if (!ready) return; const r = takeAuthResult(); if (!r) return; toast(r.error ?? r.ok!, r.error ? { err: true } : undefined); goRef.current('profile'); }, [ready]); // eslint-disable-line react-hooks/exhaustive-deps
   const [tab, setTab] = useState('today');
@@ -331,7 +332,7 @@ export function App() {
         <Boundary name="today" onFeedback={() => open({ kind: 'feedback' })}>
         {day && today && <TodayWide wide={wide} data={data} day={day} today={today} still={still} sub={sub} settings={me.profile?.settings ?? {}} onReminders={() => open({ kind: 'reminders' })} onSettingsSaved={st => setMe(m => m && m.profile ? { ...m, profile: { ...m.profile, settings: st } } : m)} onDay={goDay} onAdd={at => open({ kind: 'add', at })} onDelete={deleteMark} onEdit={editMark} onToggleTask={toggleTask} onGo={go}
           onPro={pro} onPaywall={() => open({ kind: 'paywall' })} onSteps={() => open({ kind: 'steps' })} onWeight={() => open({ kind: 'weight' })} onWater={() => open({ kind: 'drink' })}
-          onMeal={() => open({ kind: 'meal' })} onAddWater={ml => addWater(ml)} onTaskAdded={title => { patch(t => { if (t.parts.plans && !t.parts.plans.tasks.some(x => x.title === title && !x.done)) t.parts.plans.tasks.push({ id: `tmp-${Date.now()}`, title, time: null, done: false, prio: false, repeat: false }); return t; }); toast('Задача добавлена'); refresh(); }} onTaskOpen={() => open({ kind: 'task', day })} />}
+          onMeal={() => open({ kind: 'meal' })} onWeek={() => open({ kind: 'week' })} onAddWater={ml => addWater(ml)} onTaskAdded={title => { patch(t => { if (t.parts.plans && !t.parts.plans.tasks.some(x => x.title === title && !x.done)) t.parts.plans.tasks.push({ id: `tmp-${Date.now()}`, title, time: null, done: false, prio: false, repeat: false }); return t; }); toast('Задача добавлена'); refresh(); }} onTaskOpen={() => open({ kind: 'task', day })} />}
         </Boundary>
       </section>
       <section className="screen" data-pos={pos('plans')} aria-hidden={tab !== 'plans'}>
@@ -406,7 +407,7 @@ export function App() {
         <span className="pill"><Icon name={icon} /></span>{label}{SECTIONS[name] && !can(sub, SECTIONS[name]!) && <span className="lock dock-lock">PRO</span>}</button>)}
     </nav>
 
-    <Sheet open={sheetOpen} onClose={close} tall={sheet.kind === 'paywall' || sheet.kind === 'search' || sheet.kind === 'ai'} title={sheet.kind === 'add' && sheet.at ? `Записать на ${sheet.at}` : TITLES[sheet.kind] ?? ''}>
+    <Sheet open={sheetOpen} onClose={close} tall={sheet.kind === 'paywall' || sheet.kind === 'search' || sheet.kind === 'ai' || sheet.kind === 'week'} title={sheet.kind === 'add' && sheet.at ? `Записать на ${sheet.at}` : TITLES[sheet.kind] ?? ''}>
       <Boundary key={sheet.kind} name={`лист ${sheet.kind}`}>
       {sheet.kind === 'add' && <>
         <div className="big2">
@@ -440,6 +441,7 @@ export function App() {
       {sheet.kind === 'aiConsent' && <AiConsent onDone={async ok => { if (!ok) { close(); return; } try { const r = await api<{ settings: Record<string, unknown> }>('/api/profile/settings', { method: 'PUT', body: { aiConsent: true } }); setMe(m => m && m.profile ? { ...m, profile: { ...m.profile, settings: r.settings } } : m); if (sheet.then) open(sheet.then); else { close(); toast('ИИ-помощник включён — повтори действие'); } } catch (e) { fail(e); } }} />}
       {sheet.kind === 'feedback' && <FeedbackForm onDone={close} />}
       {sheet.kind === 'whatsnew' && <WhatsNew />}
+      {sheet.kind === 'week' && <WeekRecap end={sheet.end} />}
       {sheet.kind === 'voice' && <VoiceCapture onDone={() => { setVersion(v => v + 1); if (day) loadDay(day); }} />}
       {sheet.kind === 'search' && day && <FoodSearch day={sheet.day ?? day} time={sheet.at} onDone={done} />}
       {sheet.kind === 'ai' && day && <FoodAi key={sheet.mode} day={sheet.day ?? day} time={sheet.at} mode={sheet.mode} onDone={done} />}

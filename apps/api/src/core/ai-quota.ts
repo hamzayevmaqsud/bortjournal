@@ -11,9 +11,9 @@ import { requireUser } from './auth.js';
 import { HttpError } from './http.js';
 import { aiUsage, profiles, users } from './schema.js';
 
-export const AI_KINDS = { food: 'распознаваний еды', questions: 'наборов вопросов', capture: 'голосовых записей', cheatsheet: 'шпаргалок' } as const;
+export const AI_KINDS = { food: 'распознаваний еды', questions: 'наборов вопросов', capture: 'голосовых записей', cheatsheet: 'шпаргалок', tip: 'советов дня' } as const;
 export type AiKind = keyof typeof AI_KINDS;
-const DEFAULTS: Record<AiKind, number> = { food: 15, questions: 5, capture: 60, cheatsheet: 5 };
+const DEFAULTS: Record<AiKind, number> = { food: 15, questions: 5, capture: 60, cheatsheet: 5, tip: 6 };
 export const limitOf = (k: AiKind) => { const v = Number(process.env[`AI_LIMIT_${k.toUpperCase()}`]); return Number.isFinite(v) && v > 0 ? v : DEFAULTS[k]; };
 const serverCap = () => { const v = Number(process.env.AI_DAILY_CAP); return Number.isFinite(v) && v > 0 ? v : 2000; };
 

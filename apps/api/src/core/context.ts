@@ -5,9 +5,9 @@ import type { Tx } from '../db/index.js';
 import { profiles, users } from './schema.js';
 
 export interface Norms { kcal: number; protein: number; fat: number; carbs: number; water: number; steps: number; study: number }
-export async function userContext(db: Tx, userId: string) {
+export async function userContext(db: Tx, userId: string, at?: number) {
   const [u] = await db.select({ tz: users.tzOffset }).from(users).where(eq(users.id, userId));
-  const today = localNow(u?.tz ?? 0).day;
+  const today = localNow(u?.tz ?? 0, at).day;
   const [p] = await db.select().from(profiles).where(eq(profiles.userId, userId));
   const s = (p?.settings ?? {}) as Record<string, unknown>;
   const kcal = Number(s.kcal) || 2200, protein = Number(s.protein) || Math.round(kcal * 0.25 / 4);

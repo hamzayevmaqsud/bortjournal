@@ -14,7 +14,8 @@ const KINDS: Array<[string, string, string]> = [
   ['gym', 'Тренировка', 'по плану тренировок, в его время'],
   ['quiz', 'Вопросы дня', 'в 10:00, если есть что повторить'],
   ['streak', 'Серия', 'в 21:00, если сегодня пусто, а серия идёт'],
-  ['review', 'Итог недели', 'в воскресенье в 19:00']
+  ['tip', 'Совет на вечер', 'в 20:40 — одна подсказка по сегодняшнему дню, если есть что сказать'],
+  ['review', 'Итог недели', 'в воскресенье в 19:00 — оценка недели и серия']
 ];
 const standalone = () => matchMedia('(display-mode: standalone)').matches || (navigator as { standalone?: boolean }).standalone === true;
 const ios = () => /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
