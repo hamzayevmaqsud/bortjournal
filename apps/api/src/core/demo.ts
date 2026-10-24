@@ -1,23 +1,28 @@
 /**
- * Демо без регистрации: временный аккаунт demo-… без пароля на сутки, с Pro и записями за три дня —
+ * Демо без регистрации: временный аккаунт demo-… без пароля на сутки, с Pro и записями за три месяца —
  * чтобы посмотреть журнал живым. «Сохранить как аккаунт» (claim) задаёт логин и пароль и оставляет записи.
  * Просроченные демо удаляются целиком (каскадом) — воркером и при создании нового демо.
  */
 import crypto from 'node:crypto';
 import { and, eq, lt, sql } from 'drizzle-orm';
+import type { PgTable } from 'drizzle-orm/pg-core';
 import type { FastifyInstance } from 'fastify';
-import { addDays, localNow, TRIAL_DAYS } from '@bortjournal/core';
+import { addDays, drinkName, localNow, mondayOf, moneyCat, TRIAL_DAYS, type ModuleName } from '@bortjournal/core';
 import type { DB, Tx } from '../db/index.js';
-import { addDrink, addMeal } from '../modules/food/service.js';
-import { setBodyDay } from '../modules/body/service.js';
-import { seedHabits } from '../modules/habits/index.js';
-import { tasks } from '../modules/plans/schema.js';
-import { studySessions } from '../modules/study/schema.js';
-import { books, readingLog } from '../modules/books/schema.js';
+import { drinks as drinksT, meals as mealsT, userFoods } from '../modules/food/schema.js';
+import { bodyDays } from '../modules/body/schema.js';
+import { habitChecks, habits } from '../modules/habits/schema.js';
+import { goals as goalsT, taskSeries, tasks as tasksT } from '../modules/plans/schema.js';
+import { answers, materials, questions, srsCards, studySessions } from '../modules/study/schema.js';
+import { chunksOf } from '../modules/study/extract.js';
+import { workoutExercises, workoutPlans, workouts, workoutSets } from '../modules/gym/schema.js';
+import { budgetEntries, budgets } from '../modules/budget/schema.js';
+import { bookQuotes, books, readingLog } from '../modules/books/schema.js';
 import { hashPassword, newAccount, removeUserFiles, startSession } from './auth.js';
 import { startTrial } from './billing.js';
-import { recordEvents } from './events.js';
-import { entitlements, profiles, users } from './schema.js';
+import { demoData, DEMO_DAYS } from './demo-data.js';
+import { activityWeeks, entitlements, events, profiles, users } from './schema.js';
+import { review } from './stats.js';
 
 export const DEMO_HOURS = 24;
 
@@ -28,69 +33,92 @@ export async function cleanupDemos(db: DB, at = new Date()) {
   return gone.length;
 }
 
-const MEALS = [
-  { time: '08:10', slot: 'breakfast', name: 'Овсянка с бананом и орехами', kcal: 420, protein: 14, fat: 12, carbs: 64 },
-  { time: '13:20', slot: 'lunch', name: 'Курица с рисом и салатом', kcal: 610, protein: 48, fat: 14, carbs: 70 },
-  { time: '16:30', slot: 'snack', name: 'Греческий йогурт с ягодами', kcal: 180, protein: 15, fat: 4, carbs: 20 },
-  { time: '19:40', slot: 'dinner', name: 'Лосось с овощами на гриле', kcal: 540, protein: 38, fat: 28, carbs: 22 }
-];
-const MEALS_B = [
-  { time: '08:30', slot: 'breakfast', name: 'Омлет из трёх яиц с тостом', kcal: 450, protein: 26, fat: 28, carbs: 22 },
-  { time: '13:00', slot: 'lunch', name: 'Борщ со сметаной и хлебом', kcal: 480, protein: 18, fat: 18, carbs: 58 },
-  { time: '19:15', slot: 'dinner', name: 'Гречка с говядиной', kcal: 620, protein: 42, fat: 20, carbs: 64 }
-];
-const DRINKS = [
-  { time: '08:20', type: 'water', ml: 300 }, { time: '09:00', type: 'latte', ml: 250 }, { time: '11:30', type: 'water', ml: 500 },
-  { time: '15:00', type: 'water', ml: 500 }, { time: '17:30', type: 'tea', ml: 250 }, { time: '20:30', type: 'water', ml: 330 }
-];
+/** вставка пачками: одна команда на ~800 строк, без лишних обходов */
+async function put(db: Tx, table: PgTable, rows: object[]) {
+  for (let i = 0; i < rows.length; i += 800) await db.insert(table).values(rows.slice(i, i + 800) as any);
+}
+const uuid = () => crypto.randomUUID();
 
-/** записи за сегодня и два прошлых дня; сегодня — только то, что уже «случилось» к текущему времени */
+/**
+ * Три месяца записей (demo-data.ts) одной транзакцией: каждая таблица — одной-двумя вставками, события ленты —
+ * те же, что пишут сервисы модулей (еда, напитки, задачи с датой, занятия, тренировки, деньги). Достижения
+ * открываются по ходу истории: статистика пересчитывается на несколько прошлых дат, как если бы человек заходил.
+ */
 export async function seedDemo(db: Tx, userId: string, tz: number) {
-  const now = localNow(tz), today = now.day, d1 = addDays(today, -1), d2 = addDays(today, -2);
-  const past = (day: string, time: string) => day < today || time <= now.hm;
+  const now = localNow(tz), D = demoData(userId, now.day, now.hm);
+  const ev: Array<typeof events.$inferInsert> = [];
+  const E = (module: ModuleName, kind: string, refId: string, day: string, time: string | null, title: string, value: number | null, unit: string, data?: Record<string, unknown>) =>
+    ev.push({ userId, module, kind, refId, day, time, title, value, unit, data: data ?? null });
 
-  for (const [day, list] of [[d2, MEALS_B], [d1, MEALS], [today, MEALS]] as const)
-    for (const m of list) if (past(day, m.time)) await addMeal(db, userId, { day, ...m });
-  for (const day of [d2, d1, today])
-    for (const d of DRINKS) if (past(day, d.time) && (day !== d2 || d.type === 'water')) await addDrink(db, userId, { day, ...d });
-
-  // вес по неделям — для цели и графика; шаги: сегодня — сколько успел к этому часу
-  const weights: Array<[number, number]> = [[-21, 79.2], [-17, 78.8], [-14, 78.5], [-10, 78.1], [-7, 77.8], [-4, 77.6], [-1, 77.3]];
-  for (const [n, kg] of weights) await setBodyDay(db, userId, addDays(today, n), { weightKg: kg });
-  await setBodyDay(db, userId, d2, { steps: 7310 });
-  await setBodyDay(db, userId, d1, { steps: 10240 });
-  const stepsNow = Math.round(Math.min(1, Math.max(0, (now.minutes - 7 * 60) / (14 * 60))) * 9000);
-  if (stepsNow > 0) await setBodyDay(db, userId, today, { steps: stepsNow });
-
-  const T = [
-    { day: d1, time: null, title: 'Записаться к стоматологу', done: true, prio: false },
-    { day: d1, time: '18:30', title: 'Пробежка 5 км', done: true, prio: false },
-    { day: today, time: null, title: 'Оплатить интернет', done: true, prio: false },
-    { day: today, time: null, title: 'Купить продукты на неделю', done: false, prio: true },
-    { day: today, time: '18:00', title: 'Позвонить маме', done: false, prio: false },
-    { day: today, time: '21:30', title: 'Прочитать 20 страниц', done: false, prio: false },
-    { day: null, time: null, title: 'Разобрать фото с отпуска', done: false, prio: false }
-  ];
-  const ts = await db.insert(tasks).values(T.map(t => ({ userId, ...t, createdOn: t.day ?? today, doneAt: t.done ? new Date() : null }))).returning();
-  await recordEvents(db, ts.filter(t => t.day).map(t => ({ userId, module: 'plans' as const, kind: 'task', refId: t.id, day: t.day!, time: t.time, title: t.title, value: t.done ? 1 : 0, unit: 'done' })));
-
-  const S = [
-    { day: d2, time: '20:00', topic: 'SQL: оконные функции', category: 'Программирование', minutes: 45, theses: ['ROW_NUMBER нумерует строки внутри окна', 'PARTITION BY делит строки на группы, не схлопывая их'] },
-    { day: d1, time: '19:30', topic: 'Английский: Present Perfect', category: 'Языки', minutes: 30, theses: ['Present Perfect — результат к настоящему моменту', 'since — с какого момента, for — сколько времени'] },
-    { day: today, time: '07:45', topic: 'Английский: фразовые глаголы', category: 'Языки', minutes: 25, theses: ['give up — бросить, сдаться', 'look after — присматривать за кем-то'] }
-  ].filter(s => past(s.day, s.time));
-  if (S.length) {
-    const ss = await db.insert(studySessions).values(S.map(s => ({ userId, ...s }))).returning();
-    await recordEvents(db, ss.map(s => ({ userId, module: 'study' as const, kind: 'session', refId: s.id, day: s.day, time: s.time, title: s.topic, value: s.minutes || null, unit: 'min' })));
+  // еда: приёмы, напитки и «мои блюда» (как remember в addMeal: последний вариант, сколько раз, когда)
+  const meals = D.meals.map(m => ({ id: uuid(), userId, ...m }));
+  for (const m of meals) E('food', 'meal', m.id, m.day, m.time, m.name, m.kcal, 'kcal');
+  const drinks = D.drinks.map(d => ({ id: uuid(), userId, ...d }));
+  for (const d of drinks) E('food', 'drink', d.id, d.day, d.time, drinkName(d), d.ml, 'ml', { type: d.type });
+  const foods = new Map<string, typeof userFoods.$inferInsert>();
+  for (const m of D.meals) {
+    const key = m.name.trim().toLowerCase(), prev = foods.get(key);
+    foods.set(key, { userId, key, name: m.name, kcal: m.kcal, protein: m.protein, fat: m.fat, carbs: m.carbs, uses: (prev?.uses ?? 0) + 1, lastUsedOn: m.day });
   }
+  await put(db, mealsT, meals); await put(db, drinksT, drinks); await put(db, userFoods, [...foods.values()]);
+  await put(db, bodyDays, D.body.map(b => ({ userId, ...b })));
 
-  const [b] = await db.insert(books).values([
-    { userId, title: 'Атомные привычки', author: 'Джеймс Клир', pages: 320, currentPage: 142, status: 'reading', genre: 'Саморазвитие', addedOn: addDays(today, -12), startedOn: addDays(today, -10) },
-    { userId, title: 'Думай медленно… решай быстро', author: 'Даниэль Канеман', pages: 656, status: 'want', addedOn: addDays(today, -5) },
-    { userId, title: 'Мастер и Маргарита', author: 'Михаил Булгаков', pages: 480, currentPage: 480, status: 'done', rating: 5, addedOn: addDays(today, -60), startedOn: addDays(today, -45), finishedOn: addDays(today, -20) }
-  ]).returning();
-  await seedHabits(db, userId, today);
-  await db.insert(readingLog).values([[-6, 22], [-4, 18], [-3, 30], [-2, 24], [-1, 28]].map(([n, pages]) => ({ userId, bookId: b!.id, day: addDays(today, n!), pages: pages! })));
+  // планы: повторы, цели (подцели ссылаются на родителя), задачи
+  const series = D.series.map(s => ({ id: uuid(), userId, ...s }));
+  const goals = D.goals.map(g => ({ id: uuid(), userId, period: g.period, periodKey: g.periodKey, title: g.title, done: g.done, createdOn: g.createdOn, parentId: null as string | null }));
+  D.goals.forEach((g, i) => { if (g.parent !== undefined) goals[i]!.parentId = goals[g.parent]!.id; });
+  const doneAt = (day: string, time: string | null) => new Date(Date.parse(`${day}T${time ?? '20:00'}:00Z`) - tz * 60e3);
+  const tasks = D.tasks.map(t => ({
+    id: uuid(), userId, title: t.title, day: t.day, time: t.time, done: t.done, prio: t.prio, createdOn: t.createdOn,
+    doneAt: t.done && t.day ? doneAt(t.day, t.time) : null, seriesId: t.series === undefined ? null : series[t.series]!.id, goalId: t.goal === undefined ? null : goals[t.goal]!.id
+  }));
+  for (const t of tasks) if (t.day) E('plans', 'task', t.id, t.day, t.time, t.title, t.done ? 1 : 0, 'done');
+  await put(db, taskSeries, series); await put(db, goalsT, goals); await put(db, tasksT, tasks);
+
+  // учёба: занятия; конспект с вопросами (без ИИ), ответы и интервалы повторения
+  const sessions = D.sessions.map(s => ({ id: uuid(), userId, ...s }));
+  for (const s of sessions) E('study', 'session', s.id, s.day, s.time, s.topic, s.minutes || null, 'min');
+  await put(db, studySessions, sessions);
+  const parts = Math.max(1, chunksOf(D.material.text).length), matId = uuid();
+  await put(db, materials, [{ id: matId, userId, kind: 'text', title: D.material.title, source: null, text: D.material.text, quiz: true, quizStatus: 'ready', quizDone: parts, quizTotal: parts, createdAt: new Date(Date.now() - 45 * 864e5) }]);
+  const qIds = D.material.questions.map(() => uuid());
+  await put(db, questions, D.material.questions.map((q, i) => ({ id: qIds[i], userId, materialId: matId, chunk: i % parts, ...q })));
+  await put(db, answers, D.answers.map(a => ({ userId, questionId: qIds[a.q], day: a.day, correct: a.correct })));
+  await put(db, srsCards, D.material.srs.map(s => ({ userId, cardKey: `q:${qIds[s.q]}`, intervalDays: s.interval, ease: s.ease, reps: s.reps, dueOn: s.due, lastOn: s.last })));
+
+  // зал: планы «Верх/Низ», тренировки → упражнения → подходы
+  const plans = D.gymPlans.map(p => ({ id: uuid(), userId, ...p }));
+  const ws = D.workouts.map(w => ({ id: uuid(), userId, day: w.day, time: w.time, title: w.title, minutes: w.minutes, planId: w.planIdx === null ? null : plans[w.planIdx]!.id }));
+  const wex: Array<typeof workoutExercises.$inferInsert> = [], wsets: Array<typeof workoutSets.$inferInsert> = [];
+  D.workouts.forEach((w, i) => w.exercises.forEach((e, pos) => {
+    const id = uuid(); wex.push({ id, workoutId: ws[i]!.id, position: pos, exerciseKey: e.key, name: e.name });
+    e.sets.forEach((s, j) => wsets.push({ workoutExerciseId: id, position: j, ...s }));
+  }));
+  for (const w of ws) E('gym', 'workout', w.id, w.day, w.time, w.title, w.minutes, 'min');
+  await put(db, workoutPlans, plans); await put(db, workouts, ws); await put(db, workoutExercises, wex); await put(db, workoutSets, wsets);
+  await put(db, activityWeeks, [{ userId, weekStart: mondayOf(D.first), level: 'light' }]);
+
+  // бюджет: 1500 ₼ в месяц, 200 — в копилку
+  await put(db, budgets, [{ userId, amount: 1500, startDay: 1, savings: 200, currency: '₼' }]);
+  const money = D.money.map(m => ({ id: uuid(), userId, ...m }));
+  for (const m of money) E('budget', 'money', m.id, m.day, m.time, m.note || (moneyCat(m.kind, m.category)[1]), m.kind === 'in' ? m.amount : -m.amount, 'money');
+  await put(db, budgetEntries, money);
+
+  // книги: полка, журнал чтения, цитаты
+  const bs = D.books.map(b => ({ id: uuid(), userId, ...b }));
+  await put(db, books, bs);
+  await put(db, readingLog, D.reading.map(r => ({ userId, bookId: bs[r.book]!.id, day: r.day, pages: r.pages })));
+  await put(db, bookQuotes, D.quotes.map(q => ({ bookId: bs[q.book]!.id, text: q.text, page: q.page, addedOn: q.book === 0 ? bs[0]!.finishedOn : now.day })));
+
+  // привычки с отметками
+  const hs = D.habits.map((h, i) => ({ id: uuid(), userId, ...h, sort: i, createdAt: new Date(Date.now() - 90 * 864e5) }));
+  await put(db, habits, hs);
+  await put(db, habitChecks, D.checks.map(c => ({ habitId: hs[c.habit]!.id, userId, day: c.day })));
+
+  await put(db, events, ev);
+
+  // достижения открываются по ходу истории: пересчёт на прошлые даты (каждые две недели) и на сейчас
+  for (const back of [76, 62, 48, 34, 20, 6, 0]) await review(db, userId, undefined, Date.now() - back * 864e5);
 }
 
 export async function demoRoutes(app: FastifyInstance, { db }: { db: DB }) {
@@ -108,8 +136,8 @@ export async function demoRoutes(app: FastifyInstance, { db }: { db: DB }) {
       const [u] = await tx.insert(users).values({ username, passwordHash: null, tzOffset: tz, demoUntil: new Date(Date.now() + DEMO_HOURS * 3600e3) }).returning({ id: users.id });
       const today = localNow(tz).day;
       await tx.insert(profiles).values({
-        userId: u!.id, sex: 'm', age: 29, heightCm: 178, goal: 'lose', pace: 'mid', targetKg: 74, startWeightKg: 79.2, startedOn: addDays(today, -21), plannedSteps: 9000,
-        settings: { name: 'Гость', kcal: 2100, protein: 130, fat: 70, carbs: 230, steps: 9000, water: 2300, study: 45, booksGoal: 12, sections: ['food', 'water', 'steps', 'tasks', 'study', 'books'], onboarded: true }
+        userId: u!.id, sex: 'm', age: 29, heightCm: 178, goal: 'lose', pace: 'mid', targetKg: 75, startWeightKg: 81, startedOn: addDays(today, -(DEMO_DAYS - 1)), plannedSteps: 9000,
+        settings: { name: 'Гость', kcal: 2100, protein: 130, fat: 70, carbs: 230, steps: 9000, water: 2300, study: 45, booksGoal: 12, sections: ['food', 'water', 'steps', 'tasks', 'gym', 'study', 'budget', 'books'], onboarded: true }
       });
       await startTrial(tx, u!.id);
       await seedDemo(tx, u!.id, tz);

@@ -143,11 +143,11 @@ describe('привычки', () => {
     expect((await conn.db.select().from(s.habits).where(eq(s.habits.userId, ids.many!))).length).toBeGreaterThan(0); // чужое цело
   });
 
-  it('демо: три привычки с отметками', async () => {
+  it('демо: четыре привычки с отметками и сериями', async () => {
     const d = await app.inject({ method: 'POST', url: '/api/auth/demo', headers: H, remoteAddress: '10.9.9.9', payload: { tz: TZ } });
     const r = as(String(d.headers['set-cookie']).split(';')[0]!);
     const l = (await r('GET', '/api/habits')).json().items;
-    expect(l).toHaveLength(3);
+    expect(l).toHaveLength(4);
     expect(l.some((h: any) => h.streak >= 3)).toBe(true);
     expect(l.some((h: any) => h.done)).toBe(true);
   });
