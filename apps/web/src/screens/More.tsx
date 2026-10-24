@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { api, ApiError, type Me } from '../lib/api';
 import { fmt, fmt1 } from '../lib/format';
 import { Icon } from '../components/Icon';
+import { HelpButton } from '../components/HelpButton';
 import { SubStatus } from '../components/Paywall';
 import { Sheet } from '../components/Sheet';
 import { useToast } from '../components/Toasts';
@@ -33,7 +34,7 @@ export function ThemePick({ me, onSaved }: { me: Me; onSaved: (s: Record<string,
     try { const r = await api<{ settings: Record<string, unknown> }>('/api/profile/settings', { method: 'PUT', body: { theme: t } }); onSaved(r.settings); }
     catch { setCur(was); applyTheme(was); toast('Не получилось сохранить тему', { err: true }); }
   };
-  return <section className="panel">
+  return <section className="panel" data-tour="set-theme">
     <div className="panel-h"><h2>Оформление</h2><small>общее для всех устройств</small></div>
     <div className="seg3" role="radiogroup" aria-label="Тема">{THEMES.map(([k, n, ic]) => <button key={k} role="radio" aria-checked={cur === k} className={cur === k ? 'on' : ''} onClick={() => pick(k)}>
       <span className={`th-sw th-${ic}`} aria-hidden="true" />{n}</button>)}</div>
@@ -47,13 +48,13 @@ const IN_DOCK = new Set(['goal', 'gym', 'study', 'budget', 'books', 'stats']);
 export function More({ me, wide = false, summary = {}, onPaywall, onPro, onProfile, onSettings, onInstall, onLogout, onFeedback, onWhatsNew, onAdmin, onTour }: { me: Me; wide?: boolean; summary?: MoreSummary; onWhatsNew?: () => void; onTour?: () => void; onFeedback?: () => void; onAdmin?: () => void; onPaywall: (focus?: string) => void; onPro: (what: string) => void; onProfile: () => void; onSettings: () => void; onInstall: () => void; onLogout: () => void; onSaved?: (s: Record<string, unknown>) => void }) {
   const s = me.profile?.settings ?? {}, sub = me.subscription, [pw, setPw] = useState(false);
   return <div className="day more-page">
-    <header className="dayhead"><div className="daytitle"><span>ещё</span><b>{s.name || me.username}</b></div></header>
-    <button className="profile-card" onClick={onProfile} aria-label="Профиль">
+    <header className="dayhead"><div className="daytitle"><span>ещё</span><b>{s.name || me.username}</b></div><HelpButton tour="more" /></header>
+    <button className="profile-card" data-tour="more-profile" onClick={onProfile} aria-label="Профиль">
       <span className="avatar">{(s.name || me.username).slice(0, 1).toUpperCase()}</span>
       <span className="mid"><b>{s.name || me.username}</b><small>{fmt(s.kcal ?? 2000)} ккал{s.protein ? ` · белок ${fmt(s.protein)} г` : ''} · {fmt1((s.water ?? 2000) / 1000)} л · {fmt(s.steps ?? 8000)} шагов</small></span>
       <Icon name="chev" className="ic chev" />
     </button>
-    <button className="settings-card" onClick={onSettings}>
+    <button className="settings-card" data-tour="more-settings" onClick={onSettings}>
       <span className="chip-ic" style={{ ['--c' as string]: 'var(--text-2)' }}><Icon name="gear" /></span>
       <span className="mid"><b>Настройки</b><small>нормы на день, разделы, тема, напоминания, Google Календарь, Obsidian</small></span>
       <Icon name="chev" className="ic chev" />
@@ -62,7 +63,7 @@ export function More({ me, wide = false, summary = {}, onPaywall, onPro, onProfi
       <span className="mid"><b>Подписка</b><small>{sub.beta ? 'Бета — всё открыто бесплатно' : sub.source === 'trial' ? `Пробный Pro закончится через ${sub.daysLeft} дн.` : sub.pro ? (sub.expiresAt ? `Pro до ${new Date(sub.expiresAt).toLocaleDateString('ru-RU')}` : 'Pro открыт навсегда') : sub.features?.length ? `Свой набор: ${sub.features.length} ${sub.features.length === 1 ? 'раздел' : sub.features.length < 5 ? 'раздела' : 'разделов'}${sub.expiresAt ? ` · до ${new Date(sub.expiresAt).toLocaleDateString('ru-RU')}` : ''}` : 'Еда, вода, шаги, задачи, цель и статистика — бесплатно'}</small></span>
       <SubStatus sub={sub} />
     </button>
-    <div className="rows">
+    <div className="rows" data-tour="more-sections">
       {PRO_SECTIONS.filter(([k]) => !wide || !IN_DOCK.has(k)).map(([k, n, ic, c]) => { const open = can(sub, k === 'awards' ? 'stats' : k); return <button key={k} className="row" onClick={() => onPro(n)}>
         <span className="chip-ic" style={{ ['--c' as string]: c }}><Icon name={ic} /></span>
         <span className="mid"><b>{n}</b><small>{open ? summary[k] ?? 'открыть' : 'в Pro или в своём наборе'}</small></span>
@@ -71,8 +72,8 @@ export function More({ me, wide = false, summary = {}, onPaywall, onPro, onProfi
     </div>
     <div className="rows">
       {onWhatsNew && <button className="row" onClick={onWhatsNew}><span className="chip-ic" style={{ ['--c' as string]: 'var(--navy)' }}><Icon name="flame" /></span><span className="mid"><b>Что нового</b><small>версия {APP_VERSION}</small></span><Icon name="chev" className="ic chev" /></button>}
-      {onTour && <button className="row" onClick={onTour}><span className="chip-ic" style={{ ['--c' as string]: 'var(--steps)' }}><Icon name="quiz" /></span><span className="mid"><b>Как пользоваться Lumi</b><small>короткая экскурсия по главному — за минуту</small></span><Icon name="chev" className="ic chev" /></button>}
-      {onFeedback && <button className="row" onClick={onFeedback}><span className="chip-ic" style={{ ['--c' as string]: 'var(--orange)' }}><Icon name="edit" /></span><span className="mid"><b>Написать разработчику</b><small>что понравилось, что мешает, где ошибка</small></span><Icon name="chev" className="ic chev" /></button>}
+      {onTour && <button className="row" data-tour="more-tour" onClick={onTour}><span className="chip-ic" style={{ ['--c' as string]: 'var(--steps)' }}><Icon name="quiz" /></span><span className="mid"><b>Как пользоваться Lumi</b><small>короткая экскурсия по главному — за минуту</small></span><Icon name="chev" className="ic chev" /></button>}
+      {onFeedback && <button className="row" data-tour="more-feedback" onClick={onFeedback}><span className="chip-ic" style={{ ['--c' as string]: 'var(--orange)' }}><Icon name="edit" /></span><span className="mid"><b>Написать разработчику</b><small>что понравилось, что мешает, где ошибка</small></span><Icon name="chev" className="ic chev" /></button>}
       {me.admin && onAdmin && <button className="row" onClick={onAdmin}><span className="chip-ic" style={{ ['--c' as string]: 'var(--navy)' }}><Icon name="stats" /></span><span className="mid"><b>Админка</b><small>пользователи, активность, ИИ, отзывы</small></span><Icon name="chev" className="ic chev" /></button>}
       {!installed() && <button className="row" onClick={onInstall}><span className="chip-ic" style={{ ['--c' as string]: 'var(--water)' }}><Icon name="plus" /></span><span className="mid"><b>Установить на телефон</b><small>как приложение, с иконкой на экране</small></span><Icon name="chev" className="ic chev" /></button>}
       <button className="row" onClick={() => setPw(true)}><span className="chip-ic" style={{ ['--c' as string]: 'var(--orange)' }}><Icon name="edit" /></span><span className="mid"><b>Сменить пароль</b><small>другие устройства выйдут из аккаунта</small></span><Icon name="chev" className="ic chev" /></button>

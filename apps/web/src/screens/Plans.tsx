@@ -10,6 +10,7 @@ import { can } from '../lib/features';
 import { MONG, plural } from '../lib/format';
 import { buzz } from '../lib/motion';
 import { Icon } from '../components/Icon';
+import { HelpButton } from '../components/HelpButton';
 import { Sheet } from '../components/Sheet';
 import { Tasks } from '../components/Tasks';
 import { useToast } from '../components/Toasts';
@@ -126,23 +127,23 @@ export function Plans({ today, sub, version, onAdd, onOpen, onPro, onChanged }: 
     const week = Array.from({ length: 7 }, (_, i) => addDays(mon, i)), list = ofDay(day), undated = ofDay(null), done = list.filter(t => t.done).length;
     const wgDone = weekGoals.filter(g => g.progress >= 100).length;
     return <>
-      <div className="wk-bar">
+      <div className="wk-bar" data-tour="plans-week">
         <button className="nav" onClick={() => setDay(addDays(day, -7))} aria-label="Прошлая неделя"><Icon name="chevL" /></button>
         <div className="wk" role="tablist">{week.map((d, i) => { const n = ofDay(d), dn = n.filter(t => t.done).length; return <button key={d} role="tab" aria-selected={d === day} className={`wk-d ${d === day ? 'on' : ''} ${d === today ? 'today' : ''} ${over === d ? 'drop' : ''}`} onClick={() => setDay(d)} {...drop(d)}>
           <span>{d === today ? 'сег' : WD[i]}</span><b>{parseDay(d).getUTCDate()}</b><i className={n.length && dn === n.length ? 'all' : ''}>{n.length ? `${dn}/${n.length}` : '·'}</i></button>; })}</div>
         <button className="nav" onClick={() => setDay(addDays(day, 7))} aria-label="Следующая неделя"><Icon name="chev" /></button>
       </div>
       {day === today && overdue.length > 0 && <div className="overdue"><span><b>Просрочено {overdue.length}</b> · {overdue.slice(0, 2).map(t => t.title).join(', ')}{overdue.length > 2 ? '…' : ''}</span><button className="btn-accent" onClick={moveOverdue}>На сегодня</button></div>}
-      <section className="panel day-panel">
+      <section className="panel day-panel" data-tour="plans-day">
         <div className="panel-h"><h2 className="day-title">{dayTitle(day, today)}</h2><small>{list.length ? `${done} из ${list.length}` : ''}</small></div>
-        <form className="task-add" onSubmit={e => { e.preventDefault(); addTask(day); }}>
+        <form className="task-add" data-tour="plans-add" onSubmit={e => { e.preventDefault(); addTask(day); }}>
           <input className="in" value={title} onChange={e => setTitle(e.target.value)} placeholder="Новая задача…" aria-label="Новая задача" enterKeyHint="done" />
           <button type="button" className="more-btn" onClick={() => onAdd(day)} aria-label="Время, повтор, цель, заметка" title="Время, повтор, цель, заметка">•••</button>
           <button className="primary" disabled={!title.trim() || busy} aria-label="Добавить"><Icon name="plus" /></button>
         </form>
         {items === null ? <div className="skel" style={{ height: 90 }} /> : <Tasks draggable tasks={list} onToggle={toggle} onOpen={id => { const t = list.find(x => x.id === id); if (t) onOpen(t); }} empty={day === today ? 'На сегодня задач нет — добавь первую выше.' : 'На этот день задач нет.'} />}
       </section>
-      {pro && <button className="goal-sum" onClick={() => openGoals('week', day)}>
+      {pro && <button className="goal-sum" data-tour="plans-goals" onClick={() => openGoals('week', day)}>
         <span className="chip-ic" style={{ ['--c' as string]: 'var(--orange)' }}><Icon name="target" /></span>
         <span className="mid"><b>Цели недели</b><small>{weekGoals.length ? `${wgDone} из ${weekGoals.length} выполнено · ${weekGoals.slice(0, 2).map(g => g.title).join(', ')}` : 'поставь 1–3 цели на неделю'}</small></span><Icon name="chev" className="ic chev" /></button>}
       <section className={`panel ${over === 'none' ? 'drop' : ''}`} {...drop(null)}>
@@ -213,8 +214,9 @@ export function Plans({ today, sub, version, onAdd, onOpen, onPro, onChanged }: 
     <header className="dayhead">
       <div className="daytitle"><span>{mode === 'tasks' ? (mon <= today && today <= sun ? 'эта неделя' : periodLabel('week', mon)) : 'цели по периодам'}</span><b>Планы</b></div>
       {mode === 'tasks' && day !== today && <button className="btn-accent" onClick={() => setDay(today)}>Сегодня</button>}
+      <HelpButton tour="plans" />
     </header>
-    <div className="st-bar"><div className="seg-tabs" role="tablist">{([['tasks', 'Задачи'], ['goals', 'Цели']] as const).map(([m, n]) => <button key={m} role="tab" aria-selected={mode === m} className={mode === m ? 'on' : ''} onClick={() => { setMode(m); buzz(6); }}>{n}</button>)}</div></div>
+    <div className="st-bar"><div className="seg-tabs" role="tablist" data-tour="plans-tabs">{([['tasks', 'Задачи'], ['goals', 'Цели']] as const).map(([m, n]) => <button key={m} role="tab" aria-selected={mode === m} className={mode === m ? 'on' : ''} onClick={() => { setMode(m); buzz(6); }}>{n}</button>)}</div></div>
     {mode === 'tasks' ? tasksView() : goalsView()}
     <Sheet open={!!sheet} onClose={() => setSheet(null)} title={sheet?.g ? 'Цель' : sheet ? `Цель на ${PERIOD_ACC[sheet.kind]}` : ''}>
       {sheet && <GoalForm key={sheet.g?.id ?? `${sheet.kind}-${sheet.key}`} g={sheet.g} kind={sheet.kind} pkey={sheet.key} parents={formParents} onDone={() => { setSheet(null); changed(); }} />}

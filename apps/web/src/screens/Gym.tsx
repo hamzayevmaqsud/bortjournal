@@ -13,6 +13,7 @@ import { Bars, HBars, human } from '../components/Charts';
 import { GymIcon } from '../components/GymIcon';
 import { GI } from '../components/gym-icons';
 import { Icon } from '../components/Icon';
+import { HelpButton } from '../components/HelpButton';
 import { Sheet } from '../components/Sheet';
 import { useToast } from '../components/Toasts';
 
@@ -215,7 +216,8 @@ export function Gym({ wide, version, onBack, onChanged, restSec, quick }: { wide
   const head = <header className="dayhead">
     {!wide && <button className="nav" onClick={onBack} aria-label="Назад"><Icon name="chevL" /></button>}
     <div className="daytitle"><span>{o?.total ? `${o.total} ${plural(o.total, 'тренировка', 'тренировки', 'тренировок')}` : 'тренировки по подходам'}</span><b>Зал</b></div>
-    {o && !live && <button className="nav" onClick={() => begin({ past: true, day: o.today, time: '19:00' })} aria-label="Записать прошедшую" title="Записать прошедшую"><Icon name="edit" /></button>}
+    {o && !live && <button className="nav" data-tour="gym-past" onClick={() => begin({ past: true, day: o.today, time: '19:00' })} aria-label="Записать прошедшую" title="Записать прошедшую"><Icon name="edit" /></button>}
+    <HelpButton tour="gym" />
   </header>;
   const sheets = <Sheet open={!!sheet} onClose={() => setSheet(null)} title={sheet?.kind === 'plan' ? (sheet.plan ? 'План тренировки' : 'Новый план') : sheet?.kind === 'start' ? 'Начать тренировку' : 'Упражнение'} tall={sheet?.kind !== 'plan'}>
     {sheet?.kind === 'info' && <ExerciseInfo k={sheet.key} />}
@@ -229,15 +231,15 @@ export function Gym({ wide, version, onBack, onChanged, restSec, quick }: { wide
   return <div className="day gym-page">
     {head}
     <div className="wgrid">
-      <div className="gym-hero span12">
+      <div className="gym-hero span12" data-tour="gym-start">
         {todayPlan && <button className="gym-start" onClick={() => begin({ title: todayPlan.name, planId: todayPlan.id, ex: todayPlan.exercises.map((e: any) => toLiveEx(e.ex, e.sets)) })}><GymIcon icon="dumbbell" group="shoulders" /><span><b>Сегодня: {todayPlan.name}</b><small>по плану{todayPlan.time ? ` в ${todayPlan.time}` : ''} · {todayPlan.exercises.length} упр. — начать</small></span></button>}
         <button className={`gym-start ${todayPlan ? 'alt' : ''}`} onClick={() => setSheet({ kind: 'start' })}><GymIcon icon="dumbbell" group="shoulders" /><span><b>Начать тренировку</b><small>подходы, вес и отдых — по ходу</small></span></button>
-        {o.repeat.length > 0 && <div className="gym-repeat"><span className="ov-k">Повторить</span>{o.repeat.map((w: any) => <button key={w.id} className="gym-rep" onClick={() => { const full = o.recent.find((r: any) => r.id === w.id); if (full) begin(fromWorkout(full)); }}>
+        {o.repeat.length > 0 && <div className="gym-repeat" data-tour="gym-repeat"><span className="ov-k">Повторить</span>{o.repeat.map((w: any) => <button key={w.id} className="gym-rep" onClick={() => { const full = o.recent.find((r: any) => r.id === w.id); if (full) begin(fromWorkout(full)); }}>
           <span className="gym-rep-ics">{w.exercises.slice(0, 4).map((e: any, i: number) => <GymIcon key={i} icon={e.icon} group={e.group} size="sm" />)}</span><b>{w.title}</b><small>{human(w.day)} · {w.exercises.length} упр.</small></button>)}</div>}
       </div>
       {!o.total ? <section className="wc span12 solid s-sage"><div className="card-head"><h2>Как это работает</h2></div>
         <ol className="steps"><li>Нажми «Начать тренировку» и выбери упражнения — у каждого своя иконка.</li><li>Вписывай вес и повторы, отмечай подход галочкой — включится отдых.</li><li>В следующий раз журнал подскажет прошлые веса и покажет рекорды.</li></ol></section> : <>
-        <div className="kpis span12">
+        <div className="kpis span12" data-tour="gym-kpis">
           <div className="kpi k-good"><span>За 7 дней</span><b>{o.kpi.week}</b><small>{plural(o.kpi.week, 'тренировка', 'тренировки', 'тренировок')}</small></div>
           <div className="kpi k-good"><span>За 30 дней</span><b>{o.kpi.month}</b><small>{fmt1(o.kpi.perWeek)} в неделю</small></div>
           <div className="kpi"><span>Объём недели</span><b>{fmt1(o.kpi.volumeWeek / 1000)}<small>т</small></b><small>вес × повторы</small></div>
@@ -248,7 +250,7 @@ export function Gym({ wide, version, onBack, onChanged, restSec, quick }: { wide
           {o.groups.length ? <><div className="hbars">{o.groups.map((g: any) => { const mx = o.groups[0].sets; return <div className="hbar" key={g.group}><span className="hb-l">{g.name}</span><span className="hb-t"><i style={{ width: `${g.sets / mx * 100}%`, background: g.color }} /></span><span className="hb-v">{g.sets}</span></div>; })}</div>
             {o.missing.length > 0 && <p className="card-note">Не было: {o.missing.map((m: string) => m.toLowerCase()).join(', ')}.</p>}</> : <p className="card-note">Тренировок за месяц не было.</p>}</section>
       </>}
-      <section className="wc span12"><div className="card-head"><h2>Планы тренировок</h2></div>
+      <section className="wc span12" data-tour="gym-plans"><div className="card-head"><h2>Планы тренировок</h2></div>
         {o.plans.length ? <div className="gp-plans">{o.plans.map((p: any) => <div key={p.id} className={`gp-plan ${p.today ? 'today' : ''}`}>
           <div className="gp-plan-ics">{p.exercises.slice(0, 5).map((e: any, i: number) => <GymIcon key={i} icon={e.ex.icon} group={e.ex.group} size="sm" />)}</div>
           <div className="gp-plan-m"><b>{p.name}</b><span>{WD_ORDER.filter(d => p.weekdays.includes(d)).map(d => WD[d]).join(', ') || 'дни не выбраны'}{p.time ? ` · ${p.time}` : ''} · {p.exercises.length} упр.{p.today && <em> · сегодня</em>}</span></div>
@@ -258,7 +260,7 @@ export function Gym({ wide, version, onBack, onChanged, restSec, quick }: { wide
       </section>
       {o.myExercises.length > 0 && <section className="wc span12"><div className="card-head"><h2>Мои упражнения</h2></div>
         <div className="gym-ex">{o.myExercises.slice(0, 24).map((m: any) => <button key={m.key} className="gym-ex-i" onClick={() => setSheet({ kind: 'info', key: m.key })}><GymIcon icon={m.ex.icon} group={m.ex.group} /><span><b>{m.ex.name}</b><small>{[bestText(m.ex.kind, m.best), `${m.times}×`, human(m.day)].filter(Boolean).join(' · ')}</small></span></button>)}</div></section>}
-      {o.recent.length > 0 && <section className="wc span12"><div className="card-head"><h2>Журнал</h2></div>
+      {o.recent.length > 0 && <section className="wc span12" data-tour="gym-log"><div className="card-head"><h2>Журнал</h2></div>
         {o.recent.slice(0, shown).map((w: any) => <article className="gw" key={w.id}>
           <header className="gw-head"><div><b>{w.title}</b><span>{human(w.day)}{w.time ? ` · ${w.time}` : ''}{w.minutes ? ` · ${w.minutes} мин` : ''}{w.volume ? ` · ${fmt(w.volume)} кг` : ''}</span></div>
             <div className="gw-act">{w.exercises.length > 0 && <><button className="btn-accent" onClick={() => begin(fromWorkout(w))}><Icon name="repeat" />Повторить</button><button className="btn-accent" onClick={() => setSheet({ kind: 'plan', from: { title: w.title, exercises: w.exercises } })}><Icon name="plans" />В план</button></>}

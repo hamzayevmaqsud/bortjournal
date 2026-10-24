@@ -12,6 +12,7 @@ import { judge, judgeCaf, judgeNut, judgeWater, type Verdict } from '../lib/judg
 import { buzz, useCountUp, useNextFrame } from '../lib/motion';
 import { Donut, HBars, human } from '../components/Charts';
 import { Icon } from '../components/Icon';
+import { HelpButton } from '../components/HelpButton';
 import { Arc } from '../components/Ring';
 import { useToast } from '../components/Toasts';
 
@@ -72,14 +73,14 @@ function DayView({ day, today, sub, version, onAddMeal, onAddDrink, onMeal, onDr
   const t = d.totals, st = judge('kcal', t.kcal, norm.kcal, live);
   const tile = (cls: string, ic: string, title: string, sub2: string, on: () => void, lock = false) => <button className={`add-tile ${cls}`} onClick={on}><span className="at-ic"><Icon name={ic} /></span><span className="mid"><b>{title}</b><small>{sub2}</small></span>{lock && <span className="lock">PRO</span>}</button>;
   return <div className="wgrid">
-    <div className="add-tiles span12">
+    <div className="add-tiles span12" data-tour="food-add">
       {tile('t-photo', 'camera', 'Фото еды', 'ИИ разберёт тарелку и посчитает', () => onPro('Фото и описание еды'), !can(sub, 'food'))}
       {tile('t-text', 'edit', 'Описать текстом', '«гречка 200 г, грудка» — ИИ посчитает', () => onPro('Описание еды'), !can(sub, 'food'))}
       {tile('t-search', 'search', 'Найти в справочнике', 'КБЖУ на 100 г и твои блюда', () => onPro('Поиск по базе продуктов'), !can(sub, 'food'))}
       {tile('t-manual', 'plus', 'Вручную', 'название и калории, БЖУ по желанию', onAddMeal)}
       {tile('t-drink', 'drop', 'Вода и напитки', 'вода, чай, кофе, сок — по мл', onAddDrink)}
     </div>
-    <section className="wc span12">
+    <section className="wc span12" data-tour="food-sum">
       <div className="card-head"><h2>{live ? 'Сегодня' : human(day)}</h2></div>
       <div className="summary">
         <div className="summary-ring"><Meter v={t.kcal} max={norm.kcal} color="var(--c-kcal)" size={150} sw={13} />
@@ -94,7 +95,7 @@ function DayView({ day, today, sub, version, onAddMeal, onAddDrink, onMeal, onDr
         </div>
       </div>
     </section>
-    <section className="wc span12">
+    <section className="wc span12" data-tour="food-list">
       <div className="card-head"><h2>{live ? 'Записи за сегодня' : `Записи за ${human(day)}`}</h2></div>
       {SLOTS.map(([k, name]) => { const items = meals.filter(m => slotOf(m) === k); if (!items.length) return null; return <div className="slot" key={k}>
         <div className="slot-head"><b>{name}</b><span className="slot-kcal">{fmt(items.reduce((a, m) => a + m.kcal, 0))} ккал</span></div>
@@ -109,7 +110,7 @@ function DayView({ day, today, sub, version, onAddMeal, onAddDrink, onMeal, onDr
       {!meals.length && <p className="card-note">{live ? 'Еды сегодня ещё нет. Сфотографируй, опиши текстом или запиши вручную — кнопки выше.' : 'Еды за этот день нет.'}</p>}
       <div className="slot slot-drinks">
         <div className="slot-head"><b>Напитки</b>{drinks.length > 0 && <span className="slot-kcal">{fmt1(t.waterMl / 1000)} л воды{drinks.some(x => x.kcal) ? ` · ${fmt(drinks.reduce((a, x) => a + x.kcal, 0))} ккал` : ''}</span>}
-          <span className="slot-quick"><button className="slot-btn" onClick={() => water(250)}><Icon name="plus" />Вода 250</button><button className="slot-btn" onClick={() => water(500)}><Icon name="plus" />500</button></span></div>
+          <span className="slot-quick" data-tour="food-water"><button className="slot-btn" onClick={() => water(250)}><Icon name="plus" />Вода 250</button><button className="slot-btn" onClick={() => water(500)}><Icon name="plus" />500</button></span></div>
         {drinks.length > 0 && <div className="drinks-list">{drinks.map(x => <span className="drink-chip" key={x.id}><i />{x.time && <em>{x.time}</em>}<button onClick={() => onDrink(x)}><b>{x.title}</b> {fmt(x.ml)} мл</button><button className="ico del" onClick={() => remove(x.id, x.title)} aria-label="Удалить">×</button></span>)}</div>}
       </div>
     </section>
@@ -213,9 +214,10 @@ export function Food({ today, sub, version, wide, onAddMeal, onAddDrink, onMeal,
   return <div className={`day food-page2 ${wide ? '' : 'narrow'}`}>
     <header className="fp-top">
       <div className="daytitle"><span className={off ? 'past' : ''}>{rel ? `${rel}, ` : ''}{dt.getUTCDate()} {MON[dt.getUTCMonth()]} · {WDF[dt.getUTCDay()]}</span><b>Еда</b></div>
+      <HelpButton tour="food" />
       <div className="fp-ctrl">
-        <div className="seg-tabs" role="tablist"><button role="tab" aria-selected={tab === 'day'} className={tab === 'day' ? 'on' : ''} onClick={() => setTab('day')}>День</button><button role="tab" aria-selected={tab === 'analysis'} className={tab === 'analysis' ? 'on' : ''} onClick={toAnalysis}>Анализ{!can(sub, 'food') && <span className="lock">PRO</span>}</button></div>
-        <div className="datenav">
+        <div className="seg-tabs" role="tablist" data-tour="food-tabs"><button role="tab" aria-selected={tab === 'day'} className={tab === 'day' ? 'on' : ''} onClick={() => setTab('day')}>День</button><button role="tab" aria-selected={tab === 'analysis'} className={tab === 'analysis' ? 'on' : ''} onClick={toAnalysis}>Анализ{!can(sub, 'food') && <span className="lock">PRO</span>}</button></div>
+        <div className="datenav" data-tour="food-date">
           <button onClick={() => setDay(addDays(day, -1))} aria-label="Предыдущий день"><Icon name="chevL" /></button>
           <button className={`cur ${off ? 'not-today' : ''}`} onClick={() => setDay(today)}>{rel || human(day)}{rel && wide ? ` · ${human(day)}` : ''}</button>
           <button onClick={() => setDay(addDays(day, 1))} disabled={day >= addDays(today, 7)} aria-label="Следующий день"><Icon name="chev" /></button>

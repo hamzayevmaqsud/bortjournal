@@ -1,59 +1,58 @@
 /**
- * Обучение: затемняет экран, вырезает окошко вокруг нужного места и рядом карточка с подсказкой.
- * Цели — элементы с data-tour="…"; нет такого на экране (раздел выключен, нет данных) — шаг тихо пропускается.
+ * Обучение страницы: затемняет экран, вырезает окошко вокруг нужного места и рядом карточка с подсказкой.
+ * Шаги — из tours.ts по id страницы; цели — элементы с data-tour="…" на открытом экране.
+ * Нет такой цели (раздел выключен, нет данных) — шаг тихо пропускается.
  * На телефоне карточка прижата к низу над панелью разделов, на компьютере — рядом с целью, не вылезая за край.
  */
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { reduceMotion } from '../lib/motion';
 import { useWide } from '../lib/wide';
+import type { TourStep } from './tours';
 import '../styles/tour.css';
-
-export type TourStep = { target?: string; tab?: string; title: string; text: string };
-
-/** шаги для гостя демо и для своего журнала; stats — открыта ли статистика */
-export function tourSteps({ demo, stats, wide }: { demo: boolean; stats: boolean; wide: boolean }): TourStep[] {
-  const s: TourStep[] = [
-    { tab: 'today', title: 'Привет! Это Lumi', text: demo ? 'Один дневник на весь день. Здесь 3 месяца жизни гостя — покажу главное за минуту.' : 'Один дневник на весь день. Покажу главное за минуту.' },
-    { tab: 'today', target: 'date', title: 'Листай дни', text: wide ? 'Стрелками ‹ › переходи по дням: всё, что было, на месте.' : 'Стрелками или смахиванием переходи по дням: всё, что было, на месте.' },
-    { tab: 'today', target: 'stats', title: 'План, вес и серия', text: 'Сколько калорий на сегодня, последний вес и сколько дней подряд ты ведёшь дневник.' },
-    { tab: 'today', target: 'timeline', title: 'Лента дня', text: 'Еда, вода, учёба, зал и задачи по времени. Нажми на пустое место — запишешь на это время.' },
-    { tab: 'today', target: 'photo', title: 'Еда по фото', text: 'Сфотографируй тарелку — Lumi сам посчитает калории.' },
-    { tab: 'today', target: 'water', title: 'Вода в одно касание', text: '+250 или +500 мл — и стакан уже в ленте.' },
-    { tab: 'today', target: 'habits', title: 'Привычки', text: 'Заведи свои привычки и отмечай каждый день — серия растёт сама.' },
-    { tab: 'today', target: 'tip', title: 'Совет на вечер', text: 'Вечером Lumi смотрит на твой день и подсказывает, что ещё успеть.' },
-  ];
-  if (stats) s.push({ tab: 'stats', target: 'calendar', title: 'Календарь оценок', text: 'Нажми на любой день — увидишь, из чего сложилась оценка.' });
-  if (demo) s.push({ target: 'demo-save', title: 'Понравилось?', text: 'Сохрани как аккаунт — все записи останутся, а Pro будет бесплатно 7 дней.' });
-  return s;
-}
 
 type Box = { x: number; y: number; w: number; h: number; r: number };
 type Pos = { top: number; left: number; dock: boolean };
 const EMPTY: Box = { x: 0, y: 0, w: 0, h: 0, r: 0 };
 const find = (id: string) => [...document.querySelectorAll<HTMLElement>(`[data-tour="${id}"]`)]
-  .find(el => !el.closest('[aria-hidden="true"]') && el.getClientRects().length > 0) ?? null;
+  .find(el => !el.closest('[aria-hidden="true"]') && el.getClientRects().length > 0 && el.offsetHeight > 0) ?? null;
 const same = (a: Box, b: Box) => Math.abs(a.x - b.x) < .5 && Math.abs(a.y - b.y) < .5 && Math.abs(a.w - b.w) < .5 && Math.abs(a.h - b.h) < .5 && a.r === b.r;
+// экран ещё грузится — на нём заглушки
+const loading = () => !!document.querySelector('.screen:not([aria-hidden="true"]) .skel');
 // низ, занятый панелью разделов на компьютере (плавающая панель), и место под карточку на телефоне
 const DOCK_WIDE = 100, GAP = 14;
 
-export function Tour({ steps, tab, onTab, onClose }: { steps: TourStep[]; tab: string; onTab: (tab: string) => boolean; onClose: () => void }) {
+export function Tour({ steps, onClose }: { steps: TourStep[]; onClose: () => void }) {
   const wide = useWide();
-  // шаги, чьих целей нет на «Сегодня», убираем сразу — чтобы счёт «3 из 7» не прыгал
-  const [list, setList] = useState(() => steps.filter(s => !s.target || (s.tab && s.tab !== 'today') || !!find(s.target)));
+  // пока страница догружается, список не готов; потом убираем шаги без целей — чтобы счёт «3 из 7» не прыгал
+  const [list, setList] = useState<TourStep[] | null>(null);
   const [i, setI] = useState(0), [hole, setHole] = useState<Box>(EMPTY), [pos, setPos] = useState<Pos | null>(null), [out, setOut] = useState(false);
-  const card = useRef<HTMLDivElement>(null), el = useRef<HTMLElement | null>(null), dir = useRef(1), tabRef = useRef(tab), ret = useRef<Element | null>(null);
-  tabRef.current = tab;
-  const step = list[Math.min(i, list.length - 1)];
-  const last = i >= list.length - 1;
+  const card = useRef<HTMLDivElement>(null), el = useRef<HTMLElement | null>(null), dir = useRef(1), ret = useRef<Element | null>(null);
+  const step = list ? list[Math.min(i, list.length - 1)] : undefined;
+  const last = !!list && i >= list.length - 1;
 
   const finish = useCallback(() => {
     if (out) return;
     setOut(true);
-    if (tabRef.current !== 'today') onTab('today');
     setTimeout(onClose, reduceMotion() ? 0 : 220);
-  }, [out, onTab, onClose]);
+  }, [out, onClose]);
   const next = useCallback(() => { if (last) { finish(); return; } dir.current = 1; setI(x => x + 1); }, [last, finish]);
   const back = useCallback(() => { if (i === 0) return; dir.current = -1; setI(x => x - 1); }, [i]);
+
+  // ждём цели: все нашлись — сразу; иначе пока идёт загрузка или пока число найденных меняется (до 3 с)
+  useEffect(() => {
+    const t0 = performance.now();
+    let seen = -1, since = t0, id = 0;
+    const check = () => {
+      const now = performance.now(), found = steps.filter(s => !s.target || !!find(s.target)).length;
+      if (found !== seen) { seen = found; since = now; }
+      const settled = found === steps.length || now - t0 > 3000 || (!loading() && now - since > 450 && now - t0 > 600);
+      if (!settled) { id = window.setTimeout(check, 100); return; }
+      const ok = steps.filter(s => !s.target || !!find(s.target));
+      if (!ok.length) onClose(); else setList(ok);
+    };
+    check();
+    return () => clearTimeout(id);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // откуда пришли — туда и вернуть фокус
   useEffect(() => {
@@ -61,11 +60,11 @@ export function Tour({ steps, tab, onTab, onClose }: { steps: TourStep[]; tab: s
     return () => { const r = ret.current as HTMLElement | null; if (r?.isConnected && !r.closest('[aria-hidden="true"]')) r.focus?.({ preventScroll: true }); };
   }, []);
 
-  // новый шаг: переключить раздел, дождаться цели, прокрутить к ней; не нашлась — пропустить
+  // новый шаг: дождаться цели, прокрутить к ней; не нашлась — пропустить
   useEffect(() => {
+    if (!list) return;
     if (!step) { finish(); return; }
     el.current = null;
-    if (step.tab && step.tab !== tabRef.current && !onTab(step.tab)) { drop(); return; }
     if (!step.target) { card.current?.focus({ preventScroll: true }); return; }
     let alive = true, tries = 0;
     const look = () => {
@@ -79,12 +78,12 @@ export function Tour({ steps, tab, onTab, onClose }: { steps: TourStep[]; tab: s
     return () => { alive = false; };
     function drop() {
       // вперёд — индекс тот же, на нём уже следующий шаг; назад — на шаг раньше; убрали последний — конец
-      const at = list.indexOf(step!), rest = list.filter(x => x !== step);
+      const all = list!, at = all.indexOf(step!), rest = all.filter(x => x !== step);
       if (!rest.length || (dir.current > 0 && at >= rest.length)) { finish(); return; }
       setList(rest);
       if (dir.current < 0) setI(Math.max(0, at - 1));
     }
-  }, [step]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [step, !!list]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const scrollTo = (t: HTMLElement) => {
     const sc = t.closest<HTMLElement>('.screen'); if (!sc) return;
@@ -142,8 +141,8 @@ export function Tour({ steps, tab, onTab, onClose }: { steps: TourStep[]; tab: s
   useEffect(() => {
     const on = (e: KeyboardEvent) => {
       e.stopPropagation();
-      const c = card.current; if (!c) return;
       if (e.key === 'Escape') { e.preventDefault(); finish(); return; }
+      const c = card.current; if (!c) return;
       if (e.key === 'ArrowRight') { e.preventDefault(); next(); return; }
       if (e.key === 'ArrowLeft') { e.preventDefault(); back(); return; }
       if (e.key === 'Enter' && !(e.target as HTMLElement)?.closest?.('button')) { e.preventDefault(); next(); return; }
@@ -158,7 +157,7 @@ export function Tour({ steps, tab, onTab, onClose }: { steps: TourStep[]; tab: s
     return () => removeEventListener('keydown', on, true);
   }, [next, back, finish]);
 
-  if (!step) return null;
+  if (!list || !step) return null;
   const n = list.length, k = Math.min(i, n - 1);
   return <div className={`tour ${out ? 'out' : ''} ${wide ? '' : 'phone'}`}>
     <div className="tour-hole" aria-hidden="true" style={{ transform: `translate(${hole.x}px,${hole.y}px)`, width: hole.w, height: hole.h, borderRadius: hole.r }} />
@@ -167,7 +166,7 @@ export function Tour({ steps, tab, onTab, onClose }: { steps: TourStep[]; tab: s
       <div className="tour-top">
         <span className="tour-dots" aria-hidden="true">{list.map((_, j) => <i key={j} className={j === k ? 'on' : j < k ? 'past' : ''} />)}</span>
         <span className="tour-n">{k + 1} из {n}</span>
-        <button type="button" className="tour-skip" onClick={finish}>Пропустить</button>
+        <button type="button" className="tour-skip" onClick={finish}>{last ? 'Закрыть' : 'Пропустить'}</button>
       </div>
       <div className="tour-body" key={k}>
         <h2 id="tour-t">{step.title}</h2>

@@ -8,6 +8,7 @@ import { api, ApiError } from '../lib/api';
 import { fmt, fmt1, MONG, plural } from '../lib/format';
 import { buzz } from '../lib/motion';
 import { Icon } from '../components/Icon';
+import { HelpButton } from '../components/HelpButton';
 import { useToast } from '../components/Toasts';
 import { WeightChart } from '../components/WeightChart';
 
@@ -48,10 +49,11 @@ export function Goal({ wide, onBack, onWeigh, onRedo, onChanged }: { wide: boole
   const head = <header className="dayhead">
     {!wide && <button className="nav" onClick={onBack} aria-label="Назад"><Icon name="chevL" /></button>}
     <div className="daytitle"><span>цель{g ? ` · ${g.profile.goalName.toLowerCase()}${g.profile.paceName ? `, ${g.profile.paceName.toLowerCase()} темп` : ''}` : ''}</span><b>План и прогноз</b></div>
-    <button className="nav" onClick={onRedo} aria-label="Изменить цель" title="Изменить цель"><Icon name="edit" /></button>
+    <button className="nav" data-tour="goal-edit" onClick={onRedo} aria-label="Изменить цель" title="Изменить цель"><Icon name="edit" /></button>
+    <HelpButton tour="goal" />
   </header>;
   // анкеты нет — это не ошибка, а первый шаг: объясняем зачем и даём кнопку
-  if (noProfile) return <div className="day goal-page">{head}<section className="wc goal-empty">
+  if (noProfile) return <div className="day goal-page">{head}<section className="wc goal-empty" data-tour="goal-empty">
     <h2>План ещё не посчитан</h2>
     <p>Lumi считает калории, белок и срок до цели по короткой анкете: рост, вес, активность и чего хочешь добиться. Это займёт минуту.</p>
     <button className="primary" onClick={onRedo}>Пройти анкету</button></section></div>;
@@ -61,7 +63,7 @@ export function Goal({ wide, onBack, onWeigh, onRedo, onChanged }: { wide: boole
   const p = g.profile, pl = g.plan, dir = p.goal === 'gain' ? 1 : -1, path = g.path, w = g.weight;
 
   /* 1. путь к цели */
-  const hero = path ? <section className="wc goal-hero span12">
+  const hero = path ? <section className="wc goal-hero span12" data-tour="goal-hero">
     <div className="gh-top">
       <div><span className="gh-k">{p.goalName}</span><h2>{fmt1(path.start)} → {fmt1(path.target)} кг</h2></div>
       <div className="gh-now"><b>{fmt1(w.now)} кг</b><span>сейчас{w.byTrend ? ' по тренду' : ''}</span><button className="btn-accent" onClick={onWeigh}><Icon name="plus" />Взвеситься</button></div>
@@ -76,7 +78,7 @@ export function Goal({ wide, onBack, onWeigh, onRedo, onChanged }: { wide: boole
       : when(g.today, path.weeks) ? <>Дойдёшь примерно в <b>{when(g.today, path.weeks)}</b>{path.byFact && path.planWeeks !== null && when(g.today, path.planWeeks) !== when(g.today, path.weeks) ? <span className="muted"> · по расчёту — в {when(g.today, path.planWeeks)}</span> : null}{!w.byTrend ? <span className="muted"> · по расчёту, уточнится, когда накопятся замеры</span> : null}</>
       : 'При текущем темпе цель не приближается.'}</p>
     <div className="miles">{path.milestones.map((m, k) => <div key={m.kg} className={`mile ${k === path.milestones.length - 1 && m.kg === path.target ? 'goal' : ''}`}><b>{fmt1(m.kg)} кг</b><span>{when(g.today, m.weeks, MONN) ? `≈ ${when(g.today, m.weeks, MONN)}` : '—'}</span></div>)}</div>
-  </section> : <section className="wc goal-hero span12">
+  </section> : <section className="wc goal-hero span12" data-tour="goal-hero">
     <div className="gh-top">
       <div><span className="gh-k">{p.goalName}</span><h2>{p.goal === 'maintain' ? `Держим ≈ ${fmt1(p.start)} кг` : `${fmt1(p.start)} кг → ?`}</h2></div>
       <div className="gh-now"><b>{fmt1(w.now)} кг</b><span>сейчас{w.byTrend ? ' по тренду' : ''}</span><button className="btn-accent" onClick={onWeigh}><Icon name="plus" />Взвеситься</button></div>
@@ -87,7 +89,7 @@ export function Goal({ wide, onBack, onWeigh, onRedo, onChanged }: { wide: boole
 
   /* 2. каждый день */
   const left = pl.kcal - g.eatenToday.kcal;
-  const daily = <section className="wc span12 goal-daily">
+  const daily = <section className="wc span12 goal-daily" data-tour="goal-daily">
     <div className="card-head"><h2>Что делать каждый день</h2></div>
     <div className="dos">
       <div className="do solid s-orange"><span className="do-k">Ешь до</span><b>{fmt(pl.kcal)}</b><span className="do-u">ккал в день</span><span className="do-t">{g.eatenToday.kcal ? (left >= 0 ? `сегодня осталось ${fmt(left)}` : `сегодня перебор ${fmt(-left)}`) : 'сегодня ещё ничего не записано'}</span></div>
@@ -134,9 +136,9 @@ export function Goal({ wide, onBack, onWeigh, onRedo, onChanged }: { wide: boole
     <div className="wgrid">
       {hero}
       {daily}
-      <section className="wc span5"><div className="card-head"><h2>Как идёшь</h2></div>{status}</section>
+      <section className="wc span5" data-tour="goal-status"><div className="card-head"><h2>Как идёшь</h2></div>{status}</section>
       <section className="wc span7"><div className="card-head"><h2>Вес</h2></div><WeightChart {...g.series} today={g.today} /></section>
-      <section className="wc span12">
+      <section className="wc span12" data-tour="goal-acts">
         <div className="card-head"><h2>Активность на этой неделе</h2></div>
         <div className="acts">{g.levels.map(l => <button key={l.level} className={`act ${l.level === g.level ? 'on' : ''}`} onClick={() => setLevel(l.level)} disabled={!!busy}>
           <b>{l.name}</b><span>{l.hint}</span><em>{busy === l.level ? '…' : `${fmt(l.kcal)} ккал`}</em></button>)}</div>

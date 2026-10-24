@@ -13,6 +13,7 @@ import { buzz } from '../lib/motion';
 import { g } from '../lib/gender';
 import { Bars, human } from '../components/Charts';
 import { Icon } from '../components/Icon';
+import { HelpButton } from '../components/HelpButton';
 import { Sheet } from '../components/Sheet';
 import { useToast } from '../components/Toasts';
 
@@ -228,7 +229,7 @@ function Overview({ o, open, onQuiz, onObsQuiz, onReload }: { o: any; open: (s: 
   const days = [...new Set(diary.map((e: any) => e.day))] as string[];
   const mats = o.materials as Material[];
   return <div className="wgrid">
-    <div className="kpis span12">
+    <div className="kpis span12" data-tour="study-kpis">
       <div className="kpi"><span>Конспектов</span><b>{o.kpi.materials}</b><small>файлы, ссылки, заметки</small></div>
       <div className="kpi"><span>Вопросов</span><b>{fmt(o.kpi.questions)}</b><small>{o.kpi.questions ? 'по выбранным конспектам' : 'только по просьбе'}</small></div>
       <div className="kpi"><span>Сегодня</span><b>{o.kpi.due}</b><small>{o.kpi.due ? plural(o.kpi.due, 'вопрос', 'вопроса', 'вопросов') + ' к повторению' : 'повторять нечего'}</small></div>
@@ -237,7 +238,7 @@ function Overview({ o, open, onQuiz, onObsQuiz, onReload }: { o: any; open: (s: 
 
     <section className="wc span12"><div className="card-head"><h2>Конспекты</h2></div>
       <input ref={file} type="file" hidden accept=".pdf,.docx,.txt,.md,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,text/markdown" onChange={e => pickFile(e.target.files?.[0])} />
-      <div className="add3">
+      <div className="add3" data-tour="study-add">
         <button className="add3-b" disabled={!!busy} onClick={() => file.current?.click()}>{busy ? <span className="spin dark" /> : <Icon name="upload" />}<b>{busy ? 'Читаю файл…' : 'Файл'}</b><small>{busy ? busy : 'PDF, Word, .txt, .md'}</small></button>
         <button className="add3-b" onClick={() => open({ kind: 'link' })}><Icon name="link" /><b>Ссылка</b><small>статья или PDF</small></button>
         <button className="add3-b" onClick={() => open({ kind: 'text' })}><Icon name="edit" /><b>Текст</b><small>вставить конспект</small></button>
@@ -265,7 +266,7 @@ function Overview({ o, open, onQuiz, onObsQuiz, onReload }: { o: any; open: (s: 
         </>}
     </section>}
 
-    <section className="wc span8"><div className="card-head"><h2>Дневник занятий</h2><div className="card-actions"><button className="btn-accent" onClick={() => open({ kind: 'session' })}><Icon name="plus" />Занятие</button></div></div>
+    <section className="wc span8" data-tour="study-diary"><div className="card-head"><h2>Дневник занятий</h2><div className="card-actions"><button className="btn-accent" onClick={() => open({ kind: 'session' })}><Icon name="plus" />Занятие</button></div></div>
       {!days.length ? <p className="card-note">Записывай, что изучал, — журнал посчитает часы и покажет график.</p>
         : days.map(dd => { const arr = diary.filter((e: any) => e.day === dd), m = arr.reduce((a: number, e: any) => a + (e.minutes || 0), 0); return <div key={dd}>
           <div className="group-date"><span>{human(dd)}</span><span>{m ? fmtMin(m) : ''}</span></div>
@@ -307,9 +308,10 @@ export function Study({ wide, version, tab: start, onBack, onChanged, quick }: {
     <header className="dayhead">
       {!wide && <button className="nav" onClick={onBack} aria-label="Назад"><Icon name="chevL" /></button>}
       <div className="daytitle"><span>{tab === 'quiz' ? 'по выбранным конспектам' : 'конспекты, дневник и повторение'}</span><b>{tab === 'quiz' ? 'Вопросы' : 'Учёба'}</b></div>
-      <button className="nav" onClick={() => setSheet({ kind: 'session' })} aria-label="Занятие вручную" title="Занятие вручную"><Icon name="plus" /></button>
+      <button className="nav" data-tour="study-plus" onClick={() => setSheet({ kind: 'session' })} aria-label="Занятие вручную" title="Занятие вручную"><Icon name="plus" /></button>
+      <HelpButton tour="study" />
     </header>
-    <div className="st-bar"><div className="seg-tabs" role="tablist">{([['study', 'Конспекты'], ['quiz', 'Вопросы']] as const).map(([k, n]) => <button key={k} role="tab" aria-selected={tab === k} className={tab === k ? 'on' : ''} onClick={() => { setTab(k); buzz(6); }}>{n}{k === 'quiz' && due ? <span className="tab-badge">{due}</span> : null}</button>)}</div></div>
+    <div className="st-bar"><div className="seg-tabs" role="tablist" data-tour="study-tabs">{([['study', 'Конспекты'], ['quiz', 'Вопросы']] as const).map(([k, n]) => <button key={k} role="tab" aria-selected={tab === k} className={tab === k ? 'on' : ''} onClick={() => { setTab(k); buzz(6); }}>{n}{k === 'quiz' && due ? <span className="tab-badge">{due}</span> : null}</button>)}</div></div>
     {tab === 'quiz' ? <Quiz key={v} onChanged={onChanged} onMaterials={() => setTab('study')} /> : !o ? <div className="skel" style={{ height: 300 }} /> : <Overview o={o} open={setSheet} onQuiz={onQuiz} onObsQuiz={onObsQuiz} onReload={() => setV(x => x + 1)} />}
     <Sheet open={!!sheet} onClose={() => setSheet(null)} title={title} tall={sheet?.kind === 'read' || sheet?.kind === 'obs' || sheet?.kind === 'cheat'}>
       {sheet?.kind === 'read' && <MaterialReader key={sheet.id} id={sheet.id} onQuiz={onQuiz} />}
