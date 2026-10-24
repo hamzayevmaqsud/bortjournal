@@ -10,7 +10,7 @@ import { PasswordInput } from './PasswordInput';
 import { Sheet } from './Sheet';
 import '../styles/demo.css';
 
-export function DemoBanner({ onClaimed, onLogout }: { onClaimed: () => Promise<void> | void; onLogout: () => void }) {
+export function DemoBanner({ onClaimed, onLogout, onTour }: { onClaimed: () => Promise<void> | void; onLogout: () => void; onTour?: () => void }) {
   const [open, setOpen] = useState(false), [busy, setBusy] = useState(false), [err, setErr] = useState('');
   const [v, setV] = useState({ username: '', password: '', password2: '', email: '' }), [show, setShow] = useState(false);
   const set = (k: keyof typeof v) => (e: ChangeEvent<HTMLInputElement>) => { setV(x => ({ ...x, [k]: e.target.value })); if (err) setErr(''); };
@@ -32,7 +32,8 @@ export function DemoBanner({ onClaimed, onLogout }: { onClaimed: () => Promise<v
     <div className="demo-bar" role="status">
       <span className="demo-dot" aria-hidden="true" />
       <span className="demo-text"><span className="demo-long">Это демо — данные удалятся через сутки.</span><span className="demo-short">Демо на сутки</span></span>
-      <button type="button" className="btn-accent demo-save" onClick={() => setOpen(true)}>Сохранить как аккаунт</button>
+      <button type="button" className="btn-accent demo-save" data-tour="demo-save" onClick={() => setOpen(true)}>Сохранить как аккаунт</button>
+      {onTour && <button type="button" className="demo-tour" onClick={onTour} aria-label="Обучение" title="Обучение"><Icon name="quiz" /><span>Обучение</span></button>}
       <button type="button" className="demo-out" onClick={onLogout} aria-label="Выйти из демо"><Icon name="logout" /><span>Выйти</span></button>
     </div>
     <Sheet open={open} onClose={() => setOpen(false)} title="Сохранить как аккаунт">

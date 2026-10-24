@@ -39,7 +39,7 @@ export function DayTip({ data, today, onMeal, onWater, onSteps, onGo, onPro, onW
   const hide = () => { try { localStorage.setItem(HIDE, today); } catch { /* без памяти — спрячем до перезагрузки */ } setHidden(today); };
 
   return <div className="tip-zone">
-    {tip && <section className={`tip-card ${tip.tone === 'good' ? 'good' : ''}`} aria-label="Совет на вечер">
+    {tip && <section data-tour="tip" className={`tip-card ${tip.tone === 'good' ? 'good' : ''}`} aria-label="Совет на вечер">
       <span className="tip-mark" aria-hidden="true"><Icon name={tip.tone === 'good' ? 'star' : 'moon'} /></span>
       <div className="tip-main">
         <small className="tip-k">{tip.tone === 'good' ? 'Хороший день' : 'Совет на вечер'}</small>

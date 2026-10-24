@@ -1,0 +1,45 @@
+/* Обучение: затемнение с окошком вокруг цели и карточка-подсказка. Поверх листов (31), под тостами (50) */
+.tour{--tour-dim:rgba(18,15,11,.6);--tour-ring:rgba(251,244,230,.92);--tour-card:var(--card);--tour-edge:var(--line);position:fixed;inset:0;z-index:45;animation:tour-in .3s var(--ease) both}
+.tour.out{opacity:0;transition:opacity .2s var(--ease)}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]) .tour{--tour-dim:rgba(0,0,0,.7);--tour-ring:rgba(229,115,60,.85);--tour-card:var(--field);--tour-edge:var(--line-2)} }
+:root[data-theme="dark"] .tour{--tour-dim:rgba(0,0,0,.7);--tour-ring:rgba(229,115,60,.85);--tour-card:var(--field);--tour-edge:var(--line-2)}
+
+/* окошко: огромная тень затемняет всё вокруг; переезжает от цели к цели */
+.tour-hole{position:absolute;left:0;top:0;pointer-events:none;
+  box-shadow:0 0 0 2px var(--tour-ring),0 0 0 200vmax var(--tour-dim);
+  transition:transform .45s var(--ease),width .45s var(--ease),height .45s var(--ease),border-radius .45s var(--ease)}
+.tour-hole::after{content:"";position:absolute;inset:-2px;border-radius:inherit;box-shadow:0 0 0 0 var(--tour-ring);animation:tour-pulse 2.2s 0.5s var(--ease) infinite}
+
+.tour-card{position:absolute;width:min(360px,calc(100vw - 32px));padding:16px 18px 16px;border-radius:var(--r3);background:var(--tour-card);color:var(--text);
+  box-shadow:0 18px 50px rgba(20,16,10,.28),0 0 0 1px var(--tour-edge);outline:none;
+  transition:top .45s var(--ease),left .45s var(--ease)}
+.tour-card.dock{left:50%;top:auto;bottom:calc(12px + env(safe-area-inset-bottom,0px));width:min(536px,calc(100vw - 24px));transform:translateX(-50%);transition:none}
+.tour-card.center:not(.dock){width:min(400px,calc(100vw - 32px))}
+.tour-card:focus-visible{box-shadow:0 18px 50px rgba(20,16,10,.28),0 0 0 2px var(--orange)}
+
+.tour-top{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.tour-dots{display:flex;gap:4px;align-items:center}
+.tour-dots i{width:6px;height:6px;border-radius:3px;background:var(--track);transition:width .3s var(--ease),background .3s}
+.tour-dots i.past{background:color-mix(in srgb,var(--orange) 45%,var(--track))}
+.tour-dots i.on{width:18px;background:var(--orange)}
+.tour-n{font:700 11.5px var(--sans);letter-spacing:.04em;color:var(--text-3);white-space:nowrap}
+.tour-skip{margin-left:auto;padding:6px 2px;font:700 12.5px var(--sans);color:var(--text-2);transition:color .2s}
+.tour-skip:hover{color:var(--text)}
+
+.tour-body{animation:tour-text .35s var(--ease) both}
+.tour-body h2{margin:0 0 6px;font:600 22px/1.2 var(--serif);letter-spacing:-.005em;color:var(--text)}
+.tour-body p{margin:0;font-size:14.5px;line-height:1.5;color:var(--text-2)}
+
+.tour-act{display:flex;justify-content:flex-end;gap:8px;margin-top:14px}
+.tour-back,.tour-next{height:38px;padding:0 16px;border-radius:999px;font:700 14px var(--sans);transition:transform .2s var(--spring),filter .2s,background .2s}
+.tour-back{background:var(--field);color:var(--text-2);box-shadow:inset 0 0 0 1.5px var(--line)}
+.tour-next{min-width:96px;background:var(--fill-orange);color:#fff}
+.tour-back:hover,.tour-next:hover{filter:brightness(1.06)}
+.tour-back:active,.tour-next:active{transform:scale(.96)}
+.tour.phone .tour-act button{flex:1}
+.tour.phone .tour-act .tour-next{flex:1.4}
+
+@keyframes tour-in{from{opacity:0}}
+@keyframes tour-text{from{opacity:0;transform:translateY(4px)}}
+@keyframes tour-pulse{0%{box-shadow:0 0 0 0 var(--tour-ring);opacity:.7}70%,100%{box-shadow:0 0 0 10px var(--tour-ring);opacity:0}}
+@media (prefers-reduced-motion:reduce){.tour,.tour-body,.tour-hole::after{animation:none}.tour-hole,.tour-card{transition:none}}

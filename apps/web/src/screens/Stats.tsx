@@ -114,7 +114,7 @@ function Overview({ has, onOpenDay }: { has: (f: string) => boolean; onOpenDay?:
       </div>
     </section>
     <WeekVsWeek w={d.week} has={has} />
-    <section className="wc span7">
+    <section className="wc span7" data-tour="calendar">
       <div className="card-head"><h2>Календарь</h2><div className="cal-nav"><button onClick={() => shift(-1)} aria-label="Предыдущий месяц"><Icon name="chevL" /></button><b aria-live="polite">{c.title}</b><button onClick={() => shift(1)} disabled={c.isCurrent} aria-label="Следующий месяц"><Icon name="chev" /></button></div></div>
       <MonthCal lead={c.lead} cells={c.cells} today={d.today} selected={pick?.at === 'cal' ? pick.day : null} onPick={x => choose(x.day, 'cal')} />
       <div className="legend"><span><i style={{ background: 'var(--mustard)' }} />идеально ★</span><span><i style={{ background: 'var(--gym)' }} />70%+</span><span><i style={{ background: 'var(--steps)' }} />40%+</span><span><i style={{ background: 'var(--text-3)' }} />начало</span><span><i className="k-gymdot" />зал</span></div>
