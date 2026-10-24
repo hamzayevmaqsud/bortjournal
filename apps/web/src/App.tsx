@@ -292,7 +292,8 @@ export function App() {
   const startTour = (id: TourId) => { if (tour || !me) return; close(); store(tourKey(me.username, id), '1'); setTour(id); };
   const tourHere = () => { if (isTour(tab)) startTour(tab); else { go('today'); startTour('today'); } };
   useEffect(() => {
-    if (!me || !data || tour || sheetOpen || !isTour(tab)) return;
+    // сам запускается только тур «Сегодня»; остальные страницы — по «?», когда человек сам захочет
+    if (!me || !data || tour || sheetOpen || tab !== 'today') return;
     const t: TourId = tab, u = me.username;
     // старый ключ lumi.tour.<логин> — гость уже видел прежнее обучение «Сегодня»
     if (store(tourKey(u, t)) || (t === 'today' && store(`lumi.tour.${u}`))) return;
