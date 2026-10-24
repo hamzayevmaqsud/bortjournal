@@ -2252,6 +2252,15 @@ input:-webkit-autofill,input:-webkit-autofill:hover,input:-webkit-autofill:focus
 .wn-h span{font-size:12.5px;color:var(--text-2);white-space:nowrap}
 .wn-rel ul{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px;color:var(--text);font-size:14.5px;line-height:1.45}
 .wn-rel:not(.now) ul{color:var(--text-2);font-size:13.5px}
+.lw-scene .login .demo-btn{height:clamp(46px,5.6dvh,56px);border-radius:16px;border:1.5px solid var(--line-2);background:transparent;color:var(--text);font:700 15.5px var(--sans);transition:background .2s,border-color .2s}
+.lw-scene .login .demo-btn:hover{background:color-mix(in srgb,var(--text) 5%,transparent);border-color:color-mix(in srgb,var(--text) 30%,transparent)}
+@media (max-width:899px){.lw-scene .login .demo-btn{height:54px;font-size:16px}}
+/* единый голос с входом: словесные заголовки — Playfair Display (как «Один дневник на весь день»); числа остаются в Rubik */
+:root{--serif:'Playfair Display',Georgia,'Times New Roman',serif}
+.daytitle b,.sheet h2,.ob h1,.gh-top h2,.goal-empty h2,.pw-hero h3,.pw-done h3,.pro-teaser h3,.crash h2,.reader-title h2,.bk-now-main h3,.bk-detail h3,.ex-hero h3{font-family:var(--serif)!important;font-weight:600!important;letter-spacing:-.01em!important}
+.hero-day span{font-family:var(--serif);font-weight:600;letter-spacing:0;margin-left:.25em}
+.lw-scene .login .demo-top{display:none}
+@media (max-width:899px){.lw-scene .login .demo-top{display:inline-flex;align-self:flex-start;min-height:40px;margin-top:-6px;padding:0 2px;background:none;border:0;color:var(--orange);font:600 15.5px var(--sans)}}
 /* стену нельзя выделить или утащить мышью */
 .lw{-webkit-user-select:none;user-select:none}
 .lw img{-webkit-user-drag:none}

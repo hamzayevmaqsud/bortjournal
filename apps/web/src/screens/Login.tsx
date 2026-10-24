@@ -11,9 +11,10 @@ import { PasswordInput } from '../components/PasswordInput';
 import { ThemeToggle } from '../components/ThemeToggle';
 
 // 23 постера по кругу оттенков (собираются из Documents/Lumi/login page): 240 и 400 px — показываем не крупнее
-const N = 23;
-// какие постеры на стене (номера файлов): одна гамма с логотипом — тёплые пейзажи и закаты
-const PICK = [1, 3, 5, 6, 7, 9, 13, 14, 15, 17, 19, 20, 22, 23];
+const N = 27;
+// какие постеры на стене (номера файлов): тёплые пейзажи и закаты + экраны самого Lumi (24–27: «Сегодня», «Еда», «Статистика», «Планы»),
+// по одному экрану в каждой ленте — стена заодно показывает, что внутри
+const PICK = [1, 3, 5, 6, 24, 7, 26, 13, 14, 25, 19, 27, 20, 23];
 const PER = 11;                         // секунд на постер — у всех лент одна скорость
 const LETTERS = 4;                      // L, U, M, I — карточки логотипа (public/lumi/logo)
 const PHONE_Q = '(max-width: 899px)';
@@ -185,6 +186,14 @@ export function Login({ onDone }: { onDone: () => void }) {
   const byMail = u.includes('@');
   const on = (k: string) => ({ onFocus: () => setFocus(k), onBlur: () => setFocus(f => (f === k ? '' : f)) });
 
+  // демо: временный аккаунт с примером дня на сутки
+  const startDemo = async () => {
+    setBusy(true); setErr('');
+    try { await api('/api/auth/demo', { method: 'POST', body: { tz: -new Date().getTimezoneOffset() } }); onDone(); }
+    catch (x) { setErr(x instanceof ApiError ? x.message : 'Не получилось открыть демо.'); }
+    finally { setBusy(false); }
+  };
+
   const card = forgot ? <>
     {brand}
     <h1 ref={title} tabIndex={-1}>Новый пароль</h1>
@@ -204,7 +213,9 @@ export function Login({ onDone }: { onDone: () => void }) {
       <button type="button" aria-pressed={up} className={up ? 'on' : ''} onClick={() => { setMode('up'); setErr(''); }}>Создать аккаунт</button>
     </div>
     <h1 ref={title} tabIndex={-1}>{up ? 'Один дневник на\u00a0весь день' : 'С\u00a0возвращением'}</h1>
-    <p>{up ? 'Еда, вода, шаги, задачи и учёба — всё в одном месте.' : 'Маяк горит — твой день на месте.'}</p>
+    <p>{up ? 'Еда, вода, задачи и учёба в одном дне — вместо пяти приложений.' : 'Маяк горит — твой день на месте.'}</p>
+    {/* телефон: кнопка демо под формой не видна без прокрутки — короткая ссылка сразу под обещанием */}
+    {up && <button type="button" className="demo-top" disabled={busy} onClick={startDemo}>Попробовать без регистрации →</button>}
     {any && <div className="pv-btns">
       {pv.apple && <a className="pv-btn pv-apple" href={startUrl('apple')}><AppleMark />{up ? 'Создать через Apple' : 'Войти через Apple'}</a>}
       {pv.google && <a className="pv-btn pv-google" href={startUrl('google')}><GoogleMark />{up ? 'Создать через Google' : 'Войти через Google'}</a>}
@@ -246,15 +257,11 @@ export function Login({ onDone }: { onDone: () => void }) {
       {errBox}
       <button type="button" className="forgot" onClick={() => { setForgot(true); setErr(''); }}>{up ? 'Уже есть аккаунт? Забыли пароль?' : 'Забыли пароль?'}</button>
       <button type="submit" disabled={busy}>{busy ? (up ? 'Создаю…' : 'Вхожу…') : up ? 'Создать аккаунт' : 'Войти'}</button>
-      {up && <p className="trust">Без карты · {TRIAL_DAYS} дней Pro бесплатно</p>}
     </form>
     {/* демо: временный аккаунт с примером дня, удаляется через сутки; можно сохранить как настоящий */}
-    <button type="button" className="forgot demo-link" disabled={busy} onClick={async () => {
-      setBusy(true); setErr('');
-      try { await api('/api/auth/demo', { method: 'POST', body: { tz: -new Date().getTimezoneOffset() } }); onDone(); }
-      catch (x) { setErr(x instanceof ApiError ? x.message : 'Не получилось открыть демо.'); }
-      finally { setBusy(false); }
-    }}>Посмотреть без регистрации →</button>
+    {/* новичку демо — вторая полноценная кнопка: попробовать за секунду без пароля; при входе — скромная ссылка */}
+    <button type="button" className={up ? 'demo-btn' : 'forgot demo-link'} disabled={busy} onClick={startDemo}>{up ? 'Попробовать без регистрации' : 'Посмотреть без регистрации →'}</button>
+    {up && <p className="trust">Без карты · {TRIAL_DAYS} дней Pro бесплатно · данные только твои</p>}
   </>; })();
 
   return <div className="login-scene lw-scene">
