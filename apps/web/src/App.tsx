@@ -288,8 +288,10 @@ export function App() {
   if (me === null) return <Login onDone={loadMe} />;
   if ((!me.profile?.heightCm && me.profile?.settings?.onboarded !== true) || redo) {
     const p = me.profile, w = data?.parts.body?.weight?.kg ?? p?.startWeightKg;
-    const initial = p?.heightCm ? { name: String(p.settings?.name ?? ''), sex: (p.sex === 'f' ? 'f' : 'm') as 'm' | 'f', age: p.age ? String(p.age) : '', height: String(p.heightCm), weight: w ? String(w).replace('.', ',') : '', goal: (p.goal ?? 'maintain') as 'lose' | 'maintain' | 'gain', pace: (p.pace ?? 'mid') as 'soft' | 'mid' | 'hard', target: p.targetKg ? String(p.targetKg).replace('.', ',') : '' } : undefined;
-    return <Onboarding initial={initial} onCancel={p?.heightCm ? () => setRedo(false) : undefined} onDone={async () => { setRedo(false); await loadMe(); setDays({}); loadDay(); }} />;
+    // повтор анкеты: прошлые ответы — тело из профиля, цели, разделы, имя и напоминания из настроек
+    const planned = String((p as { plannedSteps?: number } | null)?.plannedSteps ?? '');
+    const initial = p?.heightCm ? { name: String(p.settings?.name ?? ''), sex: (p.sex === 'f' ? 'f' : 'm') as 'm' | 'f', age: p.age ? String(p.age) : '', height: String(p.heightCm), weight: w ? String(w).replace('.', ',') : '', goal: (p.goal ?? 'maintain') as 'lose' | 'maintain' | 'gain', pace: (p.pace ?? 'mid') as 'soft' | 'mid' | 'hard', target: p.targetKg ? String(p.targetKg).replace('.', ',') : '', ...(['3000', '6000', '9000', '12000'].includes(planned) ? { steps: planned } : {}) } : undefined;
+    return <Onboarding initial={initial} settings={redo ? p?.settings : undefined} onCancel={redo ? () => setRedo(false) : undefined} onDone={async () => { setRedo(false); setTab('today'); await loadMe(); setDays({}); loadDay(); }} />;
   }
 
   // «Ещё»: короткая живая сводка каждого раздела вместо «открыть»

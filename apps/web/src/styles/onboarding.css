@@ -1,0 +1,151 @@
+/* Анкета первого запуска: телефон — во весь экран, компьютер — карточка ~560px по центру. Цвета — токены Lumi, обе темы */
+.onb{min-height:100%;min-height:100dvh;display:flex;justify-content:center;align-items:flex-start;background:var(--bg);color:var(--text);
+  padding:calc(16px + env(safe-area-inset-top,0px)) max(16px,env(safe-area-inset-right,0px)) calc(16px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px))}
+.onb-card{width:100%;max-width:560px;min-height:calc(100dvh - 32px - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:20px}
+@media (min-width:700px){
+  .onb{align-items:center;padding:40px 24px}
+  .onb-card{min-height:0;padding:28px 32px 24px;border-radius:var(--r4);background:var(--card);box-shadow:var(--sh2);border:1px solid var(--line)}
+}
+
+/* прогресс: отрезки по шагам и «2 из 6» */
+.onb-top{display:flex;align-items:center;gap:12px}
+.onb-progress{flex:1;display:flex;gap:6px}
+.onb-progress i{flex:1;height:4px;border-radius:4px;background:var(--track);transition:background .35s var(--ease)}
+.onb-progress i.done{background:color-mix(in srgb,var(--orange) 55%,var(--track))}
+.onb-progress i.on{background:var(--orange)}
+.onb-count{font:600 13px var(--display);color:var(--text-3);font-variant-numeric:tabular-nums;white-space:nowrap}
+
+.onb-step{flex:1;display:flex;flex-direction:column;gap:16px;animation:onbIn .4s var(--ease) both}
+@keyframes onbIn{from{opacity:0;transform:translateX(14px)}to{opacity:1;transform:none}}
+.onb h1{margin:4px 0 0;font:600 30px/1.15 var(--serif,'Playfair Display',Georgia,serif);letter-spacing:-.01em;text-wrap:balance;outline:none}
+.onb h2{margin:0;font:700 15px var(--sans)}
+.onb-lead{margin:-6px 0 0;color:var(--text-2);font-size:15px;line-height:1.45}
+.onb-name{font-size:20px;padding:16px 16px;min-height:56px}
+
+/* цели: крупные карточки с иконкой и галочкой */
+.onb-aims{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.onb-aim{position:relative;display:flex;align-items:center;gap:10px;min-height:64px;padding:12px 30px 12px 12px;border-radius:var(--r2);border:1.5px solid var(--line-2);background:var(--field);text-align:left;color:var(--text);
+  transition:border-color .2s,background .2s,transform .2s var(--spring)}
+.onb-aim:active{transform:scale(.98)}
+.onb-aim .chip-ic{width:38px;height:38px}
+.onb-aim-t{display:flex;flex-direction:column;gap:2px;min-width:0}
+.onb-aim b{font:600 14.5px/1.25 var(--sans)}
+.onb-aim small{font-size:12.5px;color:var(--text-3);line-height:1.3}
+.onb-aim.on{border-color:var(--c);background:color-mix(in srgb,var(--c) 9%,var(--field))}
+.onb-tick{position:absolute;top:8px;right:8px;width:20px;height:20px;border-radius:50%;display:grid;place-items:center;border:1.5px solid var(--line-2);color:transparent;transition:background .2s,border-color .2s,color .2s}
+.onb-tick .ic{width:13px;height:13px;stroke-width:3}
+.onb-aim.on .onb-tick{background:var(--c);border-color:var(--c);color:#fff}
+
+/* разделы — отмеченные чипы под целями */
+.onb-sections{display:flex;flex-direction:column;gap:6px;padding:14px;border-radius:var(--r3);background:color-mix(in srgb,var(--track) 45%,transparent)}
+.onb-sections p{margin:0 0 4px;font-size:13px;color:var(--text-2)}
+.onb-chips{display:flex;flex-wrap:wrap;gap:6px}
+.onb-chip{display:inline-flex;align-items:center;gap:5px;min-height:44px;padding:0 14px;border-radius:999px;border:1.5px solid var(--line-2);background:var(--field);color:var(--text);font:600 14px var(--sans);
+  transition:background .2s,border-color .2s,color .2s,transform .2s var(--spring)}
+.onb-chip:active{transform:scale(.95)}
+.onb-chip .ic{width:15px;height:15px;stroke-width:2.6}
+.onb-chip small{font:600 12px var(--display);color:var(--text-3)}
+/* выбранное — тёмное в светлой теме и светлое в тёмной: видно сразу */
+.onb-chip.on{background:var(--text);border-color:var(--text);color:var(--bg)}
+.onb-chip.on small{color:color-mix(in srgb,var(--bg) 70%,transparent)}
+
+/* поля */
+.onb-field{display:flex;flex-direction:column;gap:8px}
+.onb-label,.onb-num>span,.onb-norm>span:first-child{font:600 13px var(--sans);color:var(--text-2)}
+.onb-hint{font-size:12.5px;color:var(--text-3)}
+.onb-seg{display:flex;gap:6px;padding:4px;border-radius:var(--r2);background:var(--track)}
+.onb-seg button{flex:1;min-height:44px;padding:8px 6px;border-radius:calc(var(--r2) - 4px);font:600 14px var(--sans);color:var(--text-2);display:inline-flex;align-items:center;justify-content:center;gap:6px;transition:background .2s,color .2s,box-shadow .2s}
+.onb-seg button.on{background:var(--text);color:var(--bg);box-shadow:var(--sh1)}
+.onb-seg .ic{width:16px;height:16px}
+.onb-grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.onb-num{display:flex;flex-direction:column;gap:6px;min-width:0}
+.onb-num .in{font:700 20px var(--display);font-variant-numeric:tabular-nums;min-height:52px;padding:12px}
+.onb-row{display:flex;flex-direction:column;gap:14px}
+.onb-target{max-width:220px}
+
+/* нормы: правятся прямо в плитке */
+.onb-norms{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.onb-norm{display:flex;flex-direction:column;gap:4px;padding:12px 14px;border-radius:var(--r2);background:var(--field);border:1.5px solid var(--line);transition:border-color .2s}
+.onb-norm:focus-within{border-color:var(--orange)}
+.onb-norm.edited{border-color:color-mix(in srgb,var(--orange) 50%,var(--line))}
+.onb-norm-v{display:flex;align-items:baseline;gap:6px}
+.onb-norm-v input{min-width:2ch;max-width:100%;border:0;background:none;padding:0;font:800 26px var(--display);color:var(--text);font-variant-numeric:tabular-nums;outline:none}
+.onb-norm-v small{font-size:13px;color:var(--text-3);white-space:nowrap}
+.onb-norm em{font-style:normal;font-size:12px;color:var(--text-3)}
+.onb-reset{align-self:flex-start;font-size:12px;color:var(--orange-ink);text-decoration:underline;text-underline-offset:2px;padding:2px 0}
+.onb-note{margin:0;font-size:13px;line-height:1.45;color:var(--text-2)}
+
+/* привычки */
+.onb-habits{display:flex;flex-direction:column;gap:8px}
+.onb-habit{position:relative;display:flex;align-items:center;gap:12px;min-height:56px;padding:10px 44px 10px 14px;border-radius:var(--r2);border:1.5px solid var(--line-2);background:var(--field);color:var(--text);text-align:left;
+  transition:border-color .2s,background .2s,transform .2s var(--spring)}
+.onb-habit:active{transform:scale(.99)}
+.onb-habit b{font:600 15px var(--sans)}
+.onb-habit small{position:absolute;right:14px;font-size:12px;color:var(--text-3)}
+.onb-habit .onb-tick{top:50%;right:14px;margin-top:-11px;width:22px;height:22px}
+.onb-habit.on{border-color:var(--orange);background:color-mix(in srgb,var(--orange) 7%,var(--field))}
+.onb-habit.on .onb-tick{background:var(--orange);border-color:var(--orange);color:#fff}
+.onb-habit:disabled{opacity:.7;cursor:default}
+.onb-emoji{font-size:22px;width:28px;text-align:center;flex:none}
+
+/* напоминания */
+.onb-rem{display:flex;flex-direction:column;border-radius:var(--r2);background:var(--field);border:1px solid var(--line);overflow:hidden}
+.onb-rem-row{display:flex;align-items:center;gap:12px;min-height:56px;padding:10px 14px;cursor:pointer}
+.onb-rem-row+.onb-rem-row{border-top:1px solid var(--line)}
+.onb-rem-row>span{flex:1;display:flex;flex-direction:column;gap:2px}
+.onb-rem-row b{font:600 15px var(--sans)}
+.onb-rem-row small{font-size:12.5px;color:var(--text-3)}
+.onb-push{display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:var(--r2);background:var(--navy);color:var(--on-navy);font-size:14px;line-height:1.4}
+.onb-push span{flex:1}
+.onb-push .ic{width:20px;height:20px;flex:none;color:var(--good);stroke-width:2.6}
+.onb-push.on{background:color-mix(in srgb,var(--good) 14%,var(--field));color:var(--text)}
+.onb-push-btn{flex:none;min-height:44px;padding:0 16px;border-radius:999px;background:var(--fill-orange);color:#fff;font:700 14px var(--display)}
+.onb-push-btn:disabled{opacity:.6}
+
+/* низ: причина, «Назад», «Пропустить», «Дальше» */
+.onb-nav{display:flex;flex-direction:column;gap:10px;position:sticky;bottom:0;padding-top:10px;background:linear-gradient(to bottom,transparent,var(--bg) 14px)}
+@media (min-width:700px){.onb-nav{position:static;background:none}}
+.onb-need{margin:0;font-size:13.5px;color:var(--orange-ink);text-align:center}
+.onb-btns{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:8px}
+.onb-back,.onb-skip{min-height:48px;padding:0 16px;border-radius:var(--r2);font:600 15px var(--sans);color:var(--text-2)}
+.onb-back{background:var(--field);border:1px solid var(--line)}
+.onb-skip{justify-self:end;color:var(--text-3)}
+.onb-skip:hover{color:var(--text)}
+.onb-next{width:auto;min-width:140px;min-height:52px}
+.onb-next:disabled{opacity:.45;cursor:not-allowed}
+.onb-wide{grid-column:1/-1;width:100%}
+.onb button:focus-visible,.onb input:focus-visible{outline:2.5px solid var(--orange);outline-offset:2px}
+.onb-norm-v input:focus-visible{outline:none}
+
+/* итог */
+.onb-done .onb-step{align-items:stretch}
+.onb-done-mark{width:52px;height:52px;border-radius:50%;display:grid;place-items:center;background:var(--fill-orange);color:#fff;animation:onbPop .5s var(--spring) both}
+.onb-done-mark .ic{width:26px;height:26px;stroke-width:2.6}
+@keyframes onbPop{from{transform:scale(.4);opacity:0}to{transform:none;opacity:1}}
+.onb-sum{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;border-radius:var(--r2);background:var(--field);border:1px solid var(--line)}
+.onb-sum li{display:flex;flex-direction:column;gap:4px;padding:12px 14px}
+.onb-sum li+li{border-top:1px solid var(--line)}
+.onb-sum b{font:600 12px var(--sans);text-transform:uppercase;letter-spacing:.06em;color:var(--text-3)}
+.onb-sum span{font-size:15px;line-height:1.4}
+.onb-sum-n{display:flex;flex-wrap:wrap;gap:4px 16px}
+.onb-sum-n i{font-style:normal;color:var(--text-2);font-size:14px}
+.onb-sum-n em{font:800 20px var(--display);font-style:normal;color:var(--text);font-variant-numeric:tabular-nums}
+.onb-trial{margin:0;padding:12px 14px;border-radius:var(--r2);background:var(--navy);color:var(--on-navy);font:500 13.5px/1.45 var(--sans)}
+.onb-trial b{color:var(--mustard)}
+
+.onb-eyebrow{margin:0;font:600 13px var(--sans);color:var(--orange-ink);letter-spacing:.02em}
+.onb .in:focus-visible{outline:none}
+
+/* телефон: цели — одной колонкой, чтобы названия не ломались на три строки */
+@media (max-width:520px){
+  .onb-aims{grid-template-columns:1fr;gap:6px}
+  .onb-aim{min-height:56px;padding:9px 40px 9px 10px}
+  .onb-aim .chip-ic{width:34px;height:34px}
+  .onb-aim-t{flex-direction:row;align-items:baseline;flex-wrap:wrap;column-gap:8px}
+  .onb-aim .onb-tick{top:50%;margin-top:-10px;right:12px}
+}
+@media (max-width:380px){
+  .onb-grid3{grid-template-columns:1fr 1fr}
+  .onb-skip{padding:0 8px}
+}
+@media (prefers-reduced-motion:reduce){.onb-step,.onb-done-mark{animation:none}.onb *{transition:none!important}}
