@@ -4,7 +4,7 @@
  * Всё хранится на сервере — телефон и компьютер видят одно и то же.
  */
 import { useCallback, useEffect, useState } from 'react';
-import { GOALS, PACE } from '@bortjournal/core';
+import { AIMS, AIM_KEYS, aimsOf, GOALS, PACE, type Aim } from '@bortjournal/core';
 import { api, ApiError, forgetLocal, type Me } from '../lib/api';
 import { fmt } from '../lib/format';
 import { Icon } from '../components/Icon';
@@ -55,7 +55,11 @@ function SectionsForm({ me, onSaved }: { me: Me; onSaved: (s: Record<string, unk
   const rest = Number(s.rest) || 90, books = Number(s.booksGoal) || 12;
   const chosen = (s.sections as string[] | undefined) ?? TRACK.map(t => t[0]);
   const toggle = (k: string) => { const next = chosen.includes(k) ? chosen.filter(x => x !== k) : [...chosen, k]; if (!next.length) { toast('Оставь хотя бы один раздел', { err: true }); return; } save({ sections: next }); };
+  const goals = aimsOf(s.goals);
+  const toggleGoal = (k: Aim) => save({ goals: goals.includes(k) ? goals.filter(x => x !== k) : [...goals, k] });
   return <div className="pf-list">
+    <div className="pf-row pf-track"><span className="mid"><b>Мои цели</b><small>советы дня в первую очередь — про них</small></span>
+      <div className="chips">{AIM_KEYS.map(k => <button key={k} type="button" className={`chip ${goals.includes(k) ? 'on' : ''}`} aria-pressed={goals.includes(k)} onClick={() => toggleGoal(k)}>{AIMS[k].name}</button>)}</div></div>
     <div className="pf-row pf-track"><span className="mid"><b>Что веду</b><small>главный экран и нижняя панель показывают только выбранное</small></span>
       <div className="chips">{TRACK.map(([k, n]) => <button key={k} type="button" className={`chip ${chosen.includes(k) ? 'on' : ''}`} aria-pressed={chosen.includes(k)} onClick={() => toggle(k)}>{n}</button>)}</div></div>
     <div className="pf-row"><span className="mid"><b>Отдых между подходами</b><small>таймер в зале после каждого подхода</small></span>

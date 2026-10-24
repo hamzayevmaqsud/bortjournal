@@ -4,6 +4,7 @@
  */
 import { useEffect, useState } from 'react';
 import { api, ApiError } from '../lib/api';
+import { ios, pushSupported as supported, standalone, subscribeHere } from '../lib/push';
 import { Icon } from './Icon';
 import { useToast } from './Toasts';
 
@@ -17,10 +18,6 @@ const KINDS: Array<[string, string, string]> = [
   ['tip', 'Совет на вечер', 'в 20:40 — одна подсказка по сегодняшнему дню, если есть что сказать'],
   ['review', 'Итог недели', 'в воскресенье в 19:00 — оценка недели и серия']
 ];
-const standalone = () => matchMedia('(display-mode: standalone)').matches || (navigator as { standalone?: boolean }).standalone === true;
-const ios = () => /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-const supported = () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
-const keyBytes = (b64: string) => { const s = atob(b64.replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((b64.length + 3) % 4)); return Uint8Array.from(s, c => c.charCodeAt(0)); };
 
 interface View { key: string; devices: number; off: boolean; lead: number; kinds: Record<string, boolean> }
 
@@ -34,10 +31,9 @@ export function Reminders({ onInstall }: { onInstall: () => void }) {
   const enable = async () => {
     setBusy(true);
     try {
-      if ((await Notification.requestPermission()) !== 'granted') { toast('Уведомления запрещены. Разреши их в настройках браузера или телефона.', { err: true }); return; }
-      const reg = await navigator.serviceWorker.ready;
-      const sub = (await reg.pushManager.getSubscription()) ?? await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes(v!.key) });
-      setV(await api<View>('/api/push/subscribe', { method: 'POST', body: sub.toJSON() })); setHere(sub);
+      const r = await subscribeHere<View>(v!.key);
+      if (!r) { toast('Уведомления запрещены. Разреши их в настройках браузера или телефона.', { err: true }); return; }
+      setV(r.view); setHere(r.sub);
       toast('Напоминания включены на этом устройстве');
     } catch (e) { fail(e, 'Не получилось включить уведомления'); } finally { setBusy(false); }
   };

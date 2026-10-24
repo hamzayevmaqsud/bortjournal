@@ -82,6 +82,9 @@ export function weeksTo(p: PlanProfile, w0: number, kcal: number, level: Activit
 /** норма воды, мл: база по полу + активность */
 export const waterGoal = (sex: string | null | undefined, level?: string | null) => (sex === 'f' ? 1600 : 2000) + (({ sed: 0, light: 250, mod: 400, high: 600, ath: 800 } as Record<string, number>)[level ?? 'sed'] ?? 0);
 
+/** цель шагов на день: обычные шаги из анкеты + 2000, не меньше 6000 */
+export const stepsGoal = (planned: number) => Math.max(6000, Math.round(planned / 1000) * 1000 + 2000);
+
 /** вес по неделям при постоянных калориях: расход пересчитывается под новый вес. [0] — старт */
 export function simulate(p: PlanProfile, w0: number, kcal: number, level: ActivityLevel, weeks: number, steps = p.steps ?? 6000) {
   const f = ACTIVITY[level]?.f ?? 1.2, out = [w0];

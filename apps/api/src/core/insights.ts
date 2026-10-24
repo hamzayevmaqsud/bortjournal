@@ -1,13 +1,13 @@
 /**
  * Совет дня и итог недели. Совет — правила без случайностей: из фактов дня (AppModule.daily, как в статистике)
  * собираются кандидаты с весом, главный — самый полезный, ещё до двух — в запас. Учитываются только разделы,
- * которые человек ведёт (settings.sections) и которые открыты тарифом. Если есть ключ Gemini, согласие на ИИ
+ * которые человек ведёт (settings.sections) и которые открыты тарифом; советы про цели из анкеты (settings.goals) — выше. Если есть ключ Gemini, согласие на ИИ
  * и лимит — главный совет переписывается одной дружелюбной фразой; любой сбой — остаётся текст правила.
  * Итог недели — тот же, что в статистике (review), плюс цифры по включённым разделам.
  */
 import { eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
-import { addDays, diffDays, hasFeature, isDay, localNow, nWord, ordinal, parseDay, plural } from '@bortjournal/core';
+import { addDays, aimsOf, diffDays, hasFeature, isDay, localNow, nWord, ordinal, parseDay, plural } from '@bortjournal/core';
 import type { DB, Tx } from '../db/index.js';
 import { takeAi } from './ai-quota.js';
 import { requireUser } from './auth.js';
@@ -34,12 +34,20 @@ export interface TipInput {
   past: Array<DayFacts & { day: string }>;
   /** оценка дня 0…1, идеальных дней в этом месяце до сегодня, серия до вчера включительно */
   score: number; perfectMonth: number; streak: number;
+  /** цели из анкеты (settings.goals): советы про них поднимаются выше */
+  goals?: ReadonlySet<string>;
 }
 
 const fmtN = (n: number) => Math.round(n).toLocaleString('ru-RU');
 const fmt1 = (n: number) => (Math.round(n * 10) / 10).toLocaleString('ru-RU');
 const cap = (s: string) => s[0]!.toUpperCase() + s.slice(1);
 const EVENING = 17 * 60;
+/** к каким целям анкеты относится совет; совпало — вес совета +GOAL_BOOST */
+const TIP_GOALS: Record<string, readonly string[]> = {
+  'food-empty': ['weight', 'muscle'], 'kcal-over': ['weight'], 'kcal-low': ['weight', 'muscle'], protein: ['muscle', 'weight'],
+  water: ['water', 'weight'], steps: ['move', 'weight'], gym: ['muscle', 'move'], tasks: ['plans', 'routine'], quiz: ['study'], study: ['study']
+};
+export const GOAL_BOOST = 15;
 
 /** все подходящие советы, самый полезный первым */
 export function rankTips(x: TipInput): Tip[] {
@@ -88,6 +96,7 @@ export function rankTips(x: TipInput): Tip[] {
   }
   if (x.score >= 0.95) add('perfect', 90, `Идеальный день — ${x.perfectMonth + 1}-й за месяц`, undefined, 'good');
   else if (x.score >= 0.8) add('strong', 12, `Сильный день: ${Math.round(x.score * 100)}%. Ещё немного — и будет идеальный`, undefined, 'good');
+  if (x.goals?.size) for (const t of out) if (TIP_GOALS[t.key]?.some(g => x.goals!.has(g))) t.weight += GOAL_BOOST;
   return out.sort((a, b) => b.weight - a.weight);
 }
 
@@ -96,24 +105,24 @@ async function person(db: Tx, userId: string, at: number) {
   const [u] = await db.select({ tz: users.tzOffset }).from(users).where(eq(users.id, userId));
   const now = localNow(u?.tz ?? 0, at);
   const [p] = await db.select({ s: profiles.settings }).from(profiles).where(eq(profiles.userId, userId));
-  const chosen = (p?.s as Record<string, unknown> | undefined)?.sections;
+  const chosen = (p?.s as Record<string, unknown> | undefined)?.sections, goals = new Set<string>(aimsOf((p?.s as Record<string, unknown> | undefined)?.goals));
   const sub = await subscription(db, userId);
   const open = (a: Area) => !['gym', 'study', 'budget', 'books'].includes(a) || hasFeature(sub, a as 'gym');
   // ничего не выбрано — ведёт всё, что открыто
   const on = new Set<Area>(SECTION_KEYS.filter(a => (!Array.isArray(chosen) || chosen.includes(a)) && open(a)));
-  return { now, on };
+  return { now, on, goals };
 }
 
 /** вход для правил: факты за месяц до сегодня включительно, оценка, серия, идеальные дни месяца */
 export async function tipInput(db: Tx, userId: string, at = Date.now()): Promise<TipInput> {
-  const { now, on } = await person(db, userId, at);
+  const { now, on, goals } = await person(db, userId, at);
   const { norms } = await userContext(db, userId, at);
   const from = addDays(now.day, -35), F = await collect(db, userId, from, now.day), A = tracked(F, now.day);
   const past = [...F.values()].filter(f => f.day < now.day);
   let streak = 0; for (let d = addDays(now.day, -1); hasAny(F.get(d)) && d >= from; d = addDays(d, -1)) streak++;
   const month = now.day.slice(0, 7), perfectMonth = past.filter(f => f.day.startsWith(month) && score(f, A, norms) >= 0.95).length;
   const { day: _d, ...today } = F.get(now.day) ?? { day: now.day };
-  return { day: now.day, minutes: now.minutes, on, norms, today, past, score: score(F.get(now.day), A, norms), perfectMonth, streak };
+  return { day: now.day, minutes: now.minutes, on, norms, today, past, score: score(F.get(now.day), A, norms), perfectMonth, streak, goals };
 }
 
 /* ---------- ИИ: одна фраза вместо текста правила ---------- */
