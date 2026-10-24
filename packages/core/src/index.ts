@@ -4,11 +4,11 @@
 
 /** Модули продукта. Доступ к каждому — через entitlements. */
 /** 'pro' — платный тариф целиком; остальные — модули на будущее (доступ по одному) */
-export const MODULES = ['food', 'gym', 'study', 'budget', 'books', 'plans', 'body', 'pro'] as const;
+export const MODULES = ['food', 'gym', 'study', 'budget', 'books', 'plans', 'body', 'habits', 'pro'] as const;
 export type ModuleName = (typeof MODULES)[number];
 
 export const MODULE_TITLES: Record<ModuleName, string> = {
-  food: 'Еда', gym: 'Зал', study: 'Учёба', budget: 'Бюджет', books: 'Книги', plans: 'Планы', body: 'Тело и шаги', pro: 'Pro'
+  food: 'Еда', gym: 'Зал', study: 'Учёба', budget: 'Бюджет', books: 'Книги', plans: 'Планы', body: 'Тело и шаги', habits: 'Привычки', pro: 'Pro'
 };
 
 /** Откуда у человека доступ к модулю. */

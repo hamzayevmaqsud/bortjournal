@@ -10,6 +10,7 @@ import { addDays, localNow, TRIAL_DAYS } from '@bortjournal/core';
 import type { DB, Tx } from '../db/index.js';
 import { addDrink, addMeal } from '../modules/food/service.js';
 import { setBodyDay } from '../modules/body/service.js';
+import { seedHabits } from '../modules/habits/index.js';
 import { tasks } from '../modules/plans/schema.js';
 import { studySessions } from '../modules/study/schema.js';
 import { books, readingLog } from '../modules/books/schema.js';
@@ -88,6 +89,7 @@ export async function seedDemo(db: Tx, userId: string, tz: number) {
     { userId, title: 'Думай медленно… решай быстро', author: 'Даниэль Канеман', pages: 656, status: 'want', addedOn: addDays(today, -5) },
     { userId, title: 'Мастер и Маргарита', author: 'Михаил Булгаков', pages: 480, currentPage: 480, status: 'done', rating: 5, addedOn: addDays(today, -60), startedOn: addDays(today, -45), finishedOn: addDays(today, -20) }
   ]).returning();
+  await seedHabits(db, userId, today);
   await db.insert(readingLog).values([[-6, 22], [-4, 18], [-3, 30], [-2, 24], [-1, 28]].map(([n, pages]) => ({ userId, bookId: b!.id, day: addDays(today, n!), pages: pages! })));
 }
 

@@ -1,0 +1,82 @@
+/* Свои привычки на «Сегодня»: круглая галочка 44px, серия, семь точек недели. Цвет строки — --c из палитры */
+
+/* компьютер: задачи и привычки — одной колонкой слева, «Остальное» — справа */
+@media (min-width:1101px){
+  .today-main{grid-column:span 7;order:4;display:flex;flex-direction:column;gap:14px;align-self:start;min-width:0}
+  .today-main>.wc{width:100%}
+  .wide-page:not(.narrow) .today-main .c-habits{order:5}
+}
+/* 900–1100 px: во всю ширину после задач */
+@media (min-width:900px) and (max-width:1100px){ .wide-page .c-habits{order:10;--span:12} }
+
+.hb-edit{align-self:center;padding:8px 4px;min-height:36px}
+
+.hb-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px}
+.hb-row{--c:var(--orange);display:flex;align-items:center;gap:12px;min-height:56px;padding:6px 4px;border-radius:var(--r2);transition:background .2s}
+.hb-row+.hb-row{border-top:1px solid var(--line)}
+.hb-row:hover{background:color-mix(in srgb,var(--c) 6%,transparent)}
+
+/* галочка: круг 44px, при отметке заливается цветом привычки, галка дорисовывается */
+.hb-check{flex:none;width:44px;height:44px;border-radius:50%;border:2.5px solid color-mix(in srgb,var(--c) 55%,var(--line-2));background:var(--field);display:grid;place-items:center;
+  transition:background .25s var(--ease),border-color .25s,transform .35s var(--spring),box-shadow .25s}
+.hb-check svg{width:22px;height:22px;fill:none;stroke:var(--card);stroke-width:3;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:24;stroke-dashoffset:24;transition:stroke-dashoffset .3s .08s var(--ease)}
+.hb-check:hover:not([disabled]){border-color:var(--c);box-shadow:0 0 0 4px color-mix(in srgb,var(--c) 14%,transparent)}
+.hb-check:active:not([disabled]){transform:scale(.9)}
+.hb-check[aria-pressed="true"]{background:var(--c);border-color:var(--c);animation:hb-pop .45s var(--spring)}
+.hb-check[aria-pressed="true"] svg{stroke-dashoffset:0}
+.hb-check[disabled]{opacity:.45;cursor:not-allowed}
+.hb-check:focus-visible{outline:2px solid var(--orange);outline-offset:3px}
+@keyframes hb-pop{0%{transform:scale(.86)}60%{transform:scale(1.1)}100%{transform:scale(1)}}
+
+.hb-mid{flex:1;min-width:0;display:flex;flex-direction:column;gap:6px}
+.hb-title{font-size:15px;font-weight:600;color:var(--text);line-height:1.25;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;transition:color .2s}
+.hb-row.on .hb-title{color:var(--text-2)}
+.hb-ic{margin-right:6px}
+
+.hb-dots{display:flex;gap:5px;align-items:center}
+.hb-dots i{width:8px;height:8px;border-radius:50%;background:var(--track);transition:background .25s,transform .3s var(--spring)}
+.hb-dots i.on{background:var(--c)}
+.hb-dots i.cur{box-shadow:0 0 0 1.5px var(--card),0 0 0 3px color-mix(in srgb,var(--c) 45%,transparent)}
+.hb-row.on .hb-dots i.cur{transform:scale(1.15)}
+
+.hb-streak{flex:none;display:inline-flex;align-items:center;gap:3px;min-width:44px;justify-content:flex-end;color:var(--text-3)}
+.hb-streak .ic{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2}
+.hb-streak b{font:600 15px/1 var(--display);font-variant-numeric:tabular-nums}
+.hb-streak.hot{color:var(--orange)}
+.hb-streak.hot .ic{fill:color-mix(in srgb,var(--orange) 25%,transparent)}
+
+/* правка: название, выше/ниже, в архив */
+.hb-list.editing .hb-row{gap:6px}
+.hb-name{flex:1;min-width:0;padding:10px 12px;font-size:15px}
+.hb-tool{flex:none;width:44px;height:44px;border-radius:50%;display:grid;place-items:center;color:var(--text-2);transition:background .2s,color .2s}
+.hb-tool .ic{width:18px;height:18px}
+.hb-tool.up .ic{transform:rotate(-90deg)}
+.hb-tool.down .ic{transform:rotate(90deg)}
+.hb-tool:hover:not([disabled]){background:var(--track);color:var(--text)}
+.hb-tool.del:hover{color:var(--bad);background:var(--bad-soft)}
+.hb-tool[disabled]{opacity:.3;cursor:default}
+
+.hb-add .primary{white-space:nowrap}
+
+.hb-empty p{margin:0 0 10px;color:var(--text-2);font-size:14px;line-height:1.45}
+.hb-sugg{display:flex;flex-wrap:wrap;gap:8px}
+.hb-sugg .chip{display:inline-flex;align-items:center;gap:5px;min-height:44px;padding:8px 14px}
+.hb-sugg .chip .ic{width:14px;height:14px;stroke-width:2.6;color:var(--orange)}
+.hb-sugg .chip:hover{border-color:var(--orange)}
+
+.hb-skel{display:flex;flex-direction:column;gap:10px}
+.hb-skel i{display:block;height:44px;border-radius:var(--r2);background:var(--track);opacity:.6;animation:hb-pulse 1.2s ease-in-out infinite alternate}
+@keyframes hb-pulse{to{opacity:.3}}
+
+/* телефон: строки плотнее, точки чуть меньше */
+@media (max-width:420px){
+  .hb-row{gap:10px}
+  .hb-dots{gap:4px}
+  .hb-dots i{width:7px;height:7px}
+}
+
+@media (prefers-reduced-motion: reduce){
+  .hb-check,.hb-check svg,.hb-dots i,.hb-row,.hb-tool{transition:none}
+  .hb-check[aria-pressed="true"],.hb-skel i{animation:none}
+  .hb-row.on .hb-dots i.cur{transform:none}
+}

@@ -7,3 +7,4 @@ export * from './modules/budget/schema.js';
 export * from './modules/books/schema.js';
 export * from './modules/plans/schema.js';
 export * from './modules/body/schema.js';
+export * from './modules/habits/schema.js';

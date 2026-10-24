@@ -97,7 +97,7 @@ describe('перенос из старого журнала', () => {
     for (const c of r!.checks) expect({ name: c.name, db: c.db }).toEqual({ name: c.name, db: c.source });
     expect(r!.ok).toBe(true);
     first = await tableCounts();
-    expect(first).toMatchObject({ meals: 2, drinks: 2, sets: 5, exercises: 4, quotes: 1, entitlements: 8, tasks: 3, journal: 1, body: 1, ach: 2, push: 1 });
+    expect(first).toMatchObject({ meals: 2, drinks: 2, sets: 5, exercises: 4, quotes: 1, entitlements: 9, tasks: 3, journal: 1, body: 1, ach: 2, push: 1 });
   });
   it('берёт последнюю версию дубля и сохраняет null там, где данных нет', async () => {
     const [plov] = await conn.db.select().from(s.meals).where(eq(s.meals.legacyId, 'm2'));

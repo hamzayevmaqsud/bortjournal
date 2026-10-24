@@ -12,6 +12,7 @@ import { fmt, fmt1, fmt2, MONG, plural, WDF } from '../lib/format';
 import { buzz, spring, useCountUp } from '../lib/motion';
 import { Icon } from '../components/Icon';
 import { Arc } from '../components/Ring';
+import { Habits } from '../components/Habits';
 import { Tasks } from '../components/Tasks';
 import { marksOf, Timeline, type Mark } from '../components/Timeline';
 import { useToast } from '../components/Toasts';
@@ -185,15 +186,22 @@ export function TodayWide({ wide = true, data, day, today, sub, still, settings 
           return wide && wideCols ? <div className="today-side">{side}</div> : side;
         })()}
 
-        {has('tasks') && <section className="wc span7 c-tasks" style={{ ['--i' as string]: 7 }}>
-          <div className="card-head"><h2>{data.isToday ? 'Задачи на сегодня' : 'Задачи'}</h2><div className="card-actions"><span className="count">{done} из {tasks.length}</span><button className="btn-accent" onClick={() => onGo('plans')}>Планы</button></div></div>
-          <form className="task-add" onSubmit={e => { e.preventDefault(); addTask(); }}>
-            <input className="in" value={title} onChange={e => setTitle(e.target.value)} placeholder="Новая задача…" aria-label="Новая задача" />
-            <button type="button" className="more-btn" onClick={onTaskOpen} aria-label="Время, важность, заметка">•••</button>
-            <button className="primary" disabled={!title.trim() || busy}><Icon name="plus" />Добавить</button>
-          </form>
-          <Tasks tasks={tasks} onToggle={onToggleTask} onOpen={() => onGo('plans')} empty="Задач на этот день нет." />
-        </section>}
+        {(() => {
+          // задачи и сразу под ними привычки; на компьютере — одной колонкой слева от «Остального»
+          const main = <>
+            {has('tasks') && <section className="wc span7 c-tasks" style={{ ['--i' as string]: 7 }}>
+              <div className="card-head"><h2>{data.isToday ? 'Задачи на сегодня' : 'Задачи'}</h2><div className="card-actions"><span className="count">{done} из {tasks.length}</span><button className="btn-accent" onClick={() => onGo('plans')}>Планы</button></div></div>
+              <form className="task-add" onSubmit={e => { e.preventDefault(); addTask(); }}>
+                <input className="in" value={title} onChange={e => setTitle(e.target.value)} placeholder="Новая задача…" aria-label="Новая задача" />
+                <button type="button" className="more-btn" onClick={onTaskOpen} aria-label="Время, важность, заметка">•••</button>
+                <button className="primary" disabled={!title.trim() || busy}><Icon name="plus" />Добавить</button>
+              </form>
+              <Tasks tasks={tasks} onToggle={onToggleTask} onOpen={() => onGo('plans')} empty="Задач на этот день нет." />
+            </section>}
+            <Habits day={day} today={today} isToday={data.isToday} />
+          </>;
+          return wide && wideCols ? <div className="today-main">{main}</div> : main;
+        })()}
 
       </div>
     </>}

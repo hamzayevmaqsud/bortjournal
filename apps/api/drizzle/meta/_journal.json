@@ -120,6 +120,13 @@
       "when": 1792755859422,
       "tag": "0016_user_admin_flag",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1792870125853,
+      "tag": "0017_habits",
+      "breakpoints": true
     }
   ]
 }

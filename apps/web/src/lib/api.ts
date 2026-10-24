@@ -1,7 +1,7 @@
 /**
  * Запросы к API. Ошибка несёт текст для человека и код ответа.
  * Без сети: последние ответы GET берутся из памяти телефона, а ежедневные записи (еда, вода, шаги, задачи, траты,
- * подходы, минуты учёбы) встают в очередь и уходят сами, когда связь вернётся. У каждой записи свой ключ
+ * подходы, минуты учёбы, отметки привычек) встают в очередь и уходят сами, когда связь вернётся. У каждой записи свой ключ
  * (Idempotency-Key): если ответ потерялся и запрос ушёл повторно, сервер не создаст дубль.
  */
 export class ApiError extends Error { constructor(public status: number, message: string) { super(message); } }
@@ -11,7 +11,7 @@ const OFFLINE_MARK = '__offline';
 /** ответ взят из копии на телефоне (нет сети) */
 export const fromCache = (x: unknown) => !!x && typeof x === 'object' && (x as Record<string, unknown>)[OFFLINE_MARK] === true;
 // какие записи можно отложить: всё, что не требует ответа сервера прямо сейчас (не ИИ, не поиск, не оплата, не ответы на вопросы)
-const QUEUEABLE = /^\/api\/(food\/(meals|drinks|entries)|body\/day|plans\/(tasks|goals|notes)|budget\/entries|gym\/(live|workouts)|study\/(time|sessions)|books\/[^/]+\/(progress|quotes))/;
+const QUEUEABLE = /^\/api\/(food\/(meals|drinks|entries)|body\/day|plans\/(tasks|goals|notes)|budget\/entries|gym\/(live|workouts)|study\/(time|sessions)|books\/[^/]+\/(progress|quotes)|habits\/[^/]+\/check)/;
 /*
  * Очередь и копии ответов принадлежат человеку: owner — логин последнего вошедшего на этом устройстве.
  * Запись уходит на сервер, только если сейчас вошёл тот же человек (проверяем /api/me перед отправкой);
@@ -137,6 +137,9 @@ export interface Goal { id: string; period: "week" | "month" | "quarter" | "year
 export interface Meal { source?: string; id: string; day: string; time: string | null; slot: string | null; name: string; kcal: number; protein: number; fat: number; carbs: number }
 export interface Drink { id: string; day: string; time: string | null; type: string; ml: number; title: string; kcal: number; name: string | null; kcalPer100: number | null; sugarPer100: number | null }
 export interface DayEvent { id: string | null; module: string; kind: string; time: string | null; title: string; value: number | null; unit: string | null; data: Record<string, unknown> | null }
+/** своя привычка на выбранный день: last7 — [день−6 … день] */
+export interface Habit { id: string; title: string; icon: string | null; color: string | null; sort: number; done: boolean; streak: number; last7: boolean[] }
+export interface HabitsDay { day: string; today: string; limit: number; items: Habit[] }
 export interface Task { id: string; title: string; time: string | null; done: boolean; prio: boolean; repeat: boolean }
 export interface CalEvent { id: string; title: string; time: string | null; minutes: number | null }
 export interface Today {
