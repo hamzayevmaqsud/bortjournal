@@ -94,11 +94,13 @@ export async function seedDemo(db: Tx, userId: string, tz: number) {
 }
 
 export async function demoRoutes(app: FastifyInstance, { db }: { db: DB }) {
-  // не больше 10 демо в час с одного адреса
+  // не больше 10 демо в час с одного адреса; с самой машины (локальная разработка, проверки) — без лимита:
+  // на сервере за прокси (TRUST_PROXY) у посетителя всегда свой адрес, 127.0.0.1 там не бывает
   const made = new Map<string, { n: number; until: number }>();
+  const local = (ip: string) => ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1';
   app.post('/api/auth/demo', { config: { public: true } }, async (req, reply) => {
     const r = made.get(req.ip);
-    if (r && r.until > Date.now() && r.n >= 10) return reply.code(429).send({ error: 'Слишком много демо с этого адреса. Попробуй через час.' });
+    if (!local(req.ip) && r && r.until > Date.now() && r.n >= 10) return reply.code(429).send({ error: 'Слишком много демо с этого адреса. Попробуй через час.' });
     await cleanupDemos(db);
     const t = Number((req.body as { tz?: unknown } | undefined)?.tz), tz = Number.isInteger(t) && Math.abs(t) <= 840 ? t : 0;
     const username = `demo-${crypto.randomBytes(6).toString('hex')}`;
