@@ -68,7 +68,7 @@ export function WeekRecap({ end }: { end?: string }) {
         <span><b>{w.streak}</b>серия, {plural(w.streak, 'день', 'дня', 'дней')}</span>
       </div>
       {w.stats.length > 0 && <dl className="wr-stats">{w.stats.map(s => <div key={s.key} className={s.ok === true ? 'ok' : s.ok === false ? 'off' : ''}>
-        <dt>{s.label}</dt><dd><b>{s.value}</b>{s.unit && <small>{s.unit}</small>}</dd><small>{s.note}</small></div>)}</dl>}
+        <dt>{s.label}</dt><dd><b>{s.value}</b>{s.unit && <small>{s.unit}</small>}<small className="wr-note">{s.note}</small></dd></div>)}</dl>}
       {w.best && <p className="wr-best"><Icon name="star" /><span>Лучший день — {dayName(w.best.day)}, {w.best.score}%{w.best.parts.length ? ` · ${w.best.parts.join(', ')}` : ''}</span></p>}
       <p className="wr-verdict">{w.verdict}</p>
       <p className="wr-focus"><small>Фокус на следующую неделю</small>{w.focus}</p>
