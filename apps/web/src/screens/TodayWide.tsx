@@ -11,6 +11,7 @@ import { api, type Subscription, type Today as TodayData } from '../lib/api';
 import { fmt, fmt1, fmt2, MONG, plural, WDF } from '../lib/format';
 import { buzz, spring, useCountUp } from '../lib/motion';
 import { Icon } from '../components/Icon';
+import { HelpButton } from '../components/HelpButton';
 import { Arc } from '../components/Ring';
 import { Habits } from '../components/Habits';
 import { Tasks } from '../components/Tasks';
@@ -104,6 +105,7 @@ export function TodayWide({ wide = true, data, day, today, sub, still, settings 
         </div>}
       </div>
       <div className="hero-side">
+        <HelpButton tour="today" />
         {!wide && <div className="datenav" data-tour="date">
           <button onClick={() => onDay(-1)} aria-label="Предыдущий день"><Icon name="chevL" /></button>
           <button className={`cur ${off ? 'not-today' : ''}`} onClick={() => off && onDay(-off)} title="К сегодняшнему дню">{rel || WDF[dt.getUTCDay()]} · {dt.getUTCDate()} {MON[dt.getUTCMonth()]}</button>

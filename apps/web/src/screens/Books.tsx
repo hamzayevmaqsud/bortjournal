@@ -10,6 +10,7 @@ import { fmt, fmt1, plural } from '../lib/format';
 import { buzz } from '../lib/motion';
 import { Bars, human, humanLong } from '../components/Charts';
 import { Icon } from '../components/Icon';
+import { HelpButton } from '../components/HelpButton';
 import { Arc } from '../components/Ring';
 import { Sheet } from '../components/Sheet';
 import { useToast } from '../components/Toasts';
@@ -124,13 +125,13 @@ function Now({ o, onOpen, onAdd, onGoal, onChanged }: { o: any; onOpen: (id: str
   };
   const diff = o.behind;
   return <div className="wgrid">
-    <div className="kpis span12">
+    <div className="kpis span12" data-tour="books-kpis">
       <div className="kpi"><span>Серия чтения</span><b>{o.kpi.streak}<small>{plural(o.kpi.streak, 'день', 'дня', 'дней')}</small></b><small>{o.kpi.streak ? 'подряд с чтением' : 'почитай сегодня — начнётся'}</small></div>
       <div className="kpi"><span>Сегодня</span><b>{o.kpi.today}<small>стр.</small></b><small>за неделю {o.kpi.week} стр.</small></div>
       <div className="kpi"><span>Темп</span><b>{o.kpi.pace}<small>стр/день</small></b><small>в дни, когда читаешь</small></div>
       <div className="kpi"><span>За 30 дней</span><b>{fmt(o.kpi.pages30)}<small>стр.</small></b><small>{o.kpi.done30} {plural(o.kpi.done30, 'книга', 'книги', 'книг')} дочитано</small></div>
     </div>
-    <section className="wc span8"><div className="card-head"><h2>{o.reading.length > 1 ? `Читаю сейчас · ${o.reading.length}` : 'Читаю сейчас'}</h2></div>
+    <section className="wc span8" data-tour="books-now"><div className="card-head"><h2>{o.reading.length > 1 ? `Читаю сейчас · ${o.reading.length}` : 'Читаю сейчас'}</h2></div>
       {o.reading.length ? o.reading.map((b: any) => <article key={b.id} className="bk-now">
         <button className="bk-now-cover" onClick={() => onOpen(b.id)} aria-label={`Открыть «${b.title}»`}><Cover b={b} size="l" /></button>
         <div className="bk-now-main">
@@ -148,7 +149,7 @@ function Now({ o, onOpen, onAdd, onGoal, onChanged }: { o: any; onOpen: (id: str
         </div>
       </article>) : <div className="bk-empty"><p className="card-note">{o.total ? 'Сейчас ничего не читаешь. Выбери следующую книгу из «Хочу прочитать».' : 'Добавь книгу, которую читаешь, — журнал будет считать страницы, темп и серию.'}</p><button className="primary" onClick={onAdd}><Icon name="plus" />Добавить книгу</button></div>}
     </section>
-    <section className="wc span4 bk-goal-card"><div className="card-head"><h2>Цель на {o.year}</h2></div>
+    <section className="wc span4 bk-goal-card" data-tour="books-goal"><div className="card-head"><h2>Цель на {o.year}</h2></div>
       <div className="bk-goal"><span className="meter" style={{ width: 130, height: 130 }}><Arc size={130} sw={12} color="var(--books)" p={o.goal ? o.done / o.goal : 0} /><em>{o.done}<small>из {o.goal}</small></em></span>
         <div><p className="bk-goal-t">{o.done >= o.goal ? 'Цель года выполнена — всё, что дальше, сверху.' : diff >= 0.5 ? `Опережаешь график на ${bkN(diff)}.` : diff <= -0.5 ? `Отстаёшь от графика на ${bkN(-diff)} — догонишь.` : 'Идёшь точно по графику.'}</p>
           {o.need > 0 && <p className="card-note">Осталось {o.need} {plural(o.need, 'книга', 'книги', 'книг')} — примерно по одной в {fmt1(o.weeksLeft / o.need)} нед.</p>}
@@ -208,13 +209,14 @@ export function Books({ wide, version: outer, onBack, onChanged, quick }: { wide
   const head = <header className="dayhead">
     {!wide && <button className="nav" onClick={onBack} aria-label="Назад"><Icon name="chevL" /></button>}
     <div className="daytitle"><span>{o?.total ? `${o.done} из ${o.goal} за ${o.year} год · ${o.total} ${plural(o.total, 'книга', 'книги', 'книг')} на полке` : 'чтение и коллекция'}</span><b>Книги</b></div>
-    <button className="nav" onClick={() => setSheet({ kind: 'form' })} aria-label="Добавить книгу" title="Добавить книгу"><Icon name="plus" /></button>
+    <button className="nav" data-tour="books-add" onClick={() => setSheet({ kind: 'form' })} aria-label="Добавить книгу" title="Добавить книгу"><Icon name="plus" /></button>
+    <HelpButton tour="books" />
   </header>;
   if (!o) return <div className="day books-page">{head}<div className="skel" style={{ height: 300 }} /></div>;
   return <div className="day books-page">
     {head}
-    {o.total > 0 && <div className="st-bar"><div className="seg-tabs" role="tablist">{([['now', 'Читаю'], ['shelf', 'Полка'], ['quotes', 'Цитаты']] as const).map(([k, n]) => <button key={k} role="tab" aria-selected={tab === k} className={tab === k ? 'on' : ''} onClick={() => { setTab(k); buzz(6); }}>{n}</button>)}</div></div>}
-    {!o.total ? <section className="wc solid s-peach"><div className="card-head"><h2>Твоя книжная полка</h2></div><p className="card-note">Что читаешь, что прочитал и что хочешь прочитать — в одном месте, с обложками.</p>
+    {o.total > 0 && <div className="st-bar"><div className="seg-tabs" role="tablist" data-tour="books-tabs">{([['now', 'Читаю'], ['shelf', 'Полка'], ['quotes', 'Цитаты']] as const).map(([k, n]) => <button key={k} role="tab" aria-selected={tab === k} className={tab === k ? 'on' : ''} onClick={() => { setTab(k); buzz(6); }}>{n}</button>)}</div></div>}
+    {!o.total ? <section className="wc solid s-peach" data-tour="books-empty"><div className="card-head"><h2>Твоя книжная полка</h2></div><p className="card-note">Что читаешь, что прочитал и что хочешь прочитать — в одном месте, с обложками.</p>
       <ol className="steps"><li>Найди книгу по названию — обложка, автор и страницы подставятся сами.</li><li>Записывай, до какой страницы дочитал, — появятся темп и серия.</li><li>Сохраняй цитаты и ставь оценки — получится своя библиотека.</li></ol>
       <button className="primary" onClick={() => setSheet({ kind: 'form' })}><Icon name="plus" />Добавить первую книгу</button></section>
       : tab === 'now' ? <Now o={o} onOpen={id => setSheet({ kind: 'book', id })} onAdd={() => setSheet({ kind: 'form' })} onGoal={() => { setGoal(String(o.goal)); setSheet({ kind: 'goal' }); }} onChanged={changed} />

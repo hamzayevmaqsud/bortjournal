@@ -10,6 +10,7 @@ import { plural } from '../lib/format';
 import { buzz } from '../lib/motion';
 import { Bars, Donut, human } from '../components/Charts';
 import { Icon } from '../components/Icon';
+import { HelpButton } from '../components/HelpButton';
 import { Arc } from '../components/Ring';
 import { Sheet } from '../components/Sheet';
 import { useToast } from '../components/Toasts';
@@ -66,10 +67,11 @@ export function Budget({ wide, version, onBack, onChanged, quick }: { wide: bool
   const head = <header className="dayhead">
     {!wide && <button className="nav" onClick={onBack} aria-label="Назад"><Icon name="chevL" /></button>}
     <div className="daytitle"><span>{o?.configured ? `${human(o.from)} — ${human(o.to)}` : 'сколько можно потратить сегодня'}</span><b>Бюджет</b></div>
-    {o?.configured && <button className="nav" onClick={() => setSheet('settings')} aria-label="Настроить" title="Настроить"><Icon name="edit" /></button>}
+    {o?.configured && <button className="nav" data-tour="bud-edit" onClick={() => setSheet('settings')} aria-label="Настроить" title="Настроить"><Icon name="edit" /></button>}
+    <HelpButton tour="budget" />
   </header>;
   if (!o) return <div className="day budget-page">{head}<div className="skel" style={{ height: 200 }} /><div className="skel" style={{ height: 300 }} /></div>;
-  if (!o.configured) return <div className="day budget-page">{head}<section className="wc"><div className="card-head"><h2>Сколько у тебя на месяц?</h2></div>
+  if (!o.configured) return <div className="day budget-page">{head}<section className="wc" data-tour="bud-setup"><div className="card-head"><h2>Сколько у тебя на месяц?</h2></div>
     <p className="card-note">Журнал разделит сумму на дни и каждый день будет показывать, сколько можно потратить. Потратил меньше — остаток перейдёт на следующие дни, перерасход — завтрашний лимит станет меньше.</p><Setup onDone={done} /></section></div>;
 
   const cur = o.settings.currency, d = o.day, isToday = d === o.now, over = o.leftToday < 0, k = o.allow ? Math.min(1, o.today / o.allow) : o.today ? 1 : 0;
@@ -80,7 +82,7 @@ export function Budget({ wide, version, onBack, onChanged, quick }: { wide: bool
       <button className={`cur ${isToday ? '' : 'not-today'}`} onClick={() => setDay(null)}>{isToday ? 'сегодня' : human(d)}</button>
       <button onClick={() => setDay(addDays(d, 1))} aria-label="Следующий день"><Icon name="chev" /></button></div></div>
     <div className="wgrid">
-      <section className={`wc span12 bud-hero ${over ? 'over' : ''}`}>
+      <section className={`wc span12 bud-hero ${over ? 'over' : ''}`} data-tour="bud-hero">
         <span className="meter bud-ring"><Arc size={150} sw={14} color={over ? 'var(--bad)' : 'var(--money)'} p={k} /><em>{Math.round(k * 100)}%<small>потрачено</small></em></span>
         <div className="bud-main">
           <span className="ov-k">{over ? 'Перерасход' : isToday ? 'Сегодня можно потратить' : d > o.now ? 'В этот день можно будет' : 'В этот день оставалось'}</span>
@@ -93,8 +95,8 @@ export function Budget({ wide, version, onBack, onChanged, quick }: { wide: bool
           <div><span>До {human(addDays(o.to, 1))}</span><b>{o.daysLeft} {plural(o.daysLeft, 'день', 'дня', 'дней')}</b><small>{human(o.from)} — {human(o.to)}</small></div>
         </div>
       </section>
-      <section className="wc span5"><div className="card-head"><h2>Записать</h2></div><EntryForm day={d} cur={cur} onDone={done} /></section>
-      <section className="wc span7"><div className="card-head"><h2>{isToday ? 'Сегодня' : human(d)}</h2>{o.ops.length > 0 && <span className="count">{o.ops.length} {plural(o.ops.length, 'запись', 'записи', 'записей')}</span>}</div>
+      <section className="wc span5" data-tour="bud-add"><div className="card-head"><h2>Записать</h2></div><EntryForm day={d} cur={cur} onDone={done} /></section>
+      <section className="wc span7" data-tour="bud-list"><div className="card-head"><h2>{isToday ? 'Сегодня' : human(d)}</h2>{o.ops.length > 0 && <span className="count">{o.ops.length} {plural(o.ops.length, 'запись', 'записи', 'записей')}</span>}</div>
         {o.ops.length ? <ul className="m-list">{o.ops.map((x: any) => { const [, n, c] = catOf(x.kind, x.category); return <li key={x.id} className="m-row">
           <i className="m-dot" style={{ background: c }} /><button className="m-txt" onClick={() => setSheet({ entry: x })}><b>{x.note || n}</b><span>{x.note ? n : ''}{x.note && x.time ? ' · ' : ''}{x.time ?? ''}</span></button>
           <b className={`m-sum ${x.kind === 'in' ? 'in' : ''}`}>{x.kind === 'in' ? '+' : '−'}{money(x.amount, cur)}</b>
@@ -104,7 +106,7 @@ export function Budget({ wide, version, onBack, onChanged, quick }: { wide: bool
       <section className="wc span7"><div className="card-head"><h2>По дням</h2></div>
         <Bars rows={o.days.map((x: any) => ({ label: String(+x.day.slice(8, 10)), v: x.spent, hint: `${human(x.day)}: ${money(x.spent, cur)}`, color: x.spent > o.base * 1.5 ? 'var(--bad)' : null }))} color="var(--money)" target={o.base} unit={cur} every={5} />
         <p className="card-note">Линия — ровный лимит {money(o.base, cur)} в день. В среднем тратишь {money(o.avgPerDay, cur)} в день.</p></section>
-      <section className="wc span5"><div className="card-head"><h2>Куда уходят деньги</h2></div>
+      <section className="wc span5" data-tour="bud-cats"><div className="card-head"><h2>Куда уходят деньги</h2></div>
         {o.byCat.length ? <div className="macro-wrap"><Donut parts={o.byCat.map((x: any) => ({ name: x.name, v: x.sum, color: x.color }))} center={<><b>{money(o.spent, cur)}</b><small>за месяц</small></>} />
           <ul className="macro-list">{o.byCat.map((x: any) => <li key={x.key}><i style={{ background: x.color }} /><span>{x.name}</span><b>{money(x.sum, cur)}</b><em>{Math.round(x.sum / o.spent * 100)}%</em></li>)}</ul></div>
           : <p className="card-note">Траты за месяц появятся здесь.</p>}</section>

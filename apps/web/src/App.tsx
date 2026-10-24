@@ -37,7 +37,9 @@ import { WhatsNew, shouldShowWhatsNew } from './components/WhatsNew';
 import { WeekRecap } from './components/WeekRecap';
 import { Boundary } from './components/Boundary';
 import { DemoBanner } from './components/DemoBanner';
-import { Tour, tourSteps } from './components/Tour';
+import { Tour } from './components/Tour';
+import { TourStart } from './components/HelpButton';
+import { isTour, tourKey, tourSteps, type TourId } from './components/tours';
 import { setSex } from './lib/gender';
 import { Admin } from './screens/Admin';
 import { ResetPassword } from './screens/Reset';
@@ -283,16 +285,21 @@ export function App() {
   useEffect(() => {
     if (me && shouldShowWhatsNew(!me.demo && me.profile?.settings?.onboarded === true)) open({ kind: 'whatsnew' });
   }, [me?.username]); // eslint-disable-line react-hooks/exhaustive-deps
-  // обучение: гостю демо — само, один раз, когда «Сегодня» загрузилось; потом — из полосы демо или «Ещё»
-  const [tour, setTour] = useState(false);
-  const startTour = () => { close(); setTour(true); };
+  // обучение: у каждой страницы своё, запускается «?» в шапке. Само — один раз и только когда ничего не открыто:
+  // «Сегодня» — гостю демо и новичку сразу после анкеты; остальные страницы — гостю демо при первом заходе
+  const [tour, setTour] = useState<TourId | null>(null);
+  const store = (k: string, v?: string) => { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch { /* без памяти */ } return null; };
+  const startTour = (id: TourId) => { if (tour || !me) return; close(); store(tourKey(me.username, id), '1'); setTour(id); };
+  const tourHere = () => { if (isTour(tab)) startTour(tab); else { go('today'); startTour('today'); } };
   useEffect(() => {
-    if (!me?.demo || !data || tab !== 'today' || tour) return;
-    const key = `lumi.tour.${me.username}`;
-    try { if (localStorage.getItem(key)) return; } catch { return; }
-    const id = setTimeout(() => { try { localStorage.setItem(key, '1'); } catch { /* без памяти */ } setSheetOpen(false); setTour(true); }, 600);
+    if (!me || !data || tour || sheetOpen || !isTour(tab)) return;
+    const t: TourId = tab, u = me.username;
+    // старый ключ lumi.tour.<логин> — гость уже видел прежнее обучение «Сегодня»
+    if (store(tourKey(u, t)) || (t === 'today' && store(`lumi.tour.${u}`))) return;
+    if (!me.demo && !(t === 'today' && store(`lumi.tour.${u}.fresh`))) return;
+    const id = setTimeout(() => startTour(t), 600);
     return () => clearTimeout(id);
-  }, [me?.demo, me?.username, !!data, tab]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [me?.demo, me?.username, !!data, tab, sheetOpen, tour]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (resetToken) return <ResetPassword token={resetToken} onDone={async () => { setResetToken(''); await loadMe(); setDays({}); loadDay(); }} />;
   if (me === undefined) return <div className="app" />;
@@ -300,7 +307,7 @@ export function App() {
   if ((!me.profile?.heightCm && me.profile?.settings?.onboarded !== true) || redo) {
     const p = me.profile, w = data?.parts.body?.weight?.kg ?? p?.startWeightKg;
     const initial = p?.heightCm ? { name: String(p.settings?.name ?? ''), sex: (p.sex === 'f' ? 'f' : 'm') as 'm' | 'f', age: p.age ? String(p.age) : '', height: String(p.heightCm), weight: w ? String(w).replace('.', ',') : '', goal: (p.goal ?? 'maintain') as 'lose' | 'maintain' | 'gain', pace: (p.pace ?? 'mid') as 'soft' | 'mid' | 'hard', target: p.targetKg ? String(p.targetKg).replace('.', ',') : '' } : undefined;
-    return <Onboarding initial={initial} onCancel={p?.heightCm ? () => setRedo(false) : undefined} onDone={async () => { setRedo(false); await loadMe(); setDays({}); loadDay(); }} />;
+    return <Onboarding initial={initial} onCancel={p?.heightCm ? () => setRedo(false) : undefined} onDone={async () => { if (!redo) store(`lumi.tour.${me.username}.fresh`, '1'); setRedo(false); await loadMe(); setDays({}); loadDay(); }} />;
   }
 
   // «Ещё»: короткая живая сводка каждого раздела вместо «открыть»
@@ -327,8 +334,8 @@ export function App() {
   const QUICK: Record<string, string> = { 'Зал': 'gym', 'Учёба': 'study', 'Трата': 'budget', 'Чтение': 'books' };
   const lockTile = (name: string, ic: string, c: string) => <button key={name} className="tile" onClick={() => { if (QUICK[name] && can(sub, name)) setQuick({ tab: QUICK[name]!, t: Date.now() }); pro(name, sheet.kind === 'add' ? sheet.at : undefined); }}><span className="chip-ic" style={{ ['--c' as string]: c }}><Icon name={ic} /></span>{name}{!can(sub, name) && <span className="lock">PRO</span>}</button>;
 
-  return <div className={`app ${wide ? 'wide' : ''} ${me.demo ? 'demo-on' : ''}`}>
-    {me.demo && <DemoBanner onTour={startTour} onLogout={logout}onClaimed={async () => { await loadMe(); toast('Аккаунт сохранён — записи на месте'); }} />}
+  return <TourStart.Provider value={startTour}><div className={`app ${wide ? 'wide' : ''} ${me.demo ? 'demo-on' : ''}`}>
+    {me.demo && <DemoBanner onTour={tourHere} onLogout={logout} onClaimed={async () => { await loadMe(); toast('Аккаунт сохранён — записи на месте'); }} />}
     {wide && <header className="brand"><img className="brand-mark" src="/favicon.svg" alt="" />Lumi</header>}
     {tab in SECTIONS && SECTIONS[tab] && sub.ended && !can(sub, SECTIONS[tab]!) && <button className="ro-bar" onClick={() => open({ kind: 'paywall', focus: SECTION_NAME[tab] })}><Icon name="file" />Только просмотр — Pro закончился. Продлить</button>}
     {queued === 0 && drafts.length > 0 && (() => {
@@ -408,7 +415,7 @@ export function App() {
       </section>
       <section className="screen" data-pos={pos('more')} aria-hidden={tab !== 'more'}>
         <Boundary name="more" onFeedback={() => open({ kind: 'feedback' })}>
-        <More me={me} wide={wide} summary={moreSummary} onFeedback={() => open({ kind: 'feedback' })} onWhatsNew={() => open({ kind: 'whatsnew' })} onTour={startTour} onAdmin={() => go('admin')} onPro={pro} onSaved={st => setMe(m => m && m.profile ? { ...m, profile: { ...m.profile, settings: st } } : m)} onPaywall={focus => open({ kind: 'paywall', focus })} onProfile={() => go('profile')} onSettings={() => go('settings')} onInstall={() => open({ kind: 'install' })}
+        <More me={me} wide={wide} summary={moreSummary} onFeedback={() => open({ kind: 'feedback' })} onWhatsNew={() => open({ kind: 'whatsnew' })} onTour={() => { go('today'); startTour('today'); }} onAdmin={() => go('admin')} onPro={pro} onSaved={st => setMe(m => m && m.profile ? { ...m, profile: { ...m.profile, settings: st } } : m)} onPaywall={focus => open({ kind: 'paywall', focus })} onProfile={() => go('profile')} onSettings={() => go('settings')} onInstall={() => open({ kind: 'install' })}
           onLogout={logout} />
         </Boundary>
       </section>
@@ -459,7 +466,6 @@ export function App() {
       {sheet.kind === 'draft' && day && <FoodAi key={sheet.id} day={day} mode="photo" draftId={sheet.id} onDone={done} />}
       </Boundary>
     </Sheet>
-    {tour && <Tour steps={tourSteps({ demo: !!me.demo, stats: can(sub, 'stats'), wide })} tab={tab} onClose={() => setTour(false)}
-      onTab={t => { if (t === 'stats') { if (!can(sub, 'stats')) return false; setStatsTab('overview'); } go(t); return true; }} />}
-  </div>;
+    {tour && <Tour key={tour} steps={tourSteps(tour, { demo: !!me.demo, wide })} onClose={() => setTour(null)} />}
+  </div></TourStart.Provider>;
 }

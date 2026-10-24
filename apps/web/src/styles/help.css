@@ -1,0 +1,29 @@
+/* «?» в шапке страницы: на телефоне — палец 44 px, на компьютере — тихий кружок, ярче при наведении */
+.help-btn{position:relative;flex:none;width:44px;height:44px;display:grid;place-items:center;border-radius:50%;color:var(--text-2);-webkit-tap-highlight-color:transparent}
+.help-btn>span{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;box-shadow:inset 0 0 0 1.5px var(--line-2);font:700 15px/1 var(--sans);transition:color .2s,box-shadow .2s,background .2s,transform .2s var(--spring)}
+.help-btn:hover>span{color:var(--orange);box-shadow:inset 0 0 0 1.5px var(--orange)}
+.help-btn:active>span{transform:scale(.88);background:var(--track)}
+.help-btn:focus-visible{outline:none}
+.help-btn:focus-visible>span{box-shadow:inset 0 0 0 1.5px var(--orange),0 0 0 3px color-mix(in srgb,var(--orange) 30%,transparent)}
+.app:not(.wide) .help-btn>span{width:32px;height:32px;background:var(--card)}
+
+/* телефон: заголовок остаётся по центру, «?» — крайний справа, остальные кнопки — левее него */
+.app:not(.wide) .dayhead:has(>.help-btn){display:grid;grid-template-columns:1fr auto 1fr;column-gap:4px}
+.app:not(.wide) .dayhead:has(>.help-btn)>*{grid-row:1}
+.app:not(.wide) .dayhead:has(>.help-btn)>.daytitle{grid-column:2;min-width:0}
+.app:not(.wide) .dayhead:has(>.help-btn)>:first-child:not(.daytitle){grid-column:1;justify-self:start}
+.app:not(.wide) .dayhead:has(>.help-btn)>:not(:first-child):not(.daytitle){grid-column:3;justify-self:end}
+.app:not(.wide) .dayhead:has(>.help-btn)>:not(:first-child):not(.daytitle):not(.help-btn){margin-right:48px}
+/* компьютер: «?» — последним в ряду кнопок шапки */
+.app.wide .day .dayhead>.help-btn{margin-left:2px}
+
+/* «Еда»: на компьютере — после переключателя и дат; на телефоне стрелки дней уже справа сверху — «?» справа в ряду «День · Анализ» */
+.fp-top .help-btn{order:3;align-self:center}
+.food-page2:not(.narrow) .fp-ctrl{margin-left:auto}
+.food-page2.narrow .fp-top .daytitle{flex-basis:100%}
+.food-page2.narrow .fp-ctrl{width:auto;flex:1 1 0}
+.food-page2.narrow .fp-top .help-btn{margin:-2px -6px -2px auto}
+
+/* «Сегодня»: на компьютере — над приветствием справа, на телефоне — рядом со стрелками дней */
+.wide-page:not(.narrow) .hero-side>.help-btn{margin:0 -7px -6px 0}
+.wide-page.narrow .hero-side>.help-btn{position:absolute;top:calc(12px + env(safe-area-inset-top,0px));right:calc(16px + var(--dn-w,74px) + 4px)}

@@ -8,6 +8,7 @@ import { GOALS, PACE } from '@bortjournal/core';
 import { api, ApiError, forgetLocal, type Me } from '../lib/api';
 import { fmt } from '../lib/format';
 import { Icon } from '../components/Icon';
+import { HelpButton } from '../components/HelpButton';
 import { SubStatus } from '../components/Paywall';
 import { Sheet } from '../components/Sheet';
 import { useToast } from '../components/Toasts';
@@ -106,16 +107,17 @@ export function Profile({ me, wide, part = 'profile', onBack, onSaved, onRedo, o
     <header className="dayhead">
       {!wide && <button className="nav" onClick={onBack} aria-label="Назад"><Icon name="chevL" /></button>}
       <div className="daytitle"><span>{P ? 'профиль' : 'нормы, разделы, подключения'}</span><b>{P ? display : 'Настройки'}</b></div>
+      <HelpButton tour={P ? 'profile' : 'settings'} />
     </header>
 
     {P && <>
-    <section className="panel pf-hero">
+    <section className="panel pf-hero" data-tour="pf-hero">
       <span className="avatar big">{display.slice(0, 1).toUpperCase()}</span>
       <div className="mid"><b>{display}</b><small>@{me.username}{acc ? ` · с нами с ${since(acc.createdAt)}` : ''}</small></div>
       <button className="sub-mini" onClick={onPaywall}><SubStatus sub={sub} /></button>
     </section>
 
-    <section className="panel"><div className="panel-h"><h2>Аккаунт</h2></div>
+    <section className="panel" data-tour="pf-account"><div className="panel-h"><h2>Аккаунт</h2></div>
       <div className="pf-list">
         <label className="pf-row pf-edit"><span className="mid"><b>Как к тебе обращаться</b></span><input className="in" value={name} placeholder={me.username} maxLength={40} onChange={e => setName(e.target.value)} onBlur={saveName} onKeyDown={e => e.key === 'Enter' && saveName()} />{name.trim() !== String(s.name ?? '') && <button type="button" className="btn-accent" onClick={saveName}>Сохранить</button>}</label>
         <label className="pf-row pf-edit"><span className="mid"><b>Почта</b><small>для входа и восстановления — по желанию</small></span><input className="in" type="email" inputMode="email" autoCapitalize="none" value={email} placeholder="name@mail.az" onChange={e => setEmail(e.target.value)} onBlur={saveEmail} onKeyDown={e => e.key === 'Enter' && saveEmail()} />{acc && email.trim().toLowerCase() !== (acc.email ?? '') && <button type="button" className="btn-accent" onClick={saveEmail}>Сохранить</button>}</label>
@@ -136,7 +138,7 @@ export function Profile({ me, wide, part = 'profile', onBack, onSaved, onRedo, o
       <p className="card-note">Привязанным аккаунтом можно входить вместо логина и пароля. Последний способ входа отвязать нельзя.</p>
     </section>}
 
-    <section className="panel"><div className="panel-h"><h2>Тело и цель</h2><small>по анкете</small></div>
+    <section className="panel" data-tour="pf-body"><div className="panel-h"><h2>Тело и цель</h2><small>по анкете</small></div>
       {p?.heightCm ? <div className="pf-facts">
         <div><small>Пол</small><b>{p.sex === 'f' ? 'женский' : 'мужской'}</b></div>
         <div><small>Возраст</small><b>{p.age ?? '—'}</b></div>
@@ -151,11 +153,11 @@ export function Profile({ me, wide, part = 'profile', onBack, onSaved, onRedo, o
     </>}
 
     {!P && <>
-    <section className="panel"><div className="panel-h"><h2>Нормы на день</h2></div><NormsForm key={JSON.stringify(s)} me={me} onSaved={onSaved} /></section>
-    <section className="panel"><div className="panel-h"><h2>Разделы</h2></div><SectionsForm me={me} onSaved={onSaved} /></section>
+    <section className="panel" data-tour="set-norms"><div className="panel-h"><h2>Нормы на день</h2></div><NormsForm key={JSON.stringify(s)} me={me} onSaved={onSaved} /></section>
+    <section className="panel" data-tour="set-sections"><div className="panel-h"><h2>Разделы</h2></div><SectionsForm me={me} onSaved={onSaved} /></section>
     <ThemePick me={me} onSaved={onSaved} />
 
-    <section className="panel"><div className="panel-h"><h2>Напоминания и подключения</h2></div>
+    <section className="panel" data-tour="set-links"><div className="panel-h"><h2>Напоминания и подключения</h2></div>
       <div className="pf-list"><button className="pf-row" onClick={() => setSheet('voice')}><span className="mid"><b>Голос и календарь</b><small>кнопка действия, Siri, виджет; задачи в «Календаре»</small></span><Icon name="chev" className="ic chev" /></button>
         <button className="pf-row" onClick={() => setSheet('gcal')}><span className="mid"><b>Google Календарь</b><small>задачи и тренировки в календаре, встречи — в ленте дня</small></span><Icon name="chev" className="ic chev" /></button>
         <button className="pf-row" onClick={() => setSheet('obsidian')}><span className="mid"><b>Obsidian</b><small>конспекты из хранилища приходят в «Учёбу» сами</small></span><Icon name="chev" className="ic chev" /></button>
@@ -170,7 +172,7 @@ export function Profile({ me, wide, part = 'profile', onBack, onSaved, onRedo, o
     </>}
 
     {P && <>
-    <section className="panel"><div className="panel-h"><h2>Устройства</h2><small>где выполнен вход</small></div>
+    <section className="panel" data-tour="pf-devices"><div className="panel-h"><h2>Устройства</h2><small>где выполнен вход</small></div>
       <div className="pf-list">{(allDevs ? devs : devs.slice(0, 5)).map(d => { const x = device(d.userAgent); return <div key={d.id} className="pf-row">
         <span className="chip-ic" style={{ ['--c' as string]: d.current ? 'var(--good)' : 'var(--water)' }}><Icon name={x.icon} /></span>
         <span className="mid"><b>{x.name}</b><small>{d.current ? 'это устройство' : `вход ${since(d.createdAt)}`}</small></span>

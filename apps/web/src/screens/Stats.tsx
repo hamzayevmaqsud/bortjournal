@@ -8,6 +8,7 @@ import { api, ApiError } from '../lib/api';
 import { fmt, fmt1, plural } from '../lib/format';
 import { buzz } from '../lib/motion';
 import { Icon } from '../components/Icon';
+import { HelpButton } from '../components/HelpButton';
 import { Bars, Delta, Donut, HBars, human, humanLong, MonthCal, ScoreRing, scoreColor, YearHeat } from '../components/Charts';
 import { DayDetail } from '../components/StatsDay';
 import '../styles/stats2.css';
@@ -57,7 +58,7 @@ const NEED: Record<string, string> = { study: 'study', gym: 'gym', spent: 'budge
 function WeekVsWeek({ w, has }: { w: any; has: (f: string) => boolean }) {
   const ms = (w.metrics as WMetric[]).filter(m => !NEED[m.key] || has(NEED[m.key]!));
   const empty = !w.days && !w.prevDays;
-  return <section className="wc span12 wk2">
+  return <section className="wc span12 wk2" data-tour="stats-week">
     <div className="card-head"><h2>Неделя к неделе</h2><span className="wk2-range">{human(w.from)} — {human(w.to)} <small>против {human(w.prevFrom)} — {human(w.prevTo)}</small></span></div>
     {empty ? <p className="card-note">Здесь появится сравнение: последние 7 дней против 7 до них — оценка, калории, вода, шаги и всё, что ты ведёшь. Нужна хотя бы пара дней с записями.</p> : <>
       {w.insights.length > 0 ? <ul className="wk2-ins">{w.insights.map((x: string, k: number) => <li key={x} className={k ? 'weak' : 'strong'}><Icon name={k ? 'target' : 'star'} />{x}</li>)}</ul>
@@ -99,7 +100,7 @@ function Overview({ has, onOpenDay }: { has: (f: string) => boolean; onOpenDay?:
   const panel = (at: 'cal' | 'heat') => pick?.at === at ? <DayDetail key={pick.day} day={pick.day} has={has} onClose={() => setPick(null)} onOpenDay={onOpenDay} /> : null;
   const y = d.year, todayRec = c.cells.find((x: any) => x.day === d.today)?.any, showHeat = y.active >= HEAT_MIN;
   return <div className="wgrid ov2">
-    <section className="wc span12 ov-hero">
+    <section className="wc span12 ov-hero" data-tour="stats-score">
       <div className="ov-score">
         <span className="ov-ring"><ScoreRing v={d.score.now} size={128} sw={13} /><b>{d.score.now}%</b><small>сегодня, пока</small></span>
         <div><span className="ov-k">Оценка дня</span>
@@ -133,7 +134,7 @@ function Overview({ has, onOpenDay }: { has: (f: string) => boolean; onOpenDay?:
       </ul>
       <p className="card-note">Средние — только по дням с записями: пустой день не тянет вниз, а сегодняшний, пока идёт, не учитывается.</p>
     </section>
-    <section className="wc span12 hm-card">
+    <section className="wc span12 hm-card" data-tour="stats-year">
       <div className="card-head"><h2>{showHeat && y.first && y.first > addDays(d.today, -360) ? 'Дни с первой записи' : 'Год по дням'}</h2>{showHeat && y.first && <span className="wk2-range">с {humanLong(y.first < y.cells[0].day ? y.cells[0].day : y.first)}</span>}</div>
       {showHeat ? <>
         <YearHeat cells={y.cells} today={d.today} first={y.first} selected={pick?.at === 'heat' ? pick.day : null} onPick={day => choose(day, 'heat')} />
@@ -353,9 +354,10 @@ export function Stats({ wide, tab: start, has = () => true, onBack, onOpenDay }:
     <header className="dayhead">
       {!wide && <button className="nav" onClick={onBack} aria-label="Назад"><Icon name="chevL" /></button>}
       <div className="daytitle"><span>{sub}</span><b>{tab === 'week' ? 'Итог недели' : tab === 'awards' ? 'Достижения' : 'Статистика'}</b></div>
+      <HelpButton tour="stats" />
     </header>
     <div className="st-bar">
-      <div className="seg-tabs" role="tablist">{TABS.filter(([, , f]) => !f || has(f)).map(([k, t]) => <button key={k} role="tab" aria-selected={tab === k} className={tab === k ? 'on' : ''} onClick={() => pick(k)}>{t}</button>)}</div>
+      <div className="seg-tabs" role="tablist" data-tour="stats-tabs">{TABS.filter(([, , f]) => !f || has(f)).map(([k, t]) => <button key={k} role="tab" aria-selected={tab === k} className={tab === k ? 'on' : ''} onClick={() => pick(k)}>{t}</button>)}</div>
       {['food', 'body', 'study', 'money', 'books'].includes(tab) && <div className="seg-tabs sm">{[7, 30, 90, 365].map(r => <button key={r} className={r === n ? 'on' : ''} onClick={() => setN(r)}>{r === 365 ? 'год' : `${r} дн`}</button>)}</div>}
     </div>
     {tab === 'overview' && <Overview has={has} onOpenDay={onOpenDay} />}
