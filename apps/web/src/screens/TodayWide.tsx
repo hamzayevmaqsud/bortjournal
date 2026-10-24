@@ -15,6 +15,7 @@ import { Arc } from '../components/Ring';
 import { Tasks } from '../components/Tasks';
 import { marksOf, Timeline, type Mark } from '../components/Timeline';
 import { useToast } from '../components/Toasts';
+import { DayTip } from '../components/DayTip';
 
 const MON = ['янв', 'фев', 'мар', 'апр', 'мая', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
 const greet = (hm: string) => { const h = +hm.slice(0, 2); return h < 5 ? 'Доброй ночи' : h < 12 ? 'Доброе утро' : h < 18 ? 'Добрый день' : 'Добрый вечер'; };
@@ -28,11 +29,11 @@ function RingBox({ v, max, color }: { v: number; max: number; color: string }) {
   return <span className="ringbox"><Arc size={132} sw={12} color={color} p={max ? v / max : 0} /><em>{max ? Math.round(v / max * 100) : 0}%</em></span>;
 }
 
-export function TodayWide({ wide = true, data, day, today, sub, still, settings = {}, onReminders, onSettingsSaved, onDay, onAdd, onDelete, onEdit, onToggleTask, onGo, onPro, onPaywall, onSteps, onWeight, onWater, onMeal, onAddWater, onTaskAdded, onTaskOpen }: {
+export function TodayWide({ wide = true, data, day, today, sub, still, settings = {}, onReminders, onSettingsSaved, onDay, onAdd, onDelete, onEdit, onToggleTask, onGo, onPro, onPaywall, onSteps, onWeight, onWater, onMeal, onAddWater, onTaskAdded, onTaskOpen, onWeek }: {
   wide?: boolean; data: TodayData | null; day: string; today: string; sub: Subscription; still: boolean; settings?: Record<string, any>; onReminders?: () => void; onSettingsSaved?: (s: Record<string, unknown>) => void;
   onDay: (dir: number) => void; onAdd: (time?: string) => void; onDelete: (m: Mark) => void; onEdit: (m: Mark) => void; onToggleTask: (id: string) => void;
   onGo: (tab: string) => void; onPro: (what: string) => void; onPaywall: () => void;
-  onSteps: () => void; onWeight: () => void; onWater: () => void; onMeal: () => void; onAddWater: (ml: number) => void; onTaskAdded: (title: string) => void; onTaskOpen: () => void;
+  onSteps: () => void; onWeight: () => void; onWater: () => void; onMeal: () => void; onAddWater: (ml: number) => void; onTaskAdded: (title: string) => void; onTaskOpen: () => void; onWeek?: () => void;
 }) {
   const toast = useToast(), [title, setTitle] = useState(''), [busy, setBusy] = useState(false);
   const dt = parseDay(day), off = Math.round((dt.getTime() - parseDay(today).getTime()) / 864e5);
@@ -115,6 +116,7 @@ export function TodayWide({ wide = true, data, day, today, sub, still, settings 
         </div>}
       </div>
     </header>
+    <DayTip data={data} today={today} onMeal={onMeal} onWater={onWater} onSteps={onSteps} onGo={onGo} onPro={onPro} onWeek={onWeek} />
 
     {sub.source === 'trial' && <button className="trial-bar" onClick={onPaywall}><Icon name="flame" /><span>Пробный Pro: <b>ещё {sub.daysLeft} {plural(sub.daysLeft ?? 0, 'день', 'дня', 'дней')}</b> — потом еда, вода, шаги, задачи, цель и статистика остаются бесплатными</span><em>Тарифы</em></button>}
     {!sub.pro && sub.ended && <button className="trial-bar" onClick={onPaywall}><Icon name="flame" /><span>Pro закончился — еда, вода, шаги, задачи, цель и статистика остаются</span><em>Продлить</em></button>}
