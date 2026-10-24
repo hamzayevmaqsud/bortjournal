@@ -24,3 +24,18 @@ export function ThemeToggle({ className = '', onSaved }: { className?: string; o
     <Icon name={dark ? 'sun' : 'moon'} />
   </button>;
 }
+
+/**
+ * Маяк — он же переключатель темы на входе: нажми — день ↔ ночь. В тёмной теме у маяка горит фонарь.
+ * После луча по LUMI в маяк прилетает огонёк (Login) — видно, что на него можно нажать.
+ */
+export function LighthouseToggle() {
+  const [t, setT] = useState<Theme>(savedTheme());
+  useEffect(() => { const f = () => setT(savedTheme()); addEventListener('lumi-theme', f); return () => removeEventListener('lumi-theme', f); }, []);
+  const dark = darkNow(t);
+  const flip = () => { const next: Theme = dark ? 'light' : 'dark'; setT(next); applyTheme(next); buzz(6); dispatchEvent(new Event('lumi-theme')); };
+  return <button type="button" className={`login-mark-btn ${dark ? 'night' : ''}`} onClick={flip} data-hint="Нажми — сменит тему"
+    aria-label={dark ? 'Маяк: включить светлую тему' : 'Маяк: включить тёмную тему'} title={dark ? 'Светлая тема' : 'Тёмная тема'}>
+    <img className="login-mark" src="/favicon.svg" alt="" />
+  </button>;
+}

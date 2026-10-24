@@ -9,7 +9,7 @@ import { TRIAL_DAYS } from '@bortjournal/core';
 import { api, ApiError } from '../lib/api';
 import { PasswordInput } from '../components/PasswordInput';
 import { Icon } from '../components/Icon';
-import { ThemeToggle } from '../components/ThemeToggle';
+import { LighthouseToggle } from '../components/ThemeToggle';
 
 // 23 постера по кругу оттенков (собираются из Documents/Lumi/login page): 240 и 400 px — показываем не крупнее
 const N = 23;
@@ -173,13 +173,32 @@ const markSeen = () => { try { localStorage.setItem(SEEN, '1'); } catch { /* п�
 export function Login({ onDone }: { onDone: () => void }) {
   const [mode, setMode] = useState<'in' | 'up'>(() => (new URLSearchParams(location.search).get('mode') === 'signup' || !seen() ? 'up' : 'in'));
   const [show, setShow] = useState(false), [u, setU] = useState(''), [p, setP] = useState(''), [mail, setMail] = useState(''), [err, setErr] = useState(() => takeAuthResult()?.error ?? ''), [busy, setBusy] = useState(false);
-  const pv = useProviders(), any = pv.google || pv.apple, [forgot, setForgot] = useState(false), [sent, setSent] = useState('');
+  const pv = useProviders(), [forgot, setForgot] = useState(false), [sent, setSent] = useState('');
   const [focus, setFocus] = useState(''), [p2, setP2] = useState(''), [caps, setCaps] = useState(false);
   const pass = useRef<HTMLInputElement>(null), pass2 = useRef<HTMLInputElement>(null), mailRef = useRef<HTMLInputElement>(null), title = useRef<HTMLHeadingElement>(null), first = useRef(true);
+  // после луча по LUMI огонёк летит из последней буквы в маяк — маяк вспыхивает: на него можно нажать (сменит тему)
+  useEffect(() => {
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    let orb: HTMLDivElement | null = null, off = 0;
+    const t = window.setTimeout(() => {
+      const mark = document.querySelector<HTMLElement>('.login-mark-btn');
+      const from = [...document.querySelectorAll<HTMLElement>('.lw .letter')].map(e => e.getBoundingClientRect())
+        .filter(r => r.width && r.bottom > 0 && r.top < innerHeight && r.right > 0 && r.left < innerWidth).sort((a, b) => b.right - a.right)[0];
+      if (!mark || !from) return;
+      const to = mark.getBoundingClientRect();
+      orb = document.createElement('div'); orb.className = 'beam-orb'; orb.setAttribute('aria-hidden', 'true'); document.body.append(orb);
+      const a = `translate(${from.left + from.width / 2}px,${from.top + from.height * 0.4}px)`, b = `translate(${to.left + to.width / 2}px,${to.top + to.height / 2}px)`;
+      orb.animate([{ transform: `${a} scale(1.8)`, opacity: 0 }, { transform: `${a} scale(1.4)`, opacity: 1, offset: 0.18 }, { transform: `${b} scale(.45)`, opacity: 1 }],
+        { duration: 950, easing: 'cubic-bezier(.55,0,.3,1)' }).onfinish = () => {
+        orb?.remove(); orb = null; mark.classList.add('lit'); off = window.setTimeout(() => mark.classList.remove('lit'), 2200);
+      };
+    }, 2100);
+    return () => { clearTimeout(t); clearTimeout(off); orb?.remove(); };
+  }, []);
   // смена экрана (вход ↔ новый пароль) — фокус на заголовок, а не в никуда
   useEffect(() => { if (first.current) { first.current = false; return; } title.current?.focus(); }, [forgot]);
 
-  const brand = <div className="login-brand"><img className="login-mark" src="/favicon.svg" alt="" /><b>Lumi</b></div>;
+  const brand = <div className="login-brand"><LighthouseToggle /><b>Lumi</b></div>;
   const legal = <p className="legal-links">Продолжая, ты принимаешь <a href="/terms.html" target="_blank" rel="noopener">условия</a> и <a href="/privacy.html" target="_blank" rel="noopener">политику конфиденциальности</a>.</p>;
   const errBox = err ? <div className="err" id="login-err" role="alert">{err}</div> : <div id="login-err" role="alert" className="sr-only" />;
   const bad = err ? { 'aria-invalid': true, 'aria-describedby': 'login-err' } : {};
@@ -220,12 +239,12 @@ export function Login({ onDone }: { onDone: () => void }) {
       <span className="demo-hero-t"><b>Попробовать без регистрации</b><small>Готовый дневник за 3 месяца · без пароля</small></span>
       <Icon name="chev" className="ic demo-hero-chev" />
     </button>
-    <div className="demo-or" aria-hidden="true"><span>{up ? 'или создай свой' : 'или войди'}</span></div>
-    {any && <div className="pv-btns">
+    {/* Google — всегда на месте, чтобы вёрстка была одна везде; без ключей на сервере (локально) — понятная ошибка вместо перехода */}
+    <div className="pv-btns">
       {pv.apple && <a className="pv-btn pv-apple" href={startUrl('apple')}><AppleMark />{up ? 'Создать через Apple' : 'Войти через Apple'}</a>}
-      {pv.google && <a className="pv-btn pv-google" href={startUrl('google')}><GoogleMark />{up ? 'Создать через Google' : 'Войти через Google'}</a>}
+      <a className="pv-btn pv-google" href={startUrl('google')} onClick={e => { if (!pv.google) { e.preventDefault(); setErr('Вход через Google на этом сервере не настроен — войди по логину и паролю.'); } }}><GoogleMark />{up ? 'Создать через Google' : 'Войти через Google'}</a>
       <div className="pv-or"><span>или по логину и паролю</span></div>
-    </div>}
+    </div>
     <form onSubmit={async e => {
       e.preventDefault();
       // регистрация: пароль дважды и почта обязательна (если логин — сама почта, она и есть почта для восстановления)
@@ -269,7 +288,6 @@ export function Login({ onDone }: { onDone: () => void }) {
 
   return <div className="login-scene lw-scene">
     <PosterWall />
-    <ThemeToggle className="corner" />
     <main className="login">{card}{!forgot && mode === 'up' && legal}</main>
   </div>;
 }

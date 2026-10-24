@@ -2282,6 +2282,40 @@ input:-webkit-autofill,input:-webkit-autofill:hover,input:-webkit-autofill:focus
 :root[data-theme=dark] .lw-scene .login .demo-hero{background:linear-gradient(135deg,#34405A,#435373)}
 @media (prefers-color-scheme:dark){:root:not([data-theme=light]) .lw-scene .login .demo-hero{background:linear-gradient(135deg,#34405A,#435373)}}
 @media (prefers-reduced-motion:reduce){.lw-scene .login .demo-hero::after{animation:none;display:none}}
+/* элементы формы входа не сжимаются: не хватает места — форма прокручивается внутри, а не мнёт плашку демо */
+.lw-scene .login > *{flex-shrink:0}
+@media (min-width:900px) and (max-height:1000px){
+  .lw-scene .login .demo-hero{padding:10px 14px;gap:12px;border-radius:16px}
+  .lw-scene .login .demo-hero-ic{width:34px;height:34px;border-radius:10px}
+  .lw-scene .login .demo-hero-t b{font-size:15px}
+  .lw-scene .login .demo-hero-t small{font-size:12.5px}
+  .lw-scene .login .pv-btn{padding:9px}
+}
+/* маяк — переключатель темы: кнопка вокруг иконки; ночью фонарь светится; .lit — вспышка после огонька с подсказкой */
+.login-mark-btn{position:relative;flex:none;padding:0;border:0;background:none;border-radius:12px;cursor:pointer;line-height:0;transition:transform .25s var(--ease)}
+.login-mark-btn:hover{transform:translateY(-1px) rotate(-3deg)}
+.login-mark-btn:hover .login-mark{box-shadow:0 6px 16px rgba(20,16,14,.22),0 0 0 4px rgba(244,207,116,.35)}
+.login-mark-btn .login-mark{display:block;transition:box-shadow .3s}
+.login-mark-btn.night .login-mark{box-shadow:0 0 0 1px rgba(244,207,116,.25),0 0 22px 2px rgba(244,207,116,.35)}
+.login-mark-btn::after{content:attr(data-hint);position:absolute;left:calc(100% + 12px);top:50%;transform:translate(-6px,-50%);white-space:nowrap;
+  padding:6px 10px;border-radius:999px;background:var(--navy);color:#FBF4E6;font:600 12.5px var(--sans);line-height:1.2;opacity:0;pointer-events:none;transition:opacity .3s,transform .3s}
+.login-mark-btn.lit::after,.login-mark-btn:focus-visible::after{opacity:1;transform:translate(0,-50%)}
+.login-mark-btn.lit{animation:mark-lit 1.3s var(--ease)}
+@keyframes mark-lit{0%{transform:scale(1)}25%{transform:scale(1.12)}100%{transform:scale(1)}}
+.login-mark-btn.lit .login-mark{animation:mark-glow 1.6s ease-out}
+@keyframes mark-glow{0%{box-shadow:0 0 0 0 rgba(244,207,116,.8),0 0 0 0 rgba(244,207,116,.5)}40%{box-shadow:0 0 0 8px rgba(244,207,116,.35),0 0 30px 8px rgba(244,207,116,.5)}100%{box-shadow:0 0 0 14px rgba(244,207,116,0),0 0 0 0 rgba(244,207,116,0)}}
+.login-brand:has(.login-mark-btn.lit) b{transition:opacity .3s}
+.login-brand:has(.login-mark-btn.lit) b{opacity:0}
+.beam-orb{position:fixed;left:0;top:0;width:26px;height:26px;margin:-13px 0 0 -13px;border-radius:50%;z-index:60;pointer-events:none;
+  background:radial-gradient(circle,#FFF4D6 0,#F4CF74 35%,rgba(244,207,116,0) 70%);box-shadow:0 0 28px 10px rgba(244,207,116,.55)}
+/* форма плотнее на невысоких экранах — регистрация с Google и демо помещается без прокрутки */
+@media (min-width:900px) and (max-height:1000px){
+  .lw-scene .login h1{font-size:clamp(28px,3.6dvh,40px)!important}
+  .lw-scene .login{gap:clamp(8px,1dvh,12px)!important}
+  .lw-scene .login form{gap:8px}
+  .lw-scene .login input,.lw-scene .login button[type=submit]{height:clamp(42px,5dvh,50px)!important}
+  .lw-scene .login > p{margin:0;font-size:14px}
+}
 /* стену нельзя выделить или утащить мышью */
 .lw{-webkit-user-select:none;user-select:none}
 .lw img{-webkit-user-drag:none}
