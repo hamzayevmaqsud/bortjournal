@@ -1,0 +1,53 @@
+/* ---------- Цвет Lumi: небо по времени суток + свой цвет у каждого раздела ----------
+   Небо — единственный смелый ход: верх приложения в цвет неба за окном (lib/sky.ts ставит <html data-sky>).
+   Всё остальное спокойно: лёгкий оттенок раздела у карточек, цветная точка у заголовка, вкладка — в цвет раздела. */
+
+/* небо: верхний цвет, середина и свечение (солнце, луна) — светлая тема */
+:root{--sky:#EAD9C3;--sky-2:#EEE0CB;--glow:rgba(255,236,200,.5)}
+:root[data-sky="dawn"]{--sky:#F5CDB6;--sky-2:#F2DCC8;--glow:rgba(255,196,150,.55)}
+:root[data-sky="day"]{--sky:#C9DCDD;--sky-2:#E3E2D2;--glow:rgba(255,252,236,.6)}
+:root[data-sky="golden"]{--sky:#F0C48B;--sky-2:#F1DBB8;--glow:rgba(255,190,100,.55)}
+:root[data-sky="dusk"]{--sky:#DFB2B4;--sky-2:#E8D1C8;--glow:rgba(238,150,120,.45)}
+:root[data-sky="night"]{--sky:#C3C4DA;--sky-2:#DDD6D3;--glow:rgba(200,205,255,.4)}
+
+/* тёмная тема: то же небо, но ночное по яркости */
+:root[data-theme="dark"]{--sky:#2A2620;--sky-2:#211E19;--glow:rgba(255,200,140,.08)}
+:root[data-theme="dark"][data-sky="dawn"]{--sky:#3A2924;--sky-2:#26201C;--glow:rgba(255,160,120,.12)}
+:root[data-theme="dark"][data-sky="day"]{--sky:#1F3036;--sky-2:#1E2222;--glow:rgba(200,230,240,.08)}
+:root[data-theme="dark"][data-sky="golden"]{--sky:#3B2D1B;--sky-2:#252019;--glow:rgba(255,180,90,.14)}
+:root[data-theme="dark"][data-sky="dusk"]{--sky:#382330;--sky-2:#241D20;--glow:rgba(230,120,120,.12)}
+:root[data-theme="dark"][data-sky="night"]{--sky:#1A2036;--sky-2:#1B1B21;--glow:rgba(170,180,255,.12)}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){--sky:#2A2620;--sky-2:#211E19;--glow:rgba(255,200,140,.08)}
+  :root:not([data-theme="light"])[data-sky="dawn"]{--sky:#3A2924;--sky-2:#26201C;--glow:rgba(255,160,120,.12)}
+  :root:not([data-theme="light"])[data-sky="day"]{--sky:#1F3036;--sky-2:#1E2222;--glow:rgba(200,230,240,.08)}
+  :root:not([data-theme="light"])[data-sky="golden"]{--sky:#3B2D1B;--sky-2:#252019;--glow:rgba(255,180,90,.14)}
+  :root:not([data-theme="light"])[data-sky="dusk"]{--sky:#382330;--sky-2:#241D20;--glow:rgba(230,120,120,.12)}
+  :root:not([data-theme="light"])[data-sky="night"]{--sky:#1A2036;--sky-2:#1B1B21;--glow:rgba(170,180,255,.12)}
+}
+
+/* небо стоит, контент едет по нему; свечение — справа сверху, как солнце или луна над горизонтом */
+body{background:
+  radial-gradient(620px 320px at 88% -80px,var(--glow),transparent 72%) no-repeat fixed,
+  linear-gradient(180deg,var(--sky) 0,var(--sky-2) 240px,var(--bg) 560px) no-repeat fixed,
+  var(--bg);transition:background-color .6s}
+/* страница входа — своя, со стеной постеров */
+body:has(.lw-scene){background:var(--bg)}
+
+/* ---------- свой цвет у раздела ---------- */
+.c-food{--c:var(--food)}.c-tasks{--c:var(--orange)}.c-habits{--c:var(--steps)}.c-more{--c:var(--study)}.c-study{--c:var(--study)}
+/* светлые карточки разделов — с лёгким оттенком своего цвета, сверху чуть насыщеннее */
+.wc:not(.solid){background:linear-gradient(180deg,color-mix(in srgb,var(--c) 9%,var(--card)) 0,color-mix(in srgb,var(--c) 3%,var(--card)) 120px)}
+/* заголовок карточки — с точкой своего цвета */
+.wc .card-head h2::before,.c-habits #hb-h::before{content:"";display:inline-block;width:8px;height:8px;margin:-2px 9px 0 0;border-radius:50%;vertical-align:middle;
+  background:var(--c);box-shadow:0 0 0 3px color-mix(in srgb,var(--c) 18%,transparent)}
+.wc.solid .card-head h2::before{background:currentColor;box-shadow:none;opacity:.8}
+
+/* вкладки внизу — в цвет раздела */
+.tab[data-tab="today"]{--tc:var(--orange)}.tab[data-tab="plans"]{--tc:var(--orange)}.tab[data-tab="food"]{--tc:var(--food)}
+.tab[data-tab="study"]{--tc:var(--study)}.tab[data-tab="gym"]{--tc:var(--gym)}.tab[data-tab="budget"]{--tc:var(--money)}
+.tab[data-tab="books"]{--tc:var(--books)}.tab[data-tab="goal"]{--tc:var(--quiz)}.tab[data-tab="stats"]{--tc:var(--water)}.tab[data-tab="more"]{--tc:var(--steps)}
+.app .tab[aria-current="page"][data-tab]{color:var(--tc)}
+.app .tab[aria-current="page"][data-tab] .pill{background:color-mix(in srgb,var(--tc) 16%,transparent)}
+
+@media (prefers-reduced-motion:reduce){body{transition:none}}

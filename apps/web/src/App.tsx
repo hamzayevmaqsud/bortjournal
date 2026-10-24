@@ -403,7 +403,7 @@ export function App() {
       </section>
     </main>
     <nav ref={tabsRef} className="tabs" aria-label="Разделы">
-      {(wide ? WIDE_TABS : phoneTabs).map(([name, icon, label]) => <button key={name} className={`tab ${name === 'add' ? 'add' : ''}`} aria-current={tab === name ? 'page' : undefined} onClick={() => go(name)} aria-label={label}>
+      {(wide ? WIDE_TABS : phoneTabs).map(([name, icon, label]) => <button key={name} data-tab={name} className={`tab ${name === 'add' ? 'add' : ''}`} aria-current={tab === name ? 'page' : undefined} onClick={() => go(name)} aria-label={label}>
         <span className="pill"><Icon name={icon} /></span>{label}{SECTIONS[name] && !can(sub, SECTIONS[name]!) && <span className="lock dock-lock">PRO</span>}</button>)}
     </nav>
 
