@@ -4,9 +4,10 @@
 import { useState } from 'react';
 import { api, ApiError } from '../lib/api';
 import { buzz } from '../lib/motion';
+import { APP_VERSION } from '@bortjournal/core';
 import { useToast } from './Toasts';
 
-export const VERSION = 'beta-2026.10';
+export const VERSION = APP_VERSION;
 export const lastScreen = () => { try { return sessionStorage.getItem('bj-tab') ?? ''; } catch { return ''; } };
 
 export function FeedbackForm({ onDone }: { onDone: () => void }) {

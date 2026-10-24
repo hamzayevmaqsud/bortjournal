@@ -3,6 +3,7 @@
  * Состояния в процессе нет (сессии и данные — в Postgres), поэтому реплик может быть несколько.
  * Если собран фронт (apps/web/dist), сервер раздаёт и его — один адрес для телефона.
  */
+import { APP_VERSION } from '@bortjournal/core';
 import Fastify from 'fastify';
 import fastifyStatic from '@fastify/static';
 import { eq, sql } from 'drizzle-orm';
@@ -52,7 +53,7 @@ export async function buildApp({ db, serveWeb = fs.existsSync(WEB_DIST) }: { db:
 
   // живость и готовность: база отвечает — можно принимать трафик
   app.get('/health', async (_req, reply) => {
-    try { await db.execute(sql`select 1`); return { ok: true }; }
+    try { await db.execute(sql`select 1`); return { ok: true, version: APP_VERSION }; }
     catch { return reply.code(503).send({ ok: false }); }
   });
 

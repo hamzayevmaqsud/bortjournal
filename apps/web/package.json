@@ -1,6 +1,6 @@
 {
   "name": "@bortjournal/web",
-  "version": "0.1.0",
+  "version": "0.3.1",
   "private": true,
   "type": "module",
   "description": "Фронт Бортжурнала: React + Vite, телефон в первую очередь",

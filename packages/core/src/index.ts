@@ -21,6 +21,7 @@ export const FREE_MODULES: readonly ModuleName[] = MODULES.filter(m => m !== 'pr
 export const isModule = (x: unknown): x is ModuleName => typeof x === 'string' && (MODULES as readonly string[]).includes(x);
 
 export * from './dates.js';
+export * from './version.js';
 export * from './drinks.js';
 export * from './budget.js';
 export * from './plan.js';

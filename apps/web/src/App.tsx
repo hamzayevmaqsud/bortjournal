@@ -33,6 +33,7 @@ import { Reminders } from './components/Reminders';
 import { VoiceCapture } from './components/Voice';
 import { AiConsent } from './components/AiConsent';
 import { FeedbackForm } from './components/Feedback';
+import { WhatsNew, shouldShowWhatsNew } from './components/WhatsNew';
 import { Boundary } from './components/Boundary';
 import { DemoBanner } from './components/DemoBanner';
 import { setSex } from './lib/gender';
@@ -61,9 +62,9 @@ const ME = () => `/api/me?tz=${-new Date().getTimezoneOffset()}`;
 type SheetState =
   | { kind: 'none' } | { kind: 'add'; at?: string } | { kind: 'meal'; at?: string; meal?: Meal; day?: string } | { kind: 'drink'; at?: string; drink?: Drink; day?: string }
   | { kind: 'steps' } | { kind: 'weight' } | { kind: 'task'; day: string | null; task?: TaskFull }
-  | { kind: 'paywall'; focus?: string } | { kind: 'settings' } | { kind: 'install' } | { kind: 'reminders' } | { kind: 'voice' } | { kind: 'aiConsent'; then?: SheetState } | { kind: 'feedback' }
+  | { kind: 'paywall'; focus?: string } | { kind: 'settings' } | { kind: 'install' } | { kind: 'reminders' } | { kind: 'voice' } | { kind: 'aiConsent'; then?: SheetState } | { kind: 'feedback' } | { kind: 'whatsnew' }
   | { kind: 'search'; at?: string; day?: string } | { kind: 'ai'; at?: string; mode: 'photo' | 'text'; day?: string } | { kind: 'draft'; id: string };
-const TITLES: Record<string, string> = { add: 'Записать', meal: 'Приём пищи', drink: 'Напиток', steps: 'Шаги за день', weight: 'Вес', task: 'Задача', paywall: '', settings: 'Профиль и нормы', install: 'На экран «Домой»', reminders: 'Напоминания', voice: 'Записать голосом', aiConsent: 'ИИ-помощник', feedback: 'Написать разработчику', search: 'Поиск еды', ai: 'Еда по фото или описанию', draft: 'Проверь приём пищи' };
+const TITLES: Record<string, string> = { whatsnew: 'Что нового', add: 'Записать', meal: 'Приём пищи', drink: 'Напиток', steps: 'Шаги за день', weight: 'Вес', task: 'Задача', paywall: '', settings: 'Профиль и нормы', install: 'На экран «Домой»', reminders: 'Напоминания', voice: 'Записать голосом', aiConsent: 'ИИ-помощник', feedback: 'Написать разработчику', search: 'Поиск еды', ai: 'Еда по фото или описанию', draft: 'Проверь приём пищи' };
 
 export function App() {
   const toast = useToast(), wide = useWide();
@@ -276,6 +277,10 @@ export function App() {
     try { sessionStorage.setItem('bj-tab', name); } catch { /* без памяти */ }
   };
   goRef.current = go;
+  // после обновления — один раз «Что нового» (тем, кто уже пользовался; не новичку и не демо)
+  useEffect(() => {
+    if (me && shouldShowWhatsNew(!me.demo && me.profile?.settings?.onboarded === true)) open({ kind: 'whatsnew' });
+  }, [me?.username]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (resetToken) return <ResetPassword token={resetToken} onDone={async () => { setResetToken(''); await loadMe(); setDays({}); loadDay(); }} />;
   if (me === undefined) return <div className="app" />;
@@ -391,7 +396,7 @@ export function App() {
       </section>
       <section className="screen" data-pos={pos('more')} aria-hidden={tab !== 'more'}>
         <Boundary name="more" onFeedback={() => open({ kind: 'feedback' })}>
-        <More me={me} wide={wide} summary={moreSummary} onFeedback={() => open({ kind: 'feedback' })} onAdmin={() => go('admin')} onPro={pro} onSaved={st => setMe(m => m && m.profile ? { ...m, profile: { ...m.profile, settings: st } } : m)} onPaywall={focus => open({ kind: 'paywall', focus })} onProfile={() => go('profile')} onSettings={() => go('settings')} onInstall={() => open({ kind: 'install' })}
+        <More me={me} wide={wide} summary={moreSummary} onFeedback={() => open({ kind: 'feedback' })} onWhatsNew={() => open({ kind: 'whatsnew' })} onAdmin={() => go('admin')} onPro={pro} onSaved={st => setMe(m => m && m.profile ? { ...m, profile: { ...m.profile, settings: st } } : m)} onPaywall={focus => open({ kind: 'paywall', focus })} onProfile={() => go('profile')} onSettings={() => go('settings')} onInstall={() => open({ kind: 'install' })}
           onLogout={logout} />
         </Boundary>
       </section>
@@ -434,6 +439,7 @@ export function App() {
       {sheet.kind === 'reminders' && <Reminders onInstall={() => open({ kind: 'install' })} />}
       {sheet.kind === 'aiConsent' && <AiConsent onDone={async ok => { if (!ok) { close(); return; } try { const r = await api<{ settings: Record<string, unknown> }>('/api/profile/settings', { method: 'PUT', body: { aiConsent: true } }); setMe(m => m && m.profile ? { ...m, profile: { ...m.profile, settings: r.settings } } : m); if (sheet.then) open(sheet.then); else { close(); toast('ИИ-помощник включён — повтори действие'); } } catch (e) { fail(e); } }} />}
       {sheet.kind === 'feedback' && <FeedbackForm onDone={close} />}
+      {sheet.kind === 'whatsnew' && <WhatsNew />}
       {sheet.kind === 'voice' && <VoiceCapture onDone={() => { setVersion(v => v + 1); if (day) loadDay(day); }} />}
       {sheet.kind === 'search' && day && <FoodSearch day={sheet.day ?? day} time={sheet.at} onDone={done} />}
       {sheet.kind === 'ai' && day && <FoodAi key={sheet.mode} day={sheet.day ?? day} time={sheet.at} mode={sheet.mode} onDone={done} />}

@@ -2243,6 +2243,15 @@ input:-webkit-autofill,input:-webkit-autofill:hover,input:-webkit-autofill:focus
   .lw-scene .seg2.tabs2 button{min-height:40px}
   .lw-scene .login .trust{margin:0}
 }
+/* «Что нового» */
+.whatsnew{display:flex;flex-direction:column;gap:14px}
+.wn-rel{padding:14px 16px;border-radius:var(--r2);background:var(--field);border:1px solid var(--line)}
+.wn-rel.now{background:var(--card);border-color:color-mix(in srgb,var(--orange) 40%,transparent);box-shadow:0 6px 18px rgba(40,24,12,.08)}
+.wn-h{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:8px}
+.wn-h b{font:600 19px 'Playfair Display',Georgia,serif;color:var(--text)}
+.wn-h span{font-size:12.5px;color:var(--text-2);white-space:nowrap}
+.wn-rel ul{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px;color:var(--text);font-size:14.5px;line-height:1.45}
+.wn-rel:not(.now) ul{color:var(--text-2);font-size:13.5px}
 /* стену нельзя выделить или утащить мышью */
 .lw{-webkit-user-select:none;user-select:none}
 .lw img{-webkit-user-drag:none}
