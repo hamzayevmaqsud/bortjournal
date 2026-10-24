@@ -214,7 +214,7 @@ export function Login({ onDone }: { onDone: () => void }) {
     <h1 ref={title} tabIndex={-1}>{up ? 'Один дневник на\u00a0весь день' : 'С\u00a0возвращением'}</h1>
     <p>{up ? 'Еда, вода, задачи и учёба в одном дне — вместо пяти приложений.' : 'Маяк горит — твой день на месте.'}</p>
     {/* телефон: кнопка демо под формой не видна без прокрутки — короткая ссылка сразу под обещанием */}
-    {up && <button type="button" className="demo-top" disabled={busy} onClick={startDemo}>Попробовать без регистрации →</button>}
+    <button type="button" className="demo-top" disabled={busy} onClick={startDemo}>Попробовать без регистрации →</button>
     {any && <div className="pv-btns">
       {pv.apple && <a className="pv-btn pv-apple" href={startUrl('apple')}><AppleMark />{up ? 'Создать через Apple' : 'Войти через Apple'}</a>}
       {pv.google && <a className="pv-btn pv-google" href={startUrl('google')}><GoogleMark />{up ? 'Создать через Google' : 'Войти через Google'}</a>}
@@ -258,8 +258,8 @@ export function Login({ onDone }: { onDone: () => void }) {
       <button type="submit" disabled={busy}>{busy ? (up ? 'Создаю…' : 'Вхожу…') : up ? 'Создать аккаунт' : 'Войти'}</button>
     </form>
     {/* демо: временный аккаунт с примером дня, удаляется через сутки; можно сохранить как настоящий */}
-    {/* новичку демо — вторая полноценная кнопка: попробовать за секунду без пароля; при входе — скромная ссылка */}
-    <button type="button" className={up ? 'demo-btn' : 'forgot demo-link'} disabled={busy} onClick={startDemo}>{up ? 'Попробовать без регистрации' : 'Посмотреть без регистрации →'}</button>
+    {/* демо — вторая полноценная кнопка и на входе, и на регистрации: попробовать за секунду без пароля */}
+    <button type="button" className="demo-btn" disabled={busy} onClick={startDemo}>Попробовать без регистрации</button>
     {up && <p className="trust">Без карты · {TRIAL_DAYS} дней Pro бесплатно · данные только твои</p>}
   </>; })();
 
