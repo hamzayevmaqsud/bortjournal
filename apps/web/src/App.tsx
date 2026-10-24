@@ -372,7 +372,7 @@ export function App() {
       </section>
       <section className="screen" data-pos={pos('stats')} aria-hidden={tab !== 'stats'}>
         <Boundary name="stats" onFeedback={() => open({ kind: 'feedback' })}>
-        {tab === 'stats' && <Stats wide={wide} tab={statsTab} has={f => can(sub, f)} onBack={() => setTab(back)} />}
+        {tab === 'stats' && <Stats wide={wide} tab={statsTab} has={f => can(sub, f)} onBack={() => setTab(back)} onOpenDay={d => { setStill(false); setDay(today && d > today ? today : d); go('today'); }} />}
         </Boundary>
       </section>
       <section className="screen" data-pos={pos('profile')} aria-hidden={tab !== 'profile'}>

@@ -2,7 +2,7 @@
  * Графики статистики: столбики с линией нормы, бублик долей, горизонтальные полосы, календарь месяца с кольцами,
  * год клетками. Одна ось, тонкие метки, подписи — цветом текста; наведение или касание показывает значение.
  */
-import { useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { fmt, MONG } from '../lib/format';
 
 export const scoreColor = (s: number) => s >= 95 ? 'var(--mustard)' : s >= 70 ? 'var(--gym)' : s >= 40 ? 'var(--steps)' : s > 0 ? 'var(--text-3)' : 'var(--track)';
@@ -58,33 +58,47 @@ export function ScoreRing({ v, size = 36, sw = 3.5 }: { v: number; size?: number
 }
 
 /* ---------- календарь месяца ---------- */
-export interface CalCell { day: string; score: number | null; parts: Array<{ name: string; v: number }>; gym: boolean; pages: number }
-export function MonthCal({ lead, cells, today, onPick }: { lead: number; cells: CalCell[]; today: string; onPick?: (c: CalCell) => void }) {
+/** словами: «идеальный день», «нет записей»… — для подписей и деталей дня */
+export const verdict = (s: number | null, any = true) => s === null ? 'ещё впереди' : !any ? 'нет записей' : s >= 95 ? 'идеальный день' : s >= 70 ? 'сильный день' : s >= 40 ? 'неплохо' : 'только начало';
+/** «23 октября: 100%, идеальный день» */
+export const dayLabel = (day: string, s: number | null, any = true, today?: string) => `${humanLong(day)}${day === today ? ', сегодня' : ''}: ${s === null ? 'ещё впереди' : any ? `${s}%, ${verdict(s, any)}` : 'нет записей'}`;
+export interface CalCell { day: string; score: number | null; any?: boolean; parts: Array<{ name: string; v: number }>; gym: boolean; pages: number }
+export function MonthCal({ lead, cells, today, onPick, selected }: { lead: number; cells: CalCell[]; today: string; onPick?: (c: CalCell) => void; selected?: string | null }) {
   return <div className="sc-cal">
-    {['пн', 'вт', 'ср', 'чт', 'пт', 'сб', 'вс'].map(w => <span key={w} className="sc-wd">{w}</span>)}
+    {['пн', 'вт', 'ср', 'чт', 'пт', 'сб', 'вс'].map(w => <span key={w} className="sc-wd" aria-hidden="true">{w}</span>)}
     {Array.from({ length: lead }, (_, k) => <span key={`p${k}`} />)}
     {cells.map(c => {
-      const fut = c.score === null, s = c.score ?? 0, tip = fut ? human(c.day) : `${humanLong(c.day)}: ${s}%${c.parts.length ? ' — ' + c.parts.map(p => `${p.name} ${p.v}%`).join(', ') : ''}${c.gym ? ', зал' : ''}${c.pages ? `, чтение ${c.pages} стр.` : ''}`;
-      return <button key={c.day} type="button" className={`sc-cell ${fut ? 'fut' : ''} ${s >= 95 ? 'perfect' : ''} ${c.day === today ? 'today' : ''}`} disabled={fut} title={tip} aria-label={tip} onClick={() => onPick?.(c)}>
-        <ScoreRing v={s} /><span className="sc-n">{+c.day.slice(8, 10)}</span>{s >= 95 && <i className="sc-star">★</i>}{c.gym && <i className="sc-gym" />}
+      const fut = c.score === null, any = c.any ?? !!c.score, s = c.score ?? 0, label = `${dayLabel(c.day, c.score, any, today)}${c.gym ? ', зал' : ''}`;
+      return <button key={c.day} type="button" className={`sc-cell ${fut ? 'fut' : ''} ${s >= 95 ? 'perfect' : ''} ${c.day === today ? 'today' : ''} ${selected === c.day ? 'sel' : ''} ${any || fut ? '' : 'empty'}`} disabled={fut} title={label} aria-label={label} aria-pressed={onPick ? selected === c.day : undefined} onClick={() => onPick?.(c)}>
+        <ScoreRing v={s} /><span className="sc-n">{+c.day.slice(8, 10)}</span>{s >= 95 && <i className="sc-star" aria-hidden="true">★</i>}{c.gym && <i className="sc-gym" aria-hidden="true" />}
       </button>;
     })}
   </div>;
 }
 
 /* ---------- год клетками ---------- */
-export function YearHeat({ days }: { days: Array<{ day: string; score: number }> }) {
-  const cell = 12, gap = 3, L = 24, T = 16, weeks = Math.ceil(days.length / 7);
-  const W = L + weeks * (cell + gap), H = T + 7 * (cell + gap);
-  let lastM = -1;
-  return <div className="yh-wrap"><svg viewBox={`0 0 ${W} ${H}`} style={{ minWidth: W * 0.85 }} role="img" aria-label="Год по дням">
-    {['пн', '', 'ср', '', 'пт', '', ''].map((w, k) => w && <text key={k} x="0" y={T + k * (cell + gap) + 10}>{w}</text>)}
-    {days.map((d, i) => {
-      const w = Math.floor(i / 7), k = i % 7, x = L + w * (cell + gap), y = T + k * (cell + gap), mo = +d.day.slice(5, 7) - 1;
-      const label = k === 0 && mo !== lastM && +d.day.slice(8, 10) <= 7 ? (lastM = mo, <text key={`m${i}`} x={x} y="10">{MON[mo]}</text>) : null;
-      return <g key={d.day}>{label}<rect x={x} y={y} width={cell} height={cell} rx="3" fill={scoreColor(d.score)} opacity={d.score ? 1 : 0.55}><title>{humanLong(d.day)}: {d.score ? `${d.score}%` : 'нет записей'}</title></rect></g>;
-    })}
-  </svg></div>;
+/** недели — столбцы (пн сверху), будущих дней нет, дни до первой записи — пустые места; подписи месяцев над неделей с 1-м числом */
+export function YearHeat({ cells, today, first, selected, onPick }: { cells: Array<{ day: string; score: number | null }>; today: string; first: string | null; selected?: string | null; onPick?: (day: string) => void }) {
+  const ref = useRef<HTMLDivElement>(null), weeks = Math.ceil(cells.length / 7);
+  useEffect(() => { const el = ref.current; if (el) el.scrollLeft = el.scrollWidth; }, [cells.length]);
+  const marks: Array<{ w: number; m: number }> = [];
+  cells.forEach((c, i) => { if (c.day.endsWith('-01')) marks.push({ w: Math.floor(i / 7), m: +c.day.slice(5, 7) - 1 }); });
+  if (cells[0] && (marks[0]?.w ?? 99) >= 3) marks.unshift({ w: 0, m: +cells[0].day.slice(5, 7) - 1 });
+  return <div className="hm-scroll" ref={ref}>
+    <div className={`hm ${weeks <= 26 ? 'few' : ''}`} style={{ ['--weeks' as string]: weeks }}>
+      <div className="hm-months" aria-hidden="true">{marks.map(x => <span key={`${x.w}-${x.m}`} style={{ gridColumn: `${x.w + 1} / span 3` }}>{MON[x.m]}</span>)}</div>
+      <div className="hm-wd" aria-hidden="true">{['пн', '', 'ср', '', 'пт', '', 'вс'].map((w, k) => <span key={k}>{w}</span>)}</div>
+      <div className="hm-cells" role="group" aria-label="Дни по неделям">
+        {cells.map(c => {
+          if (first && c.day < first) return <span key={c.day} className="hm-c pad" aria-hidden="true" />;
+          const any = c.score !== null, s = c.score ?? 0, label = dayLabel(c.day, c.score === null ? 0 : c.score, any, today);
+          return <button key={c.day} type="button" className={`hm-c ${any ? '' : 'none'} ${s >= 95 ? 'perfect' : ''} ${c.day === today ? 'today' : ''} ${selected === c.day ? 'sel' : ''}`}
+            style={any ? { background: scoreColor(Math.max(1, s)) } : undefined} title={label} aria-label={label} aria-pressed={selected === c.day}
+            tabIndex={any || c.day === today ? 0 : -1} onClick={() => onPick?.(c.day)} />;
+        })}
+      </div>
+    </div>
+  </div>;
 }
 
 export function Delta({ cur, prev, good = 'up' }: { cur: number; prev: number; good?: 'up' | 'down' | 'none' }) {
