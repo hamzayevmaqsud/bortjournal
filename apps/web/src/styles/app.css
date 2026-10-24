@@ -2261,6 +2261,27 @@ input:-webkit-autofill,input:-webkit-autofill:hover,input:-webkit-autofill:focus
 .hero-day span{font-family:var(--serif);font-weight:600;letter-spacing:0;margin-left:.25em}
 .lw-scene .login .demo-top{display:none}
 @media (max-width:899px){.lw-scene .login .demo-top{display:inline-flex;align-self:flex-start;min-height:40px;margin-top:-6px;padding:0 2px;background:none;border:0;color:var(--orange);font:600 15.5px var(--sans)}}
+/* демо — заметная плашка до полей формы: тёмно-синяя, с подписью и лучом, проходящим один раз */
+.lw-scene .login .demo-top,.lw-scene .login .demo-btn{display:none}
+.lw-scene .login .demo-hero{position:relative;overflow:hidden;display:flex;align-items:center;gap:14px;width:100%;padding:14px 16px;border:0;border-radius:18px;
+  background:linear-gradient(135deg,#2F3B4F,#3B4A63);color:#FBF4E6;text-align:left;cursor:pointer;box-shadow:0 10px 26px rgba(35,42,56,.28);
+  transition:transform .2s var(--ease),box-shadow .2s var(--ease)}
+.lw-scene .login .demo-hero:hover{transform:translateY(-1px);box-shadow:0 14px 32px rgba(35,42,56,.34)}
+.lw-scene .login .demo-hero:active{transform:translateY(0)}
+.lw-scene .login .demo-hero::after{content:"";position:absolute;inset:0;background:linear-gradient(100deg,transparent 30%,rgba(255,220,160,.28) 50%,transparent 70%);
+  transform:translateX(-120%);animation:demo-beam 1.6s var(--ease) 1.4s both;pointer-events:none}
+@keyframes demo-beam{to{transform:translateX(120%)}}
+.demo-hero-ic{flex:none;display:grid;place-items:center;width:42px;height:42px;border-radius:12px;background:rgba(255,214,150,.16);color:#F4CF74}
+.demo-hero-ic .ic{width:22px;height:22px}
+.demo-hero-t{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.demo-hero-t b{font:700 16px/1.25 var(--sans)}
+.demo-hero-t small{font-size:13px;color:rgba(251,244,230,.75)}
+.demo-hero-chev{flex:none;width:18px;height:18px;opacity:.8}
+.lw-scene .login .demo-or{display:flex;align-items:center;gap:12px;color:var(--text-3);font-size:12.5px;margin:-2px 0}
+.lw-scene .login .demo-or::before,.lw-scene .login .demo-or::after{content:"";flex:1;height:1px;background:var(--line-2)}
+:root[data-theme=dark] .lw-scene .login .demo-hero{background:linear-gradient(135deg,#34405A,#435373)}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]) .lw-scene .login .demo-hero{background:linear-gradient(135deg,#34405A,#435373)}}
+@media (prefers-reduced-motion:reduce){.lw-scene .login .demo-hero::after{animation:none;display:none}}
 /* стену нельзя выделить или утащить мышью */
 .lw{-webkit-user-select:none;user-select:none}
 .lw img{-webkit-user-drag:none}

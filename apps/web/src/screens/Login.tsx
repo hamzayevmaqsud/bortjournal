@@ -8,6 +8,7 @@ import { AppleMark, GoogleMark, startUrl, takeAuthResult, useProviders } from '.
 import { TRIAL_DAYS } from '@bortjournal/core';
 import { api, ApiError } from '../lib/api';
 import { PasswordInput } from '../components/PasswordInput';
+import { Icon } from '../components/Icon';
 import { ThemeToggle } from '../components/ThemeToggle';
 
 // 23 постера по кругу оттенков (собираются из Documents/Lumi/login page): 240 и 400 px — показываем не крупнее
@@ -213,8 +214,13 @@ export function Login({ onDone }: { onDone: () => void }) {
     </div>
     <h1 ref={title} tabIndex={-1}>{up ? 'Один дневник на\u00a0весь день' : 'С\u00a0возвращением'}</h1>
     <p>{up ? 'Еда, вода, задачи и учёба в одном дне — вместо пяти приложений.' : 'Маяк горит — твой день на месте.'}</p>
-    {/* телефон: кнопка демо под формой не видна без прокрутки — короткая ссылка сразу под обещанием */}
-    <button type="button" className="demo-top" disabled={busy} onClick={startDemo}>Попробовать без регистрации →</button>
+    {/* демо — первым, до полей: самый быстрый способ понять Lumi; на входе и на регистрации */}
+    <button type="button" className="demo-hero" disabled={busy} onClick={startDemo}>
+      <span className="demo-hero-ic" aria-hidden="true"><Icon name="eye" /></span>
+      <span className="demo-hero-t"><b>Попробовать без регистрации</b><small>Готовый дневник за 3 месяца · без пароля</small></span>
+      <Icon name="chev" className="ic demo-hero-chev" />
+    </button>
+    <div className="demo-or" aria-hidden="true"><span>{up ? 'или создай свой' : 'или войди'}</span></div>
     {any && <div className="pv-btns">
       {pv.apple && <a className="pv-btn pv-apple" href={startUrl('apple')}><AppleMark />{up ? 'Создать через Apple' : 'Войти через Apple'}</a>}
       {pv.google && <a className="pv-btn pv-google" href={startUrl('google')}><GoogleMark />{up ? 'Создать через Google' : 'Войти через Google'}</a>}
@@ -258,8 +264,6 @@ export function Login({ onDone }: { onDone: () => void }) {
       <button type="submit" disabled={busy}>{busy ? (up ? 'Создаю…' : 'Вхожу…') : up ? 'Создать аккаунт' : 'Войти'}</button>
     </form>
     {/* демо: временный аккаунт с примером дня, удаляется через сутки; можно сохранить как настоящий */}
-    {/* демо — вторая полноценная кнопка и на входе, и на регистрации: попробовать за секунду без пароля */}
-    <button type="button" className="demo-btn" disabled={busy} onClick={startDemo}>Попробовать без регистрации</button>
     {up && <p className="trust">Без карты · {TRIAL_DAYS} дней Pro бесплатно · данные только твои</p>}
   </>; })();
 
