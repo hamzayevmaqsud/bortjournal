@@ -24,3 +24,8 @@
 }
 .demo-lead{margin:0 0 2px;color:var(--text-2);font-size:14px;line-height:1.45}
 .demo-form .pw-field .in{padding-right:52px}
+/* в демо гость сразу видит свой день: без плашки пробного Pro и чек-листа первых шагов (он и так почти пройден) */
+.app.demo-on .trial-bar,.app.demo-on .first-day{display:none}
+/* на телефоне — короткая подпись, без многоточия */
+.demo-short{display:none}
+@media (max-width:420px){.demo-long{display:none}.demo-short{display:inline}.app.demo-on{--demo-h:calc(48px + env(safe-area-inset-top,0px))}.demo-text{white-space:nowrap}}

@@ -102,7 +102,9 @@ function PosterWall() {
 
   useEffect(() => {
     const root = box.current; if (!root || !letterAt) return;
-    const tracks = tracksRef.current, per = tracks.map((_, c) => lanes[c]!.length * PER);
+    // «уменьшить движение» в системе: лента не останавливается, но едет вчетверо медленнее
+    const calm = matchMedia('(prefers-reduced-motion: reduce)').matches ? 4 : 1;
+    const tracks = tracksRef.current, per = tracks.map((_, c) => lanes[c]!.length * PER * calm);
     let boost = 0, target = 0, last = performance.now(), raf = 0;
     const born = root.dataset.resumed ? -1e9 : performance.now() + 1400;   // при первом показе LUMI читается, потом ленты трогаются
     // при первом показе по стене проходит луч маяка и по очереди зажигает L, U, M, I

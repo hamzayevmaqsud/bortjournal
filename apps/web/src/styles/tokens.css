@@ -2,7 +2,7 @@
 :root{
   --bg:#EFE3CE; --card:#FBF4E6; --field:#FFFAF1; --track:#E6D8C0;
   --line:rgba(46,58,78,.10); --line-2:rgba(46,58,78,.18);
-  --text:#2B3445; --text-2:#6E6758; --text-3:#736956;
+  --text:#2B3445; --text-2:#665F50; --text-3:#736956;
   --navy:#2F3B4F; --on-navy:#FBF4E6;
   --orange:#B9501F; --orange-soft:#F4D4BE; --orange-ink:#9E3F14;
   /* заливки под белым текстом — контраст не ниже 4,5:1 в обеих темах */

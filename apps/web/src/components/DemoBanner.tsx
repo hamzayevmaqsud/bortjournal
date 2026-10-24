@@ -31,7 +31,7 @@ export function DemoBanner({ onClaimed, onLogout }: { onClaimed: () => Promise<v
   return <>
     <div className="demo-bar" role="status">
       <span className="demo-dot" aria-hidden="true" />
-      <span className="demo-text">Это демо — данные удалятся через сутки.</span>
+      <span className="demo-text"><span className="demo-long">Это демо — данные удалятся через сутки.</span><span className="demo-short">Демо на сутки</span></span>
       <button type="button" className="btn-accent demo-save" onClick={() => setOpen(true)}>Сохранить как аккаунт</button>
       <button type="button" className="demo-out" onClick={onLogout} aria-label="Выйти из демо"><Icon name="logout" /><span>Выйти</span></button>
     </div>

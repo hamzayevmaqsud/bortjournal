@@ -312,7 +312,7 @@ export function App() {
 
   return <div className={`app ${wide ? 'wide' : ''} ${me.demo ? 'demo-on' : ''}`}>
     {me.demo && <DemoBanner onLogout={logout} onClaimed={async () => { await loadMe(); toast('Аккаунт сохранён — записи на месте'); }} />}
-    {wide && <div className="brand"><img className="brand-mark" src="/favicon.svg" alt="" />Lumi</div>}
+    {wide && <header className="brand"><img className="brand-mark" src="/favicon.svg" alt="" />Lumi</header>}
     {tab in SECTIONS && SECTIONS[tab] && sub.ended && !can(sub, SECTIONS[tab]!) && <button className="ro-bar" onClick={() => open({ kind: 'paywall', focus: SECTION_NAME[tab] })}><Icon name="file" />Только просмотр — Pro закончился. Продлить</button>}
     {queued === 0 && drafts.length > 0 && (() => {
       const ready = drafts.filter(d => d.state === 'ready'), failed = drafts.filter(d => d.state === 'failed'), busy = drafts.filter(draftPending);
@@ -321,7 +321,7 @@ export function App() {
       return <button className={`outbox-bar drafts-bar ${ready.length ? 'ready' : ''}`} onClick={() => open({ kind: 'draft', id: first.id })}><Icon name={ready.length ? 'check' : 'camera'} />{text}</button>;
     })()}
     {queued > 0 && <button className="outbox-bar" onClick={() => void flushOutbox()}><Icon name="repeat" />Без сети: {queued} {queued % 10 === 1 && queued % 100 !== 11 ? 'запись ждёт' : 'записей ждут'} отправки — нажми, чтобы отправить сейчас</button>}
-    <div className="screens">
+    <main className="screens">
       <section className="screen" data-pos={pos('today')} aria-hidden={tab !== 'today'}>
         <Boundary name="today" onFeedback={() => open({ kind: 'feedback' })}>
         {day && today && <TodayWide wide={wide} data={data} day={day} today={today} still={still} sub={sub} settings={me.profile?.settings ?? {}} onReminders={() => open({ kind: 'reminders' })} onSettingsSaved={st => setMe(m => m && m.profile ? { ...m, profile: { ...m.profile, settings: st } } : m)} onDay={goDay} onAdd={at => open({ kind: 'add', at })} onDelete={deleteMark} onEdit={editMark} onToggleTask={toggleTask} onGo={go}
@@ -395,7 +395,7 @@ export function App() {
           onLogout={logout} />
         </Boundary>
       </section>
-    </div>
+    </main>
     <nav ref={tabsRef} className="tabs" aria-label="Разделы">
       {(wide ? WIDE_TABS : phoneTabs).map(([name, icon, label]) => <button key={name} className={`tab ${name === 'add' ? 'add' : ''}`} aria-current={tab === name ? 'page' : undefined} onClick={() => go(name)} aria-label={label}>
         <span className="pill"><Icon name={icon} /></span>{label}{SECTIONS[name] && !can(sub, SECTIONS[name]!) && <span className="lock dock-lock">PRO</span>}</button>)}

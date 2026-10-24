@@ -57,7 +57,7 @@ export function Timeline({ marks, now, still, pro = true, sums, allDay = [], onA
         {LANES.filter(([lane]) => lane === 'cal' ? marks.some(m => m.lane === 'cal') : pro || (lane !== 'study' && lane !== 'gym') || marks.some(m => m.lane === lane)).map(([lane, icon, color, name]) => (
           <div className="lane" key={lane}>
             <span className="lane-ic" style={{ ['--c' as string]: color }} title={name}><Icon name={icon} /><span className="lane-name">{name}</span></span>
-            <div className="track" aria-label={`${name}: нажми, чтобы добавить`} onClick={e => {
+            <div className="track" title={`${name}: нажми, чтобы добавить`} onClick={e => {
               if ((e.target as HTMLElement).closest('.mk')) return;
               const r = e.currentTarget.getBoundingClientRect();
               onAdd(minToHm(Math.round((T0 + (e.clientX - r.left) / r.width * SPAN) / 15) * 15));

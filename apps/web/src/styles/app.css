@@ -34,7 +34,7 @@ svg{display:block}
 .stat b{font:800 22px/1.1 var(--display);font-variant-numeric:tabular-nums;margin-top:2px}
 .stat small{font-size:11px;color:var(--text-2)}
 .stat.hot{background:var(--fill-orange);color:#FFF7EE}
-.stat.hot i,.stat.hot small{color:rgba(255,247,238,.8)}
+.stat.hot i,.stat.hot small{color:#FFF7EE}
 
 .panel{position:relative;padding:14px;border-radius:var(--r3);background:var(--card);box-shadow:var(--sh1)}
 .panel-h{display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin:0 2px 10px}
@@ -407,7 +407,7 @@ button.meal:active{transform:scale(.98)}
 .statgroup span.go{color:var(--orange);font-weight:700}
 .statgroup .hot{background:var(--fill-orange);color:#FFF7EE}
 .statgroup .hot:hover{background:var(--orange);filter:brightness(1.05)}
-.statgroup .hot i,.statgroup .hot span,.statgroup .hot b small{color:rgba(255,247,238,.82)}
+.statgroup .hot i,.statgroup .hot span,.statgroup .hot b small{color:#FFF7EE}
 .app.wide .trial-bar{padding:14px 16px 14px 18px;font-size:14px;border-radius:var(--r3)}
 
 /* лента */
