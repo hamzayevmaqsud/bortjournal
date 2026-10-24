@@ -9,6 +9,8 @@ import { fmt, fmt1, plural } from '../lib/format';
 import { buzz } from '../lib/motion';
 import { Icon } from '../components/Icon';
 import { Bars, Delta, Donut, HBars, human, humanLong, MonthCal, ScoreRing, scoreColor, YearHeat } from '../components/Charts';
+import { DayDetail } from '../components/StatsDay';
+import '../styles/stats2.css';
 
 export type StatsTab = 'overview' | 'food' | 'body' | 'study' | 'money' | 'books' | 'week' | 'awards';
 // вкладки разделов Pro показываются, только если раздел открыт
@@ -33,49 +35,116 @@ const Skel = () => <div className="wgrid"><div className="skel span12" style={{ 
 const Kpi = ({ name, value, sub, tone }: { name: string; value: React.ReactNode; sub?: React.ReactNode; tone?: string }) => <div className={`kpi ${tone ?? ''}`}><span>{name}</span><b>{value}</b>{sub && <small>{sub}</small>}</div>;
 
 /* ---------------- обзор ---------------- */
-function Overview() {
-  const [month, setMonth] = useState<string | null>(null);
+const WDF = ['понедельник', 'вторник', 'среда', 'четверг', 'пятница', 'суббота', 'воскресенье'];
+const HEAT_MIN = 14;
+const sign = (v: number, f: (n: number) => string = fmt) => `${v > 0 ? '+' : v < 0 ? '−' : ''}${f(Math.abs(v))}`;
+const dni = (n: number) => `${n} ${plural(n, 'день', 'дня', 'дней')}`;
+type WMetric = { key: string; name: string; unit: string; cur: number | null; prev: number | null; norm?: number; of?: number; better: boolean | null; note: string };
+// значение и разница для плитки «Неделя к неделе»
+const WFMT: Record<string, { v: (n: number) => string; d: (n: number) => string }> = {
+  score: { v: n => `${n}%`, d: n => `${sign(n)} п.` },
+  kcal: { v: n => fmt(n), d: n => `${sign(n)} ккал` },
+  water: { v: n => `${fmt1(n / 1000)} л`, d: n => `${sign(n / 1000, fmt1)} л` },
+  steps: { v: n => fmt(n), d: n => sign(n) },
+  weight: { v: n => `${sign(n, fmt1)} кг`, d: n => `${sign(n, fmt1)} кг` },
+  tasks: { v: n => String(n), d: n => sign(n) },
+  study: { v: n => MINUTES(n), d: n => `${sign(n)} мин` },
+  gym: { v: n => String(n), d: n => sign(n) },
+  spent: { v: n => fmt(n), d: n => sign(n) }
+};
+const NEED: Record<string, string> = { study: 'study', gym: 'gym', spent: 'budget', tasks: 'plans' };
+
+function WeekVsWeek({ w, has }: { w: any; has: (f: string) => boolean }) {
+  const ms = (w.metrics as WMetric[]).filter(m => !NEED[m.key] || has(NEED[m.key]!));
+  const empty = !w.days && !w.prevDays;
+  return <section className="wc span12 wk2">
+    <div className="card-head"><h2>Неделя к неделе</h2><span className="wk2-range">{human(w.from)} — {human(w.to)} <small>против {human(w.prevFrom)} — {human(w.prevTo)}</small></span></div>
+    {empty ? <p className="card-note">Здесь появится сравнение: последние 7 дней против 7 до них — оценка, калории, вода, шаги и всё, что ты ведёшь. Нужна хотя бы пара дней с записями.</p> : <>
+      {w.insights.length > 0 ? <ul className="wk2-ins">{w.insights.map((x: string, k: number) => <li key={x} className={k ? 'weak' : 'strong'}><Icon name={k ? 'target' : 'star'} />{x}</li>)}</ul>
+        : <p className="card-note">{w.days < 2 ? `Подсказки появятся, когда за последние 7 дней наберётся хотя бы 2 дня с записями — сейчас ${w.days}.` : 'Всё, что ведёшь, держится ровно — ни явных побед, ни провалов.'}</p>}
+      <div className="wk2-grid">{ms.map(m => {
+        const F = WFMT[m.key] ?? WFMT.gym!, d = m.cur !== null && m.prev !== null && m.key !== 'weight' ? m.cur - m.prev : null;
+        const tone = m.better === null ? '' : m.better ? 'good' : 'bad';
+        return <div key={m.key} className={`wk2-m ${tone}`}>
+          <span className="wk2-n">{m.name}</span>
+          <b>{m.cur === null ? '—' : F.v(m.cur)}{m.key === 'tasks' && m.of ? <small> из {m.of}</small> : null}</b>
+          <small className="wk2-note">{m.note}</small>
+          <span className="wk2-d">{m.prev === null ? <em>раньше не было</em> : <>было {F.v(m.prev)}{d !== null && d !== 0 && <i className={tone}>{d > 0 ? '▲' : '▼'} {F.d(d)}</i>}{d === 0 && <i>так же</i>}</>}</span>
+          {m.better !== null && <span className="sr-only">{m.better ? 'лучше, чем неделей раньше' : 'хуже, чем неделей раньше'}</span>}
+        </div>;
+      })}</div>
+      <p className="card-note">Сегодня не считается — день ещё идёт. Зелёный — лучше, красный — хуже: для калорий лучше ближе к норме, для трат — меньше.</p>
+    </>}
+  </section>;
+}
+
+function Weekdays({ wd, pastDays }: { wd: Array<{ avg: number | null; n: number }> | null; pastDays: number }) {
+  if (!wd) return <p className="card-note">Когда появится хотя бы один завершённый день с записями, здесь будет видно, какой день недели у тебя сильнее.</p>;
+  const has = wd.map((x, k) => [x, k] as const).filter(([x]) => x.avg !== null), best = has.slice().sort((a, b) => b[0].avg! - a[0].avg!)[0]!, worst = has.slice().sort((a, b) => a[0].avg! - b[0].avg!)[0]!;
+  return <>
+    <Bars rows={wd.map((x, k) => ({ label: WDN[k]!, v: x.avg ?? 0, hint: x.avg === null ? `${WDN[k]}: пока нет данных` : `${WDN[k]}: в среднем ${x.avg}% · ${dni(x.n)}`, color: x.avg !== null && k === best[1] && has.length > 1 ? 'var(--gym)' : null }))} color="var(--navy)" max={100} values unit="%" />
+    <p className="card-note">{has.length > 1 ? <>Сильнейший день — <b>{WDF[best[1]]}</b>, в среднем {best[0].avg}%{has.length > 2 && worst[1] !== best[1] && worst[0].avg! < best[0].avg! ? `; тяжелее всего — ${WDF[worst[1]]}, ${worst[0].avg}%` : ''}.</>
+      : `Пока есть только ${WDF[best[1]]} — ${best[0].avg}%. Через неделю будет с чем сравнить.`}
+      {pastDays < 14 ? ` Считаю по ${pastDays} ${plural(pastDays, 'дню', 'дням', 'дням')} — картина уточнится через пару недель.` : ' Средняя оценка завершённых дней с записями.'}</p>
+  </>;
+}
+
+function Overview({ has, onOpenDay }: { has: (f: string) => boolean; onOpenDay?: (day: string) => void }) {
+  const [month, setMonth] = useState<string | null>(null), [pick, setPick] = useState<{ day: string; at: 'cal' | 'heat' } | null>(null);
   const { d, err } = useLoad<any>(`/api/stats/overview${month ? `?month=${month}` : ''}`);
   if (err) return <p className="form-err">{err}</p>;
   if (!d) return <Skel />;
-  const c = d.calendar, shift = (k: number) => { const [y, m] = c.month.split('-').map(Number); const x = new Date(Date.UTC(y, m - 1 + k, 1)); setMonth(`${x.getUTCFullYear()}-${String(x.getUTCMonth() + 1).padStart(2, '0')}`); buzz(6); };
-  const wd = d.weekdays as number[] | null, best = wd ? wd.indexOf(Math.max(...wd)) : -1, worst = wd ? wd.indexOf(Math.min(...wd.map(v => v || 999))) : -1;
-  return <div className="wgrid">
+  const c = d.calendar, shift = (k: number) => { const [y, m] = c.month.split('-').map(Number); const x = new Date(Date.UTC(y, m - 1 + k, 1)); setMonth(`${x.getUTCFullYear()}-${String(x.getUTCMonth() + 1).padStart(2, '0')}`); setPick(p => p?.at === 'cal' ? null : p); buzz(6); };
+  const choose = (day: string, at: 'cal' | 'heat') => { setPick(p => p?.day === day && p.at === at ? null : { day, at }); buzz(6); };
+  const panel = (at: 'cal' | 'heat') => pick?.at === at ? <DayDetail key={pick.day} day={pick.day} has={has} onClose={() => setPick(null)} onOpenDay={onOpenDay} /> : null;
+  const y = d.year, todayRec = c.cells.find((x: any) => x.day === d.today)?.any, showHeat = y.active >= HEAT_MIN;
+  return <div className="wgrid ov2">
     <section className="wc span12 ov-hero">
       <div className="ov-score">
         <span className="ov-ring"><ScoreRing v={d.score.now} size={128} sw={13} /><b>{d.score.now}%</b><small>сегодня, пока</small></span>
         <div><span className="ov-k">Оценка дня</span>
           <p className="ov-parts">{d.score.parts.length ? d.score.parts.map((p: any) => <span key={p.area} className={`ov-part ${p.v >= 99 ? 'ok' : ''}`}>{p.v >= 99 ? '✓' : `${p.v}%`} {p.name}</span>) : 'Записывай еду, воду, шаги или учёбу — из этого складывается оценка.'}</p>
-          <p className="card-note">Среднее за 7 дней — {d.score.avg7}%. Зал и чтение добавляют бонус.</p></div>
+          <p className="card-note">{d.score.avg7 === null ? 'За прошлые 7 дней записей не было — среднее появится завтра.' : <>Среднее за 7 дней — <b>{d.score.avg7}%</b> по {d.score.days7} {plural(d.score.days7, 'дню', 'дням', 'дням')} с записями (пустые дни и сегодня не в счёт).</>} Зал и чтение добавляют бонус.</p></div>
       </div>
       <div className="ov-nums">
-        <div><b>{d.nums.active365}</b><span>{plural(d.nums.active365, 'активный день', 'активных дня', 'активных дней')} за год</span></div>
-        <div><b>{d.nums.perfect365}</b><span>{plural(d.nums.perfect365, 'идеальный день', 'идеальных дня', 'идеальных дней')}</span></div>
-        <div><b>{d.nums.streak}</b><span>серия сейчас · рекорд {d.nums.bestStreak}</span></div>
+        <div><b>{d.nums.active365}</b><span>{plural(d.nums.active365, 'день', 'дня', 'дней')} с записями за год</span></div>
+        <div><b>{d.nums.perfect365}</b><span>{plural(d.nums.perfect365, 'идеальный день', 'идеальных дня', 'идеальных дней')} (95%+)</span></div>
+        <div><b>{d.nums.streak}</b><span>{plural(d.nums.streak, 'день', 'дня', 'дней')} подряд · рекорд {d.nums.bestStreak}</span></div>
         <div className="hot"><b>{d.nums.tiers}</b><span>{plural(d.nums.tiers, 'ступень', 'ступени', 'ступеней')} достижений</span></div>
       </div>
     </section>
+    <WeekVsWeek w={d.week} has={has} />
     <section className="wc span7">
-      <div className="card-head"><h2>Календарь</h2><div className="cal-nav"><button onClick={() => shift(-1)} aria-label="Предыдущий месяц"><Icon name="chevL" /></button><b>{c.title}</b><button onClick={() => shift(1)} disabled={c.isCurrent} aria-label="Следующий месяц"><Icon name="chev" /></button></div></div>
-      <MonthCal lead={c.lead} cells={c.cells} today={d.today} />
+      <div className="card-head"><h2>Календарь</h2><div className="cal-nav"><button onClick={() => shift(-1)} aria-label="Предыдущий месяц"><Icon name="chevL" /></button><b aria-live="polite">{c.title}</b><button onClick={() => shift(1)} disabled={c.isCurrent} aria-label="Следующий месяц"><Icon name="chev" /></button></div></div>
+      <MonthCal lead={c.lead} cells={c.cells} today={d.today} selected={pick?.at === 'cal' ? pick.day : null} onPick={x => choose(x.day, 'cal')} />
       <div className="legend"><span><i style={{ background: 'var(--mustard)' }} />идеально ★</span><span><i style={{ background: 'var(--gym)' }} />70%+</span><span><i style={{ background: 'var(--steps)' }} />40%+</span><span><i style={{ background: 'var(--text-3)' }} />начало</span><span><i className="k-gymdot" />зал</span></div>
+      {panel('cal') ?? <p className="card-note st2-hint">Нажми на день — покажу, из чего сложилась оценка и что записано.</p>}
     </section>
     <section className="wc span5">
       <div className="card-head"><h2>Как идёт {c.name}</h2></div>
-      <div className="ov-big"><b>{c.avg ?? <span className="nodata">нет</span>}{c.avg !== null && c.avg !== undefined && <small>%</small>}</b><span>средняя оценка{c.prevAvg !== null ? ` · в прошлом ${c.prevAvg}%` : ''}</span></div>
+      <div className="ov-big"><b>{c.avg ?? <span className="nodata">нет</span>}{c.avg !== null && c.avg !== undefined && <small>%</small>}</b>
+        <span>{c.avgDays ? `средняя оценка по ${c.avgDays} ${plural(c.avgDays, 'завершённому дню', 'завершённым дням', 'завершённым дням')} с записями` : 'средняя появится после первого завершённого дня с записями'}{c.prevAvg !== null ? ` · в прошлом месяце ${c.prevAvg}%` : ''}</span></div>
       <p className="ov-motto">{c.line}</p>
       <ul className="ov-list">
-        <li><span>Дней с записями</span><b>{c.days}</b></li>
-        <li><span>Идеальных дней ★</span><b>{c.perfect}</b></li>
+        <li><span>Дней с записями{c.isCurrent && todayRec ? ' (с сегодняшним)' : ''}</span><b>{c.days}</b></li>
+        <li><span>Идеальных дней ★ (95%+)</span><b>{c.perfect}</b></li>
         {c.best && <li><span>Лучший день</span><b>{human(c.best.day)} · {c.best.score}%</b></li>}
-        <li><span>30 дней против прошлых 30</span><b>{d.last30}% <Delta cur={d.last30} prev={d.prev30} /></b></li>
+        <li><span>Средняя за 30 дней · к прошлым 30</span><b>{d.last30}% <Delta cur={d.last30} prev={d.prev30} /></b></li>
       </ul>
+      <p className="card-note">Средние — только по дням с записями: пустой день не тянет вниз, а сегодняшний, пока идёт, не учитывается.</p>
     </section>
-    <section className="wc span12"><div className="card-head"><h2>Год по дням</h2></div><YearHeat days={d.year} /><p className="card-note">Каждая клетка — день, цвет — его оценка. Золотые — идеальные.</p></section>
-    <section className="wc span6"><div className="card-head"><h2>Дни недели</h2></div>
-      {wd ? <><Bars rows={wd.map((v, k) => ({ label: WDN[k]!, v, hint: `${WDN[k]}: в среднем ${v}%` }))} color="var(--navy)" max={100} values unit="%" />
-        <p className="card-note">Лучше всего получается {WDL[best]}{wd[worst] && worst !== best ? `, тяжелее всего — ${WDL[worst]}` : ''}.</p></> : <p className="card-note">Нужна хотя бы неделя записей.</p>}
+    <section className="wc span12 hm-card">
+      <div className="card-head"><h2>{showHeat && y.first && y.first > addDays(d.today, -360) ? 'Дни с первой записи' : 'Год по дням'}</h2>{showHeat && y.first && <span className="wk2-range">с {humanLong(y.first < y.cells[0].day ? y.cells[0].day : y.first)}</span>}</div>
+      {showHeat ? <>
+        <YearHeat cells={y.cells} today={d.today} first={y.first} selected={pick?.at === 'heat' ? pick.day : null} onPick={day => choose(day, 'heat')} />
+        <div className="hm-legend" aria-hidden="true"><span>нет записей</span><i className="none" /><i style={{ background: 'var(--text-3)' }} /><i style={{ background: 'var(--steps)' }} /><i style={{ background: 'var(--gym)' }} /><i style={{ background: 'var(--mustard)' }} /><span>идеально ★</span><span className="hm-lt"><i className="today" />сегодня</span></div>
+        {panel('heat') ?? <p className="card-note">Каждая клетка — день, цвет — его оценка. Нажми на клетку — покажу подробности.</p>}
+      </> : <div className="hm-soon">
+        <p><b>Здесь появится твой год</b> — пока {dni(y.active)} с записями. Карта дней откроется с {HEAT_MIN}-го дня.</p>
+        <span className="wbar" role="progressbar" aria-valuemin={0} aria-valuemax={HEAT_MIN} aria-valuenow={y.active} aria-label="Дней с записями до карты года"><i style={{ width: `${Math.min(100, y.active / HEAT_MIN * 100)}%`, background: 'var(--gym)' }} /></span>
+      </div>}
     </section>
+    <section className="wc span6"><div className="card-head"><h2>Дни недели</h2></div><Weekdays wd={d.weekdays} pastDays={d.pastDays} /></section>
     <section className="wc span6"><div className="card-head"><h2>Рекорды</h2></div>
       <ul className="rec-list">{d.records.map((r: any) => <li key={r.name}><span className="rec-ic"><Icon name={r.icon} /></span><div><span>{r.name}</span><small>{/^\d{4}-/.test(r.sub) ? humanLong(r.sub) : r.sub.replace(/с (\d{4}-\d{2}-\d{2})/, (_: string, x: string) => `с ${human(x)}`)}</small></div><b>{/^\d+$/.test(r.value) ? fmt(+r.value) : r.value}{r.unit ? <small> {r.unit}</small> : null}</b></li>)}</ul>
     </section>
@@ -275,7 +344,7 @@ function Awards() {
   </>;
 }
 
-export function Stats({ wide, tab: start, has = () => true, onBack }: { wide: boolean; tab?: StatsTab; has?: (feature: string) => boolean; onBack: () => void }) {
+export function Stats({ wide, tab: start, has = () => true, onBack, onOpenDay }: { wide: boolean; tab?: StatsTab; has?: (feature: string) => boolean; onBack: () => void; onOpenDay?: (day: string) => void }) {
   const [tab, setTab] = useState<StatsTab>(start ?? 'overview'), [n, setN] = useState(30);
   useEffect(() => { if (start) setTab(start); }, [start]);
   const pick = useCallback((t: StatsTab) => { setTab(t); buzz(6); }, []);
@@ -289,7 +358,7 @@ export function Stats({ wide, tab: start, has = () => true, onBack }: { wide: bo
       <div className="seg-tabs" role="tablist">{TABS.filter(([, , f]) => !f || has(f)).map(([k, t]) => <button key={k} role="tab" aria-selected={tab === k} className={tab === k ? 'on' : ''} onClick={() => pick(k)}>{t}</button>)}</div>
       {['food', 'body', 'study', 'money', 'books'].includes(tab) && <div className="seg-tabs sm">{[7, 30, 90, 365].map(r => <button key={r} className={r === n ? 'on' : ''} onClick={() => setN(r)}>{r === 365 ? 'год' : `${r} дн`}</button>)}</div>}
     </div>
-    {tab === 'overview' && <Overview />}
+    {tab === 'overview' && <Overview has={has} onOpenDay={onOpenDay} />}
     {tab === 'food' && <FoodStats n={n} />}
     {tab === 'body' && <BodyStats n={n} />}
     {tab === 'study' && <StudyStats n={n} />}
