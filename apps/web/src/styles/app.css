@@ -2306,8 +2306,9 @@ input:-webkit-autofill,input:-webkit-autofill:hover,input:-webkit-autofill:focus
 @keyframes mark-glow{0%{box-shadow:0 0 0 0 rgba(244,207,116,.8),0 0 0 0 rgba(244,207,116,.5)}40%{box-shadow:0 0 0 8px rgba(244,207,116,.35),0 0 30px 8px rgba(244,207,116,.5)}100%{box-shadow:0 0 0 14px rgba(244,207,116,0),0 0 0 0 rgba(244,207,116,0)}}
 .login-brand:has(.login-mark-btn.lit) b{transition:opacity .3s}
 .login-brand:has(.login-mark-btn.lit) b{opacity:0}
-.beam-orb{position:fixed;left:0;top:0;width:26px;height:26px;margin:-13px 0 0 -13px;border-radius:50%;z-index:60;pointer-events:none;
-  background:radial-gradient(circle,#FFF4D6 0,#F4CF74 35%,rgba(244,207,116,0) 70%);box-shadow:0 0 28px 10px rgba(244,207,116,.55)}
+.beam-ray{position:fixed;height:6px;margin-top:-3px;transform-origin:0 50%;z-index:60;pointer-events:none;border-radius:3px;
+  background:linear-gradient(90deg,rgba(244,207,116,0) 0,rgba(244,207,116,.55) 55%,#FFF6DD 92%,#FFFFFF 100%);
+  filter:drop-shadow(0 0 6px rgba(255,214,140,.9)) drop-shadow(0 0 14px rgba(244,190,90,.6))}
 /* форма плотнее на невысоких экранах — регистрация с Google и демо помещается без прокрутки */
 @media (min-width:900px) and (max-height:1000px){
   .lw-scene .login h1{font-size:clamp(28px,3.6dvh,40px)!important}

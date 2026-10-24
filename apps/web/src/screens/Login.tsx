@@ -176,24 +176,26 @@ export function Login({ onDone }: { onDone: () => void }) {
   const pv = useProviders(), [forgot, setForgot] = useState(false), [sent, setSent] = useState('');
   const [focus, setFocus] = useState(''), [p2, setP2] = useState(''), [caps, setCaps] = useState(false);
   const pass = useRef<HTMLInputElement>(null), pass2 = useRef<HTMLInputElement>(null), mailRef = useRef<HTMLInputElement>(null), title = useRef<HTMLHeadingElement>(null), first = useRef(true);
-  // после луча по LUMI огонёк летит из последней буквы в маяк — маяк вспыхивает: на него можно нажать (сменит тему)
+  // цепочка света: луч по LUMI → по плашке демо → с её правого края быстрая вспышка-стрела в маяк → маяк загорается
+  // (подсказывает, что маяк — кнопка: сменит тему). Стрела летит ~0,3 с — читается как луч, а не как предмет
   useEffect(() => {
     if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-    let orb: HTMLDivElement | null = null, off = 0;
+    let ray: HTMLDivElement | null = null, off = 0;
     const t = window.setTimeout(() => {
-      const mark = document.querySelector<HTMLElement>('.login-mark-btn');
-      const from = [...document.querySelectorAll<HTMLElement>('.lw .letter')].map(e => e.getBoundingClientRect())
-        .filter(r => r.width && r.bottom > 0 && r.top < innerHeight && r.right > 0 && r.left < innerWidth).sort((a, b) => b.right - a.right)[0];
-      if (!mark || !from) return;
-      const to = mark.getBoundingClientRect();
-      orb = document.createElement('div'); orb.className = 'beam-orb'; orb.setAttribute('aria-hidden', 'true'); document.body.append(orb);
-      const a = `translate(${from.left + from.width / 2}px,${from.top + from.height * 0.4}px)`, b = `translate(${to.left + to.width / 2}px,${to.top + to.height / 2}px)`;
-      orb.animate([{ transform: `${a} scale(1.8)`, opacity: 0 }, { transform: `${a} scale(1.4)`, opacity: 1, offset: 0.18 }, { transform: `${b} scale(.45)`, opacity: 1 }],
-        { duration: 950, easing: 'cubic-bezier(.55,0,.3,1)' }).onfinish = () => {
-        orb?.remove(); orb = null; mark.classList.add('lit'); off = window.setTimeout(() => mark.classList.remove('lit'), 2200);
-      };
-    }, 2100);
-    return () => { clearTimeout(t); clearTimeout(off); orb?.remove(); };
+      const mark = document.querySelector<HTMLElement>('.login-mark-btn'), plaque = document.querySelector<HTMLElement>('.demo-hero');
+      if (!mark || !plaque) return;
+      const a = plaque.getBoundingClientRect(), b = mark.getBoundingClientRect();
+      const x0 = a.right - 18, y0 = a.top + a.height / 2, x1 = b.left + b.width / 2, y1 = b.top + b.height / 2;
+      const len = Math.hypot(x1 - x0, y1 - y0), ang = Math.atan2(y1 - y0, x1 - x0) * 180 / Math.PI;
+      ray = document.createElement('div'); ray.className = 'beam-ray'; ray.setAttribute('aria-hidden', 'true');
+      Object.assign(ray.style, { left: `${x0}px`, top: `${y0}px`, width: `${len}px`, transform: `rotate(${ang}deg)` });
+      document.body.append(ray);
+      // голова луча долетает до маяка за 55% времени, хвост догоняет и гаснет
+      ray.animate([{ clipPath: 'inset(0 100% 0 0)', opacity: 1 }, { clipPath: 'inset(0 0 0 0)', opacity: 1, offset: 0.55 }, { clipPath: 'inset(0 0 0 100%)', opacity: 0.2 }],
+        { duration: 320, easing: 'cubic-bezier(.6,0,.4,1)' }).onfinish = () => { ray?.remove(); ray = null; };
+      window.setTimeout(() => { mark.classList.add('lit'); off = window.setTimeout(() => mark.classList.remove('lit'), 2200); }, 180);
+    }, 2850);
+    return () => { clearTimeout(t); clearTimeout(off); ray?.remove(); };
   }, []);
   // смена экрана (вход ↔ новый пароль) — фокус на заголовок, а не в никуда
   useEffect(() => { if (first.current) { first.current = false; return; } title.current?.focus(); }, [forgot]);
