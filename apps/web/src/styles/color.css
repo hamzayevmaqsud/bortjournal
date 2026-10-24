@@ -27,9 +27,10 @@
 }
 
 /* небо стоит, контент едет по нему; свечение — справа сверху, как солнце или луна над горизонтом */
+/* приглушено: небо — наполовину к фону и ниже, свечение слабее */
 body{background:
-  radial-gradient(620px 320px at 88% -80px,var(--glow),transparent 72%) no-repeat fixed,
-  linear-gradient(180deg,var(--sky) 0,var(--sky-2) 240px,var(--bg) 560px) no-repeat fixed,
+  radial-gradient(560px 260px at 88% -90px,color-mix(in srgb,var(--glow) 45%,transparent),transparent 72%) no-repeat fixed,
+  linear-gradient(180deg,color-mix(in srgb,var(--sky) 50%,var(--bg)) 0,color-mix(in srgb,var(--sky-2) 45%,var(--bg)) 180px,var(--bg) 420px) no-repeat fixed,
   var(--bg);transition:background-color .6s}
 /* страница входа — своя, со стеной постеров */
 body:has(.lw-scene){background:var(--bg)}
@@ -37,10 +38,10 @@ body:has(.lw-scene){background:var(--bg)}
 /* ---------- свой цвет у раздела ---------- */
 .c-food{--c:var(--food)}.c-tasks{--c:var(--orange)}.c-habits{--c:var(--steps)}.c-more{--c:var(--study)}.c-study{--c:var(--study)}
 /* светлые карточки разделов — с лёгким оттенком своего цвета, сверху чуть насыщеннее */
-.wc:not(.solid){background:linear-gradient(180deg,color-mix(in srgb,var(--c) 9%,var(--card)) 0,color-mix(in srgb,var(--c) 3%,var(--card)) 120px)}
+.wc:not(.solid){background:linear-gradient(180deg,color-mix(in srgb,var(--c) 5%,var(--card)) 0,var(--card) 120px)}
 /* заголовок карточки — с точкой своего цвета */
 .wc .card-head h2::before,.c-habits #hb-h::before{content:"";display:inline-block;width:8px;height:8px;margin:-2px 9px 0 0;border-radius:50%;vertical-align:middle;
-  background:var(--c);box-shadow:0 0 0 3px color-mix(in srgb,var(--c) 18%,transparent)}
+  background:var(--c);box-shadow:0 0 0 3px color-mix(in srgb,var(--c) 14%,transparent)}
 .wc.solid .card-head h2::before{background:currentColor;box-shadow:none;opacity:.8}
 
 /* вкладки внизу — в цвет раздела */
