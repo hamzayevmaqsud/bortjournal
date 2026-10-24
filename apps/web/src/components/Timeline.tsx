@@ -30,7 +30,9 @@ export function marksOf(events: DayEvent[], tasks: Task[], calendar: CalEvent[] 
   return out;
 }
 
-export function Timeline({ marks, now, still, pro = true, sums, allDay = [], onAdd, onDelete, onEdit, onToggleTask }: {
+export function Timeline({ marks, now, still, pro = true, sums, allDay = [], has = () => true, onAdd, onDelete, onEdit, onToggleTask }: {
+  /** раздел выбран человеком (анкета/настройки): дорожка без записей и без раздела не показывается */
+  has?: (section: string) => boolean;
   marks: Mark[]; now: string | null; still: boolean; pro?: boolean;
   /** события календаря на весь день — строкой над шкалой */ allDay?: string[];
   /** итог по дорожке справа — только на широком экране */ sums?: Record<string, string>;
@@ -54,7 +56,7 @@ export function Timeline({ marks, now, still, pro = true, sums, allDay = [], onA
       <div className="tl-axis">{['06', '09', '12', '15', '18', '21', '24'].map((h, i) => <span key={h} style={{ left: `${i / 6 * 100}%`, visibility: now && Math.abs(i / 6 * 100 - pct(now)) < (sums ? 6 : 19) ? 'hidden' : undefined }}>{h}</span>)}</div>
       <div className="tl-body">
         {now && <div className="tl-now" style={{ left: `calc(var(--lw) + (100% - var(--lw) - var(--sw)) * ${pct(now) / 100})` }}><b>сейчас {now}</b></div>}
-        {LANES.filter(([lane]) => lane === 'cal' ? marks.some(m => m.lane === 'cal') : pro || (lane !== 'study' && lane !== 'gym') || marks.some(m => m.lane === lane)).map(([lane, icon, color, name]) => (
+        {LANES.filter(([lane]) => lane === 'cal' ? marks.some(m => m.lane === 'cal') : marks.some(m => m.lane === lane) || (has(lane) && (pro || (lane !== 'study' && lane !== 'gym')))).map(([lane, icon, color, name]) => (
           <div className="lane" key={lane}>
             <span className="lane-ic" style={{ ['--c' as string]: color }} title={name}><Icon name={icon} /><span className="lane-name">{name}</span></span>
             <div className="track" title={`${name}: нажми, чтобы добавить`} onClick={e => {
