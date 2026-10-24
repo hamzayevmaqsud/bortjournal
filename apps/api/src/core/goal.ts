@@ -79,7 +79,7 @@ export async function goalState(db: Tx, userId: string) {
   // нормы дня — под текущий план
   let recalculated: { from: number; to: number } | null = null;
   const old = Number(settings.kcal) || 0;
-  if (!old || Math.abs(old - plan.kcal) >= 10) {
+  if (!old || (settings.kcalManual !== true && Math.abs(old - plan.kcal) >= 10)) {
     recalculated = old ? { from: old, to: plan.kcal } : null;
     await db.update(profiles).set({ settings: { ...settings, kcal: plan.kcal, protein: plan.protein, fat: plan.fat, carbs: plan.carbs }, updatedAt: new Date() }).where(eq(profiles.userId, userId));
   }

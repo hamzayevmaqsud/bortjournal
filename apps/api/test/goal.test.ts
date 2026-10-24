@@ -64,4 +64,14 @@ describe('цель', () => {
     expect(after.plan.kcal).toBeGreaterThan(before.plan.kcal);
     expect((await as('pro', 'PUT', '/api/goal/activity', { level: 'nope' })).statusCode).toBe(400);
   });
+  it('норма калорий, поправленная руками, не перезаписывается «Целью»; kcalManual:false возвращает расчёт', async () => {
+    const plan = (await as('pro', 'GET', '/api/goal')).json().plan.kcal as number;
+    expect((await as('pro', 'PUT', '/api/profile/settings', { kcal: plan + 300 })).statusCode).toBe(200);
+    await as('pro', 'GET', '/api/goal');
+    const me = (await as('pro', 'GET', '/api/me')).json();
+    expect(me.profile.settings.kcal).toBe(plan + 300);
+    await as('pro', 'PUT', '/api/profile/settings', { kcalManual: false });
+    await as('pro', 'GET', '/api/goal');
+    expect((await as('pro', 'GET', '/api/me')).json().profile.settings.kcal).toBe(plan);
+  });
 });

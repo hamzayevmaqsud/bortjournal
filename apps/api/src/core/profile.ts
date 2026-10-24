@@ -63,12 +63,14 @@ export async function profileRoutes(app: FastifyInstance, { db }: { db: DB }) {
       const target = goal === 'maintain' || b.target === undefined || b.target === null || b.target === '' ? null : num(b.target, 30, 300, 'Желаемый вес');
       const prof = { sex, age, height, goal, pace, steps } as const;
       const p = computePlan(prof, weight, level, steps);
-      Object.assign(settings, { kcal: p.kcal, protein: p.protein, fat: p.fat, carbs: p.carbs, steps: stepsGoal(steps), water: waterGoal(sex, level) });
+      Object.assign(settings, { kcal: p.kcal, protein: p.protein, fat: p.fat, carbs: p.carbs, steps: stepsGoal(steps), water: waterGoal(sex, level), kcalManual: false });
       plan = { ...p, weeks: target ? weeksTo(prof, weight, p.kcal, level, target, steps) : null };
       body = { level, weight, v: { sex, age, ageMeasuredOn: today, heightCm: height, goal, pace, targetKg: target, startWeightKg: weight, startedOn: today, plannedSteps: steps } };
     }
     // нормы, поправленные в анкете руками; калории сменились — углеводы добирают разницу
     for (const k of ['kcal', 'protein', 'water', 'steps'] as const) if (norms[k] !== undefined) settings[k] = norms[k];
+    // калории или белок поправлены руками — «Цель» их больше не пересчитывает (пока анкету не пройдут заново без правок)
+    if ((norms.kcal !== undefined && norms.kcal !== plan?.kcal) || (norms.protein !== undefined && norms.protein !== plan?.protein)) settings.kcalManual = true;
     if ((norms.kcal !== undefined || norms.protein !== undefined) && settings.fat !== undefined) settings.carbs = Math.max(0, Math.round((settings.kcal - (settings.protein ?? 0) * 4 - settings.fat * 9) / 4 / 5) * 5);
     if (b.remind !== undefined) {
       const r = (b.remind ?? {}) as { off?: unknown; kinds?: Record<string, unknown> }, R: Record<string, unknown> = { ...(old.remind ?? {}) };
@@ -105,6 +107,9 @@ export async function profileRoutes(app: FastifyInstance, { db }: { db: DB }) {
     if (b.name !== undefined) s.name = nameOf(b.name);
     if (b.kcal !== undefined) s.kcal = Math.round(num(b.kcal, 800, 6000, 'Калории'));
     if (b.protein !== undefined) s.protein = Math.round(num(b.protein, 0, 400, 'Белок'));
+    // ручная норма — «Цель» её не перезаписывает; kcalManual:false возвращает расчёт
+    if (b.kcal !== undefined || b.protein !== undefined) s.kcalManual = true;
+    if (b.kcalManual === false) s.kcalManual = false;
     if (b.steps !== undefined) s.steps = Math.round(num(b.steps, 1000, 50000, 'Шаги'));
     if (b.water !== undefined) s.water = Math.round(num(b.water, 500, 6000, 'Вода'));
     if (b.sections !== undefined) s.sections = sectionsOf(b.sections);
