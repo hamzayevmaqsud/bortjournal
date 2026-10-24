@@ -24,7 +24,7 @@ const LOGO_V = 'up';
 const letterSet = (k: number) => `/lumi/logo/${k}-240.webp?v=${LOGO_V} 240w, /lumi/logo/${k}-400.webp?v=${LOGO_V} 400w, /lumi/logo/${k}.webp?v=${LOGO_V} 612w`;
 /** форма справа: ширина — как в стилях (.lw-scene .login); поле — отступ справа и зазор до стены, они равны */
 /** на высоких экранах форма крупнее целиком (zoom), чтобы не теряться рядом с большими карточками */
-const formZoom = () => (innerWidth >= 1800 ? Math.min(1.3, Math.max(1, innerHeight / 1080)) : 1);
+const formZoom = () => (innerWidth >= 1800 ? Math.min(1.3, Math.max(1, innerHeight / 1150)) : 1);
 const formW = () => Math.min(600, Math.max(460, innerWidth * 0.34)) * formZoom(), margin = () => Math.min(120, Math.max(32, innerWidth * 0.045));
 /** место слева от формы, где может стоять стена */
 const wallFree = () => innerWidth - formW() - 2 * margin();
