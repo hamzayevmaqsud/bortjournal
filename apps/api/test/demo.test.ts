@@ -1,8 +1,10 @@
 /** Демо без регистрации: временный аккаунт с записями, сохранение как настоящего, запрет demo-…, уборка просроченных */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { eq, sql } from 'drizzle-orm';
-import { addDays } from '@bortjournal/core';
+import { addDays, localNow } from '@bortjournal/core';
 import { hashPassword } from '../src/core/auth.js';
+import { seedDemo } from '../src/core/demo.js';
+import { demoData } from '../src/core/demo-data.js';
 import * as s from '../src/schema.js';
 import { buildApp } from '../src/server.js';
 import { runJobsOnce } from '../src/worker.js';
@@ -40,14 +42,87 @@ describe('демо', () => {
     expect(y.meals.length).toBeGreaterThanOrEqual(3);
     expect(y.totals.kcal).toBeGreaterThan(1000);
     expect(y.totals.waterMl).toBeGreaterThan(1000);
-    expect(t.streak).toBeGreaterThanOrEqual(2);
+    expect(t.streak).toBeGreaterThanOrEqual(5);
     // пароль сменить нельзя, пока демо не сохранено
     expect((await r('POST', '/api/auth/password', { next: 'newpass12' })).statusCode).toBe(400);
+  });
+
+  it('три месяца истории: статистика, год клетками, итог недели, привычки, достижения, все разделы', async () => {
+    const { cookie } = await demo('10.0.0.6'), r = as(cookie);
+    const o = (await r('GET', '/api/stats/overview')).json();
+    // ≥75 дней с записями из 90, живая серия, год клетками (нужно ≥14 дней), дни недели, неделя к неделе
+    expect(o.year.active).toBeGreaterThanOrEqual(75);
+    expect(o.year.active).toBeLessThanOrEqual(90);
+    expect(o.nums.streak).toBeGreaterThanOrEqual(5);
+    expect(o.nums.bestStreak).toBeGreaterThanOrEqual(7);
+    expect(o.nums.perfect365).toBeGreaterThanOrEqual(3);
+    expect(o.weekdays.every((d: any) => d.n > 0)).toBe(true);
+    expect(o.week.metrics.length).toBeGreaterThanOrEqual(6);
+    expect(o.records.length).toBeGreaterThanOrEqual(5);
+    const w = (await r('GET', '/api/insights/week')).json();
+    expect(w.days).toBeGreaterThanOrEqual(3);
+    expect(w.stats.length).toBeGreaterThanOrEqual(5);
+    expect(w.wins.length).toBeGreaterThan(0);
+    const hs = (await r('GET', '/api/habits')).json().items;
+    expect(hs).toHaveLength(4);
+    expect(hs.every((h: any) => h.streak >= 3)).toBe(true);
+    // достижения открывались по ходу истории, а не все сегодня
+    const aw = (await r('GET', '/api/awards')).json();
+    expect(aw.total).toBeGreaterThanOrEqual(15);
+    expect(new Set(aw.unlocked.map((u: any) => u.day)).size).toBeGreaterThanOrEqual(3);
+    expect((await r('POST', '/api/awards/check')).json().fresh).toEqual([]);
+    // рост: белка и воды в последний месяц больше, чем в первый; вес 81 → 77,3
+    const f30 = (await r('GET', '/api/stats/food?days=30')).json(), f90 = (await r('GET', '/api/stats/food?days=90')).json();
+    expect(f90.logged).toBeGreaterThanOrEqual(70);
+    const mean = (rows: any[], k: string) => { const xs = rows.filter(x => x.meals).map(x => x[k]); return xs.reduce((a: number, b: number) => a + b, 0) / xs.length; };
+    const early = f90.rows.slice(0, 30), late = f90.rows.slice(59, 89);
+    expect(mean(late, 'protein')).toBeGreaterThan(mean(early, 'protein'));
+    expect(mean(late, 'waterMl')).toBeGreaterThan(mean(early, 'waterMl') + 300);
+    expect(f30.top.length).toBeGreaterThanOrEqual(4);
+    const b = (await r('GET', '/api/stats/body?days=90')).json();
+    expect(b.weights.length).toBeGreaterThanOrEqual(30);
+    expect(b.change).toBeLessThanOrEqual(-3);
+    expect((await r('GET', '/api/gym/overview')).json().total).toBeGreaterThanOrEqual(15);
+    const t = (await r('GET', '/api/today')).json();
+    expect(t.parts.budget.configured).toBe(true);
+    expect(t.parts.books.reading.page).toBeGreaterThan(100);
+    const goals = (await r('GET', `/api/plans/goals?from=${addDays(t.day, -60)}&to=${t.day}`)).json().items;
+    expect(goals.length).toBeGreaterThanOrEqual(4);
+    expect(goals.some((g: any) => g.progress > 0 && g.progress < 100)).toBe(true);
+    expect((await r('GET', '/api/study/quiz')).json().total).toBeGreaterThanOrEqual(10);
+  });
+
+  it('данные демо детерминированы по id; засев — быстро, пачками', async () => {
+    const a = demoData('seed-a', '2026-10-25', '13:00');
+    expect(demoData('seed-a', '2026-10-25', '13:00')).toEqual(a);
+    expect(demoData('seed-b', '2026-10-25', '13:00').meals).not.toEqual(a.meals);
+    // сегодня — только то, что уже случилось
+    expect(a.meals.filter(m => m.day === '2026-10-25').every(m => m.time <= '13:00')).toBe(true);
+    expect(demoData('seed-a', '2026-10-25', '06:00').meals.some(m => m.day === '2026-10-25')).toBe(false);
+    expect(a.missed.length).toBeGreaterThanOrEqual(8);
+    expect(a.missed.length).toBeLessThanOrEqual(12);
+
+    const [u] = await conn.db.insert(s.users).values({ username: 'seedtime', passwordHash: null, tzOffset: 240 }).returning();
+    const t0 = Date.now();
+    await conn.db.transaction(tx => seedDemo(tx, u!.id, 240));
+    const ms = Date.now() - t0;
+    expect(ms).toBeLessThan(4000);
+    const now = localNow(240), D = demoData(u!.id, now.day, now.hm);
+    const n = async (table: string) => (await conn.db.execute<{ n: number }>(sql`select count(*)::int as n from ${sql.identifier(table)} where user_id = ${u!.id} and day < ${now.day}`)).rows[0]!.n;
+    expect(await n('food_meals')).toBe(D.meals.filter(m => m.day < now.day).length);
+    expect(await n('food_drinks')).toBe(D.drinks.filter(d => d.day < now.day).length);
+    expect(await n('gym_workouts')).toBe(D.workouts.filter(w => w.day < now.day).length);
+    expect(await n('budget_entries')).toBe(D.money.filter(m => m.day < now.day).length);
+    // лента событий: на каждый приём, напиток, задачу с датой, занятие, тренировку и операцию
+    const evs = (await conn.db.execute<{ n: number }>(sql`select count(*)::int as n from events where user_id = ${u!.id}`)).rows[0]!.n;
+    expect(evs).toBe(D.meals.length + D.drinks.length + D.tasks.filter(x => x.day).length + D.sessions.length + D.workouts.length + D.money.length);
   });
 
   it('сохранить как аккаунт: проверка полей, занятые — 409, записи остаются, вход по паролю', async () => {
     const { cookie } = await demo('10.0.0.2'), r = as(cookie);
     const before = (await r('GET', '/api/plans/tasks?from=2000-01-01&to=2100-01-01')).json().items.length;
+    const meals = (await r('GET', '/api/stats/food?days=90')).json().logged;
+    expect(meals).toBeGreaterThanOrEqual(70);
     expect((await r('POST', '/api/auth/claim', { username: 'x', password: 'secret12', email: 'x1@mail.az' })).statusCode).toBe(400);
     expect((await r('POST', '/api/auth/claim', { username: 'demo-mine', password: 'secret12', email: 'x2@mail.az' })).statusCode).toBe(400);
     expect((await r('POST', '/api/auth/claim', { username: 'newbie', password: 'short', email: 'x3@mail.az' })).statusCode).toBe(400);
@@ -59,6 +134,7 @@ describe('демо', () => {
     expect(me).toMatchObject({ demo: false, username: 'newbie' });
     expect(me.subscription).toMatchObject({ pro: true, source: 'trial', daysLeft: 7 });
     expect((await r('GET', '/api/plans/tasks?from=2000-01-01&to=2100-01-01')).json().items.length).toBe(before);
+    expect((await r('GET', '/api/stats/food?days=90')).json().logged).toBe(meals);
     expect((await r('POST', '/api/auth/claim', { username: 'again', password: 'secret12', email: 'x5@mail.az' })).statusCode).toBe(409);
     const login = await app.inject({ method: 'POST', url: '/api/auth/login', headers: H, payload: { username: 'newbie', password: 'secret12' } });
     expect(login.statusCode).toBe(200);

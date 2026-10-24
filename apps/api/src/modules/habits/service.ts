@@ -106,18 +106,6 @@ export async function habitHistory(db: Tx, userId: string, from: string, to: str
   };
 }
 
-/** демо: три привычки с отметками за прошлые дни (сегодня — одна уже отмечена) */
-export async function seedHabits(db: Tx, userId: string, today: string) {
-  const plan: Array<[string, string, number[]]> = [
-    ['Медитация 10 минут', 'orange', [-6, -5, -4, -3, -2, -1]],
-    ['Витамины', 'steps', [-5, -3, -2, -1, 0]],
-    ['Без сладкого', 'books', [-4, -2, -1]]
-  ];
-  const hs = await db.insert(habits).values(plan.map(([title, color], i) => ({ userId, title, color, sort: i }))).returning();
-  const rows = hs.flatMap((h, i) => plan[i]![2].map(n => ({ habitId: h.id, userId, day: addDays(today, n) })));
-  if (rows.length) await db.insert(habitChecks).values(rows).onConflictDoNothing();
-}
-
 /** порядок: ids — свои активные привычки сверху вниз */
 export async function reorder(db: Tx, userId: string, ids: string[]) {
   const hs = await activeHabits(db, userId), mine = new Set(hs.map(h => h.id));
