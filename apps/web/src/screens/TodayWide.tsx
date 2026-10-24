@@ -90,11 +90,11 @@ export function TodayWide({ wide = true, data, day, today, sub, still, settings 
     try { await api('/api/plans/tasks', { method: 'POST', body: { title: t, day } }); setTitle(''); onTaskAdded(t); }
     catch (e) { toast(e instanceof Error ? e.message : 'Не получилось', { err: true }); } finally { setBusy(false); }
   };
-  const proBtn = (what: string, label: string, ic: string) => <button className="btn-accent" onClick={() => onPro(what)}><Icon name={ic} />{label}{!can(sub, what) && <span className="lock">PRO</span>}</button>;
+  const proBtn = (what: string, label: string, ic: string, tour?: string) => <button className="btn-accent" data-tour={tour} onClick={() => onPro(what)}><Icon name={ic} />{label}{!can(sub, what) && <span className="lock">PRO</span>}</button>;
 
   return <div className={`wide-page ${wide ? '' : 'narrow'}`} ref={page}>
     <header className="hero" ref={head}>
-      <div className="hero-left">
+      <div className="hero-left" data-tour={wide ? 'date' : undefined}>
         <span className="hero-wd">{rel ? `${rel} · ` : ''}{WDF[dt.getUTCDay()]}</span>
         <h1 className="hero-day">{dt.getUTCDate()}<span>{MONG[dt.getUTCMonth()]}</span></h1>
         {wide && <div className="datenav dn-left">
@@ -104,13 +104,13 @@ export function TodayWide({ wide = true, data, day, today, sub, still, settings 
         </div>}
       </div>
       <div className="hero-side">
-        {!wide && <div className="datenav">
+        {!wide && <div className="datenav" data-tour="date">
           <button onClick={() => onDay(-1)} aria-label="Предыдущий день"><Icon name="chevL" /></button>
           <button className={`cur ${off ? 'not-today' : ''}`} onClick={() => off && onDay(-off)} title="К сегодняшнему дню">{rel || WDF[dt.getUTCDay()]} · {dt.getUTCDate()} {MON[dt.getUTCMonth()]}</button>
           <button onClick={() => onDay(1)} aria-label="Следующий день"><Icon name="chev" /></button>
         </div>}
         {data && <span className="greet">{greet(data.now.hm)}{data.name ? `, ${data.name}` : ''}.</span>}
-        {data && <div className="statgroup">
+        {data && <div className="statgroup" data-tour="stats">
           {has('food') && <button onClick={() => onPro('Цель и прогноз')}><i><Icon name="today" />план</i><b>{fmt(data.plan.kcal)}<small>ккал</small></b><span>{data.plan.protein ? `белок ${fmt(data.plan.protein)} г` : 'норма по анкете'}</span></button>}
           {has('food') && <button onClick={onWeight}><i><Icon name="steps" />вес</i><b>{body?.weight ? fmt1(body.weight.kg) : '—'}<small>кг</small></b><span className={body?.weight?.today ? '' : 'go'}>{body?.weight?.today ? (data.isToday ? 'сегодня' : 'в этот день') : 'взвеситься →'}</span></button>}
           <button className="hot" onClick={() => onPro('Статистика')}><i><Icon name="flame" />серия</i><b>{data.streak}<small>{plural(data.streak, 'день', 'дня', 'дней')}</small></b><span>подряд</span></button>
@@ -129,14 +129,14 @@ export function TodayWide({ wide = true, data, day, today, sub, still, settings 
       <span className="wbar"><i style={{ width: `${steps.filter(s => s[1]).length / steps.length * 100}%`, background: 'var(--good)' }} /></span>
     </section>}
     {!data ? <div className="wgrid"><div className="skel" style={{ gridColumn: 'span 12', height: 260 }} /><div className="skel" style={{ gridColumn: 'span 4', height: 230 }} /><div className="skel" style={{ gridColumn: 'span 4', height: 230 }} /><div className="skel" style={{ gridColumn: 'span 4', height: 230 }} /></div> : <>
-      <section className="panel tl-panel">
+      <section className="panel tl-panel" data-tour="timeline">
         <Timeline marks={marks} allDay={(data.calendar ?? []).filter(c => !c.time).map(c => c.title)} now={data.isToday ? data.now.hm : null} still={still} pro={can(sub, 'study') || can(sub, 'gym')} sums={wide ? sums : undefined} onAdd={t => onAdd(t)} onDelete={onDelete} onEdit={onEdit} onToggleTask={onToggleTask} />
         <p className="tl-hint">{wide ? 'Нажми на пустое место дорожки — добавишь запись на это время. Нажми на отметку — изменишь её.' : 'Нажми пустое место — запись на это время, отметку — изменить.'}</p>
       </section>
 
       <div className="wgrid">
         {food && has('food') && <section className="wc c-food" style={{ ['--i' as string]: 0 }}>
-          <div className="card-head"><h2>Еда</h2><div className="card-actions">{proBtn('Фото и описание еды', 'Фото', 'camera')}<button className="btn-accent" onClick={onMeal}><Icon name="plus" />Приём</button></div></div>
+          <div className="card-head"><h2>Еда</h2><div className="card-actions">{proBtn('Фото и описание еды', 'Фото', 'camera', 'photo')}<button className="btn-accent" onClick={onMeal}><Icon name="plus" />Приём</button></div></div>
           <div className="ring-row"><RingBox v={food.kcal} max={food.norm.kcal} color="var(--food)" />
             <div className="ring-meta"><Big v={food.kcal} of={`${fmt(food.norm.kcal)} ккал`} />
               <div className="wmacros"><span><em>Б</em>{fmt(food.protein)}<i>/{fmt(food.norm.protein)}</i></span><span><em>Ж</em>{fmt(food.fat)}</span><span><em>У</em>{fmt(food.carbs)}</span></div></div>
@@ -148,7 +148,7 @@ export function TodayWide({ wide = true, data, day, today, sub, still, settings 
           <div className="card-head"><h2>Вода</h2><div className="card-actions"><button className="btn-accent" onClick={onWater}><Icon name="plus" />Напиток</button></div></div>
           <div className="ring-row"><RingBox v={food.waterMl} max={food.norm.water} color="var(--water-on-navy)" />
             <div className="ring-meta"><Big v={food.waterMl / 1000} dec of={`${fmt1(food.norm.water / 1000)} л`} />
-              <div className="chips-row"><button className="chip" onClick={() => onAddWater(250)}>+250 мл</button><button className="chip" onClick={() => onAddWater(500)}>+500 мл</button></div></div>
+              <div className="chips-row" data-tour="water"><button className="chip" onClick={() => onAddWater(250)}>+250 мл</button><button className="chip" onClick={() => onAddWater(500)}>+500 мл</button></div></div>
           </div>
           <p className="card-note">{food.waterMl >= food.norm.water ? 'Норма воды на сегодня выпита' : `Ещё ${fmt1((food.norm.water - food.waterMl) / 1000)} л до нормы`}</p>
         </section>}
