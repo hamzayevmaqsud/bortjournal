@@ -16,12 +16,12 @@ import type { Nudge } from './module.js';
 import { dayTips, weekRecap } from './insights.js';
 import { endpointOk, pushToUser, vapid } from './push.js';
 import { profiles, pushSubscriptions, reminderLog, users } from './schema.js';
-import { activeDays } from './today.js';
+import { activeSet, streakOf } from './streak.js';
 
 /** виды напоминаний — их можно выключить по отдельности */
 export const REMIND_KINDS = ['water', 'food', 'tasks', 'gym', 'quiz', 'streak', 'tip', 'review'] as const;
 export type RemindSettings = { off?: boolean; lead?: number } & Partial<Record<(typeof REMIND_KINDS)[number], boolean>>;
-const WINDOW = 30, TIP_AT = 20 * 60 + 40, REVIEW_AT = 19 * 60;
+const WINDOW = 30, TIP_AT = 20 * 60 + 40, REVIEW_AT = 19 * 60, STREAK_AT = 21 * 60;
 const plural = (n: number, a: string, b: string, c: string) => { const m = Math.abs(n) % 100, k = m % 10; return m > 10 && m < 20 ? c : k > 1 && k < 5 ? b : k === 1 ? a : c; };
 
 /** что пора отправить пользователю прямо сейчас (без учёта уже отправленного) */
@@ -35,10 +35,11 @@ export async function dueNudges(db: DB, userId: string, at = Date.now()): Promis
   const allowed = new Set<string>(['food', 'body', 'plans', ...(['gym', 'study', 'budget', 'books'] as const).filter(k => hasFeature(sub, k))]);
   const ctx = { db, userId, day: now.day, now, settings, profile: p ?? null, min };
   const list = (await Promise.all(MODULES_LIST.filter(m => m.remind && allowed.has(m.name)).map(m => m.remind!(ctx)))).flat();
-  const days = await activeDays(db, userId, now.day);
-  // серия: вечером, если сегодня ещё пусто, а подряд перед этим — хотя бы 2 дня
-  let d = addDays(now.day, -1), n = 0; while (days.has(d) && n < 400) { n++; d = addDays(d, -1); }
-  if (n >= 2 && !days.has(now.day)) list.push({ key: 'streak', kind: 'streak', title: `Серия ${n} ${plural(n, 'день', 'дня', 'дней')} под угрозой`, body: 'Запиши что-нибудь до полуночи — приём пищи, шаги или занятие.', url: '/#today', at: 21 * 60 });
+  // серия (общая, с заморозками): вечером, если сегодня ещё пусто, а подряд перед этим — хотя бы 2 дня. Считаем только в своё окно
+  if (min >= STREAK_AT && min < STREAK_AT + WINDOW) {
+    const st = await streakOf(db, userId, now.day), n = st.upToYesterday;
+    if (n >= 2 && st.now === n) list.push({ key: 'streak', kind: 'streak', title: `Серия ${n} ${plural(n, 'день', 'дня', 'дней')} под угрозой`, body: 'Запиши что-нибудь до полуночи — приём пищи, шаги или занятие.', url: '/#today', at: STREAK_AT });
+  }
   // пробный Pro кончается: за 2 дня и накануне, в 19:00
   if (sub.source === 'trial' && (sub.daysLeft === 2 || sub.daysLeft === 1)) list.push({ key: `trial:${sub.daysLeft}`, kind: 'trial', title: sub.daysLeft === 1 ? 'Завтра заканчивается пробный Pro' : 'Пробный Pro — ещё 2 дня', body: 'Еда, вода, шаги, задачи, цель и статистика останутся бесплатными. Остальное — по подписке или своим набором.', url: '/#more', at: 19 * 60 });
   // совет и итог считать дорого — только в своё окно и пока не отправлены сегодня
@@ -49,7 +50,7 @@ export async function dueNudges(db: DB, userId: string, at = Date.now()): Promis
     if (tip) list.push({ key: 'tip', kind: 'tip', title: tip.tone === 'good' ? 'Хороший день' : 'Совет на вечер', body: tip.text, url: '/#today', at: TIP_AT });
   }
   // итог недели: воскресенье, 19:00, если за неделю что-то было
-  if (R.review !== false && weekday(now.day) === 0 && [0, 1, 2, 3, 4, 5, 6].some(k => days.has(addDays(now.day, -k))) && await fresh('review', REVIEW_AT)) {
+  if (R.review !== false && weekday(now.day) === 0 && await fresh('review', REVIEW_AT) && (await activeSet(db, userId, addDays(now.day, -6), now.day)).size > 0) {
     const w = await weekRecap(db, userId, now.day, at);
     list.push({ key: 'review', kind: 'review', title: `Итог недели готов: ${w.score}%${w.streak ? ` · серия ${nWord(w.streak, 'день', 'дня', 'дней')}` : ''}`, body: w.focus ? `Фокус на следующую неделю: ${w.focus[0]!.toLowerCase()}${w.focus.slice(1)}.` : 'Что получилось, что нет и лучший день — загляни на минуту.', url: '/#week', at: REVIEW_AT });
   }

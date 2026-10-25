@@ -11,27 +11,16 @@ import { requireUser } from './auth.js';
 import { subscription } from './billing.js';
 import { dayEvents } from './events.js';
 import { bad } from './http.js';
-import { events, gcalEvents, integrations, profiles, users } from './schema.js';
+import { journalRoutes } from './journal.js';
+import { gcalEvents, integrations, profiles, users } from './schema.js';
+import { activeSet, FREEZE_MAX, STREAK_WINDOW, streakOf } from './streak.js';
 
-/** дни с записями: еда, учёба, тренировка или шаги — как в старом журнале */
-export async function activeDays(db: DB, userId: string, today: string) {
-  const since = addDays(today, -400);
-  const rows = await db.execute<{ day: string }>(sql`
-    select distinct day::text as day from ${events} where ${events.userId} = ${userId} and ${events.kind} in ('meal', 'session', 'workout') and ${events.day} >= ${since}
-    union select day::text from body_days where user_id = ${userId} and steps > 0 and day >= ${since}`);
-  const days = new Set(rows.rows.map(r => r.day));
-  // модули добавляют свои активные дни (фото еды, ждущее подтверждения, — уже запись)
-  for (const m of MODULES_LIST) if (m.activeDays) for (const d of await m.activeDays(db, userId, since)) days.add(d);
-  return days;
-}
-async function streak(db: DB, userId: string, today: string) {
-  const days = await activeDays(db, userId, today);
-  let d = days.has(today) ? today : addDays(today, -1), n = 0;
-  while (days.has(d) && n < 400) { n++; d = addDays(d, -1); }
-  return n;
-}
+/** дни с записями за окно серии — то же определение, что у серии (core/streak.ts) */
+export const activeDays = (db: DB, userId: string, today: string) => activeSet(db, userId, addDays(today, -STREAK_WINDOW), today);
 
 export async function todayRoutes(app: FastifyInstance, { db }: { db: DB }) {
+  // «Как прошёл день?» — часть экрана «Сегодня»; маршруты регистрируются здесь же
+  await journalRoutes(app, { db });
   app.get('/api/today', { preHandler: requireUser }, async req => {
     const userId = req.userId!;
     const [u] = await db.select({ tz: users.tzOffset }).from(users).where(eq(users.id, userId));
@@ -51,11 +40,14 @@ export async function todayRoutes(app: FastifyInstance, { db }: { db: DB }) {
     // события Google Календаря (если подключён): сначала на весь день, потом по времени
     const cal = await db.select({ id: gcalEvents.eventId, title: gcalEvents.title, time: gcalEvents.time, minutes: gcalEvents.minutes }).from(gcalEvents)
       .where(and(eq(gcalEvents.userId, userId), eq(gcalEvents.day, day), sql`exists (select 1 from ${integrations} i where i.user_id = ${userId} and i.provider = 'google-calendar')`)).orderBy(sql`${gcalEvents.time} asc nulls first`, asc(gcalEvents.title));
+    const st = await streakOf(db, userId, now.day);
     return {
       day, now, isToday: day === now.day,
       name: settings.name || null,
       plan: { kcal: Number(settings.kcal) || 2200, protein: Number(settings.protein) || 0 },
-      streak: await streak(db, userId, now.day),
+      streak: st.now,
+      // заморозки серии: сколько в запасе, спасла ли вчерашний день, замороженные дни за последние 2 недели
+      freeze: { left: st.freezes, max: FREEZE_MAX, usedYesterday: st.usedYesterday, frozen: st.frozen.filter(d => d >= addDays(now.day, -14)) },
       modules: [...allowed],
       subscription: sub,
       parts,

@@ -11,7 +11,7 @@ const OFFLINE_MARK = '__offline';
 /** ответ взят из копии на телефоне (нет сети) */
 export const fromCache = (x: unknown) => !!x && typeof x === 'object' && (x as Record<string, unknown>)[OFFLINE_MARK] === true;
 // какие записи можно отложить: всё, что не требует ответа сервера прямо сейчас (не ИИ, не поиск, не оплата, не ответы на вопросы)
-const QUEUEABLE = /^\/api\/(food\/(meals|drinks|entries)|body\/day|plans\/(tasks|goals|notes)|budget\/entries|gym\/(live|workouts)|study\/(time|sessions)|books\/[^/]+\/(progress|quotes)|habits\/[^/]+\/check)/;
+const QUEUEABLE = /^\/api\/(food\/(meals|drinks|entries)|body\/day|plans\/(tasks|goals|notes)|budget\/entries|gym\/(live|workouts)|study\/(time|sessions)|books\/[^/]+\/(progress|quotes)|habits\/[^/]+\/check|journal$)/;
 /*
  * Очередь и копии ответов принадлежат человеку: owner — логин последнего вошедшего на этом устройстве.
  * Запись уходит на сервер, только если сейчас вошёл тот же человек (проверяем /api/me перед отправкой);
@@ -144,8 +144,7 @@ export interface Task { id: string; title: string; time: string | null; done: bo
 export interface CalEvent { id: string; title: string; time: string | null; minutes: number | null }
 export interface Today {
   day: string; now: { day: string; hm: string; minutes: number }; isToday: boolean; name: string | null;
-  plan: { kcal: number; protein: number }; streak: number; modules: string[]; events: DayEvent[]; subscription: Subscription;
-  /** события Google Календаря на этот день (если подключён); time null — на весь день */
+  plan: { kcal: number; protein: number }; streak: number; modules: string[]; events: DayEvent[]; subscription: Subscription;  /** события Google Календаря на этот день (если подключён); time null — на весь день */
   calendar?: CalEvent[];
   parts: {
     food?: { kcal: number; protein: number; fat: number; carbs: number; waterMl: number; norm: { kcal: number; protein: number; fat: number; carbs: number; water: number } };

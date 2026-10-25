@@ -8,17 +8,19 @@ import { api, type Today } from '../lib/api';
 import { Icon } from './Icon';
 import '../styles/insights.css';
 
-export interface DayTipItem { key: string; text: string; tone: 'nudge' | 'good'; action?: 'meal' | 'water' | 'steps' | 'plans' | 'gym' | 'study' | 'quiz' }
+export interface DayTipItem { key: string; text: string; tone: 'nudge' | 'good'; action?: 'meal' | 'water' | 'steps' | 'plans' | 'gym' | 'study' | 'quiz' | 'mood' }
 interface TipsResp { day: string; evening: boolean; tip: DayTipItem | null; more: DayTipItem[] }
 
 const HIDE = 'lumi.tip.hidden', EVENING = 17 * 60;
 const hiddenOn = () => { try { return localStorage.getItem(HIDE) ?? ''; } catch { return ''; } };
-const ACT: Record<string, string> = { meal: 'Записать еду', water: 'Записать воду', steps: 'Записать шаги', plans: 'Открыть планы', gym: 'Открыть зал', study: 'Учёба', quiz: 'Ответить' };
+const ACT: Record<string, string> = { meal: 'Записать еду', water: 'Записать воду', steps: 'Записать шаги', plans: 'Открыть планы', gym: 'Открыть зал', study: 'Учёба', quiz: 'Ответить', mood: 'Отметить' };
+/** к карточке «Как прошёл день?»: прокрутить и поставить фокус на первое лицо */
+const toMood = () => { const el = document.getElementById('day-mood'); if (!el) return; el.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'center' }); el.querySelector<HTMLButtonElement>('.mood-b')?.focus({ preventScroll: true }); };
 
 export function DayTip({ data, today, onMeal, onWater, onSteps, onGo, onPro, onWeek }: {
   data: Today | null; today: string; onMeal: () => void; onWater: () => void; onSteps: () => void; onGo: (tab: string) => void; onPro: (what: string) => void; onWeek?: () => void;
 }) {
-  const [r, setR] = useState<TipsResp | null>(null), [hidden, setHidden] = useState(hiddenOn), [more, setMore] = useState(false);
+  const [r, setR] = useState<TipsResp | null>(null), [hidden, setHidden] = useState(hiddenOn), [more, setMore] = useState(false), [moodV, setMoodV] = useState(0);
   const evening = !!data?.isToday && data.now.minutes >= EVENING;
   // перечитываем совет, только когда поменялось что-то из записанного за день
   const f = data?.parts.food, sig = data ? [f?.kcal, f?.protein, f?.waterMl, data.parts.body?.steps, data.parts.plans?.tasks.filter(t => t.done).length, data.parts.plans?.tasks.length, data.events.length].join('|') : '';
@@ -27,14 +29,16 @@ export function DayTip({ data, today, onMeal, onWater, onSteps, onGo, onPro, onW
     let live = true;
     api<TipsResp>('/api/insights/today').then(x => { if (live) setR(x); }, () => {});
     return () => { live = false; };
-  }, [evening, hidden, today, sig]);
+  }, [evening, hidden, today, sig, moodV]);
+  // отметили настроение — совет «Отметь, как прошёл день» больше не нужен
+  useEffect(() => { const on = () => setMoodV(v => v + 1); addEventListener('lumi-mood', on); return () => removeEventListener('lumi-mood', on); }, []);
 
   const wd = parseDay(today).getUTCDay(), weekLink = !!onWeek && !!data?.isToday && (wd === 0 || wd === 1);
   const tip = evening && hidden !== today && r?.day === today ? r.tip : null;
   if (!tip && !weekLink) return null;
   const act = (a: DayTipItem['action']) => {
     if (a === 'meal') onMeal(); else if (a === 'water') onWater(); else if (a === 'steps') onSteps(); else if (a === 'plans') onGo('plans');
-    else if (a === 'gym') onPro('Зал'); else if (a === 'study') onPro('Учёба'); else if (a === 'quiz') onPro('Вопросы дня');
+    else if (a === 'gym') onPro('Зал'); else if (a === 'study') onPro('Учёба'); else if (a === 'quiz') onPro('Вопросы дня'); else if (a === 'mood') toMood();
   };
   const hide = () => { try { localStorage.setItem(HIDE, today); } catch { /* без памяти — спрячем до перезагрузки */ } setHidden(today); };
 
