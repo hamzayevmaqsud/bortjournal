@@ -15,6 +15,7 @@ import { userContext } from '../../core/context.js';
 import { bad, idParam, notFound, statDays, uid } from '../../core/http.js';
 import { booksStats } from './stats.js';
 import { profiles } from '../../core/schema.js';
+import { patchSettings } from '../../core/settings.js';
 import type { DB, Tx } from '../../db/index.js';
 import { COVERS } from './files.js';
 import { bookQuotes, books, readingLog } from './schema.js';
@@ -147,9 +148,7 @@ export async function booksRoutes(app: FastifyInstance, { db }: { db: DB }) {
   });
   app.put('/goal', { preHandler }, async req => {
     const g = Math.round(Number((req.body as any)?.goal)); if (!(g >= 1 && g <= 365)) throw bad('Цель — от 1 до 365 книг.');
-    const [p] = await db.select().from(profiles).where(eq(profiles.userId, uid(req)));
-    const settings = { ...(p?.settings ?? {}), booksGoal: g };
-    await db.insert(profiles).values({ userId: uid(req), settings }).onConflictDoUpdate({ target: profiles.userId, set: { settings } });
+    await patchSettings(db, uid(req), { booksGoal: g });
     return { goal: g };
   });
 

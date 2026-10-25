@@ -10,6 +10,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type { DB } from '../db/index.js';
 import { isAdmin } from './admin.js';
 import { hashPassword, startSession } from './auth.js';
+import { clientIp, sweepEvery } from './client-ip.js';
 import { bad, idParam, notFound } from './http.js';
 import { mailEnabled, sendMail } from './mail.js';
 import { passwordResets, sessions, users } from './schema.js';
@@ -30,11 +31,12 @@ async function sendResetMail(to: string, link: string) {
 export async function resetRoutes(app: FastifyInstance, { db }: { db: DB }) {
   const hits = new Map<string, number[]>();
   const limited = (k: string) => { const now = Date.now(), list = (hits.get(k) ?? []).filter(t => now - t < 3600e3); hits.set(k, [...list, now]); return list.length >= 5; };
+  sweepEvery(hits, (list, now) => !list.some(t => now - t < 3600e3));
 
   app.post('/api/auth/forgot', async (req, reply) => {
     const login = String((req.body as { login?: unknown } | undefined)?.login ?? '').trim().toLowerCase().slice(0, 200);
     if (login.length < 3) throw bad('Напиши логин или почту.');
-    if (limited(`ip:${req.ip}`) || limited(`l:${login}`)) return reply.code(429).send({ error: 'Слишком много попыток. Попробуй через час.' });
+    if (limited(`ip:${clientIp(req)}`) || limited(`l:${login}`)) return reply.code(429).send({ error: 'Слишком много попыток. Попробуй через час.' });
     const [u] = await db.select({ id: users.id, email: users.email }).from(users).where(sql`lower(${users.username}) = ${login} or lower(${users.email}) = ${login}`).limit(1);
     if (u?.email && mailEnabled()) {
       try { await sendResetMail(u.email, await makeLink(db, req, u.id)); } catch (e) { req.log.warn({ err: (e as Error).message }, 'сброс пароля: письмо не ушло'); }

@@ -31,7 +31,9 @@ export const users = pgTable('users', {
   deletedAt: timestamp('deleted_at', { withTimezone: true })
 }, t => [
   uniqueIndex('users_username_uq').on(sql`lower(${t.username})`),
-  uniqueIndex('users_email_uq').on(sql`lower(${t.email})`).where(sql`${t.email} is not null`)
+  uniqueIndex('users_email_uq').on(sql`lower(${t.email})`).where(sql`${t.email} is not null`),
+  /** воркер ищет просроченные демо */
+  index('users_demo_until_idx').on(t.demoUntil).where(sql`${t.demoUntil} is not null`)
 ]);
 
 /**
@@ -52,7 +54,7 @@ export const passwordResets = pgTable('password_resets', {
   expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
   usedAt: timestamp('used_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow()
-});
+}, t => [index('password_resets_user_idx').on(t.userId)]);
 
 /** Отзывы из приложения: «Написать разработчику» */
 export const feedback = pgTable('feedback', {
@@ -63,7 +65,7 @@ export const feedback = pgTable('feedback', {
   context: jsonb('context').$type<Record<string, string>>().notNull().default({}),
   done: boolean('done').notNull().default(false),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow()
-}, t => [index('feedback_created_idx').on(t.createdAt)]);
+}, t => [index('feedback_created_idx').on(t.createdAt), index('feedback_user_idx').on(t.userId)]);
 
 /** Сколько раз за местный день человек обращался к ИИ — по видам (лимиты и расход) */
 export const aiUsage = pgTable('ai_usage', {
@@ -242,7 +244,7 @@ export const pushSubscriptions = pgTable('push_subscriptions', {
   p256dh: text('p256dh').notNull(),
   auth: text('auth').notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow()
-}, t => [uniqueIndex('push_endpoint_uq').on(t.endpoint)]);
+}, t => [uniqueIndex('push_endpoint_uq').on(t.endpoint), index('push_subscriptions_user_idx').on(t.userId)]);
 
 /** Что из напоминаний уже отправлено — защита от дублей, в том числе при нескольких воркерах */
 export const reminderLog = pgTable('reminder_log', {

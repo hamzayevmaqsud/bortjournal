@@ -4,6 +4,8 @@
  * подходы, минуты учёбы, отметки привычек) встают в очередь и уходят сами, когда связь вернётся. У каждой записи свой ключ
  * (Idempotency-Key): если ответ потерялся и запрос ушёл повторно, сервер не создаст дубль.
  */
+import { applyTheme } from './theme';
+
 export class ApiError extends Error { constructor(public status: number, message: string) { super(message); } }
 
 const OFFLINE = 'Нет связи с сервером. Проверь интернет и Tailscale.';
@@ -60,6 +62,8 @@ export const forgetLocal = () => {
   write(OUTBOX, read<Pending[]>(OUTBOX, []).filter(p => p.owner !== o));
   write(CACHE, Object.fromEntries(Object.entries(read<Cache>(CACHE, {})).filter(([k]) => !k.startsWith(`${o}|`))));
   try { localStorage.removeItem(OWNER); } catch { /* нет доступа */ }
+  // тема прошлого человека не переходит к следующему на этом устройстве
+  applyTheme('system'); dispatchEvent(new Event('lumi-theme'));
   notify();
 };
 
@@ -70,11 +74,18 @@ async function send(path: string, method: string, body: unknown, key?: string) {
   return fetch(path, { method, credentials: 'same-origin', headers, body: body !== undefined ? JSON.stringify(body) : undefined });
 }
 
+/** шлюз (Cloudflare, прокси) ответил вместо приложения: 502–504, 520–530 */
+const GATEWAY = (s: number) => s === 502 || s === 503 || s === 504 || (s >= 520 && s <= 530);
+/** ответ не от приложения: ошибка шлюза без нашего {error} или страница прокси вместо JSON — для очереди это «нет сети» */
+const notOurs = (r: Response, data: unknown) => !r.ok && (data === null || (GATEWAY(r.status) && typeof (data as { error?: unknown }).error !== 'string'));
+const readBody = async (r: Response): Promise<unknown> => { const t = await r.text().catch(() => ''); if (!t) return {}; try { return JSON.parse(t); } catch { return null; } };
+
 export async function api<T>(path: string, opts: { method?: string; body?: unknown } = {}): Promise<T> {
   const method = opts.method ?? 'GET', key = method === 'GET' ? undefined : uuid();
-  let r: Response;
-  try { r = await send(path, method, opts.body, key); }
-  catch {
+  let r: Response | null = null, data: unknown = null;
+  try { r = await send(path, method, opts.body, key); data = await readBody(r); if (notOurs(r, data)) r = null; } catch { r = null; }
+  if (!r) {
+    // сети нет или сервер недоступен: GET — из копии, запись — в очередь с тем же ключом (если дошла, сервер не задвоит)
     if (method === 'GET') {
       const c = cached(path);
       // копия без сети помечена: экран не затирает ею то, что человек только что записал
@@ -88,7 +99,7 @@ export async function api<T>(path: string, opts: { method?: string; body?: unkno
     }
     throw new ApiError(0, OFFLINE);
   }
-  const data = await r.json().catch(() => ({}));
+  if (data === null) data = {};
   // раздел закрыт подпиской — приложение откроет тарифы
   // нужно согласие на ИИ — приложение покажет экран согласия
   if (r.status === 428) dispatchEvent(new Event('bj-consent'));
@@ -101,7 +112,8 @@ export async function api<T>(path: string, opts: { method?: string; body?: unkno
 let flushing = false;
 /**
  * Отправить отложенное по порядку — только если сейчас вошёл владелец записей.
- * Ответ 4xx — запись не принята, убираем; нет сети, 401 или 5xx — попробуем позже.
+ * Ответ 4xx — запись не принята, убираем; нет сети, сервер недоступен или 401 — попробуем позже всю очередь.
+ * Одна запись не держит остальные: «ещё отправляется» (409) или ошибка приложения на ней — пропускаем до следующего раза.
  */
 export async function flushOutbox(): Promise<{ sent: number; dropped: number }> {
   if (flushing || !pendingCount()) return { sent: 0, dropped: 0 };
@@ -109,12 +121,16 @@ export async function flushOutbox(): Promise<{ sent: number; dropped: number }> 
   try {
     const who = await fetch('/api/me', { credentials: 'same-origin' }).then(r => r.ok ? r.json() : null).catch(() => null) as { username?: string } | null;
     if (!who?.username || who.username.toLowerCase() !== owner()) return { sent, dropped };
+    const skip = new Set<string>();
     for (;;) {
-      const x = mine()[0]; if (!x) break;
+      const x = mine().find(p => !skip.has(p.key)); if (!x) break;
       let r: Response;
       try { r = await send(x.path, x.method, x.body, x.key); } catch { break; }
-      // 5xx, 401 или «эта же запись ещё отправляется» — попробуем позже
-      if (r.status >= 500 || r.status === 401 || (r.status === 409 && r.headers.get('Idempotent-Replay'))) break;
+      const data = await readBody(r);
+      // сервера не видно (шлюз, страница прокси) или вышли из аккаунта — вся очередь ждёт
+      if (notOurs(r, data) || r.status === 401) break;
+      // эта запись ещё отправляется (или упала на сервере) — остальные не ждут её
+      if (r.status >= 500 || (r.status === 409 && r.headers.get('Idempotent-Replay'))) { skip.add(x.key); continue; }
       if (r.ok) sent++; else dropped++;
       write(OUTBOX, read<Pending[]>(OUTBOX, []).filter(p => p.key !== x.key)); notify();
     }

@@ -61,7 +61,7 @@ const WIDE_TABS: Array<[string, string, string]> = [['today', 'today', 'Сего
 // разделы Pro, у которых уже есть свой экран
 const PRO_TABS: Record<string, string> = { 'Цели и повторы': 'plans', 'Анализ еды': 'food', 'Учёба': 'study:study', 'Учёба и вопросы': 'study:study', 'Вопросы дня': 'study:quiz', 'Вопросы': 'study:quiz', 'Зал': 'gym', 'Тренировка': 'gym', 'Бюджет': 'budget', 'Трата': 'budget', 'Книги': 'books', 'Чтение': 'books', 'Цель и прогноз': 'goal', 'Цель и план': 'goal', 'Статистика': 'stats', 'Статистика и итог недели': 'stats', 'Достижения': 'stats:awards', 'Итог недели': 'stats:week' };
 // пояс телефона — серверу, чтобы «сегодня» и «сейчас» совпадали с часами человека
-const ME = () => `/api/me?tz=${-new Date().getTimezoneOffset()}`;
+const ME = '/api/me';
 
 type SheetState =
   | { kind: 'none' } | { kind: 'add'; at?: string } | { kind: 'meal'; at?: string; meal?: Meal; day?: string } | { kind: 'drink'; at?: string; drink?: Drink; day?: string }
@@ -130,14 +130,29 @@ export function App() {
   }, [toast]);
 
   // без сети и без сохранённой копии — не выкидываем на вход, а пробуем ещё раз
-  const loadMe = useCallback(async () => { try { const m = await api<Me>(ME()); setOwner(m.username); setSex(m.profile?.sex); setMe(m); } catch (e) { if (e instanceof ApiError && e.status === 0) setTimeout(() => loadMeRef.current(), 5000); else setMe(null); } }, []);
+  const meAt = useRef(0);
+  const loadMe = useCallback(async () => {
+    meAt.current = Date.now();
+    try {
+      const m = await api<Me>(ME); setOwner(m.username); setSex(m.profile?.sex); setMe(m);
+      // часовой пояс устройства сменился (перелёт) — отдельной записью, GET ничего не меняет
+      const tz = -new Date().getTimezoneOffset();
+      if (!fromCache(m) && m.tzOffset !== tz) void api('/api/me/tz', { method: 'PUT', body: { tz } }).then(() => setMe(x => x && { ...x, tzOffset: tz })).catch(() => {});
+    } catch (e) { if (e instanceof ApiError && e.status === 0) setTimeout(() => loadMeRef.current(), 5000); else setMe(null); }
+  }, []);
   const loadMeRef = useRef(loadMe); loadMeRef.current = loadMe;
+  const todayRef = useRef(today); todayRef.current = today;
   const loadDay = useCallback(async (d?: string) => {
     try {
       const t = await api<TodayData>(`/api/today${d ? `?day=${d}` : ''}`);
       // без сети — не затираем экран старой копией: там уже видно только что записанное
       setDays(x => fromCache(t) && x[t.day] ? x : { ...x, [t.day]: t });
       if (!d) { setToday(t.now.day); setDay(cur => cur ?? t.now.day); }
+      // наступила полночь: «сегодня» сдвигается, и если смотрели на вчерашнее «сегодня» — переходим на новое
+      else if (!fromCache(t) && todayRef.current && t.now.day !== todayRef.current) {
+        const was = todayRef.current; todayRef.current = t.now.day;
+        setToday(t.now.day); setDay(cur => cur === was ? t.now.day : cur);
+      }
       return t;
     } catch (e) { fail(e); return null; }
   }, [fail]);
@@ -145,7 +160,9 @@ export function App() {
   useEffect(() => { loadMe(); }, [loadMe]);
   // тема из профиля — одна на телефоне и компьютере
   const theme = me?.profile?.settings?.theme as Theme | undefined;
-  useEffect(() => { if (theme) applyTheme(theme); }, [theme]);
+  // темы в профиле нет — «как в системе», а не тема прошлого человека на этом устройстве
+  const signedIn = !!me;
+  useEffect(() => { if (signedIn) applyTheme(theme || 'system'); }, [theme, signedIn]);
   useEffect(() => { if (me) loadDay(); }, [me?.username]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (me && day && !days[day]) loadDay(day); }, [me, day, days, loadDay]);
 
@@ -186,7 +203,8 @@ export function App() {
   }, [toast]);
   useEffect(() => {
     if (!me) return;
-    const tick = () => { if (document.visibilityState === 'visible' && !pending.current.size) { void flushOutbox(); sync.current(); loadMe(); } };
+    // кто вошёл и подписка меняются редко — /api/me не чаще раза в 3 минуты
+    const tick = () => { if (document.visibilityState === 'visible' && !pending.current.size) { void flushOutbox(); sync.current(); if (Date.now() - meAt.current > 3 * 60e3) loadMe(); } };
     const id = setInterval(tick, 15000);
     document.addEventListener('visibilitychange', tick); addEventListener('focus', tick);
     return () => { clearInterval(id); document.removeEventListener('visibilitychange', tick); removeEventListener('focus', tick); };

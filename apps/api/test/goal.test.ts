@@ -51,11 +51,17 @@ describe('цель', () => {
     expect(g.series.plan[0]).toMatchObject({ day: addDays(today, -28), kg: 100 });
     expect(g.levels).toHaveLength(5);
   });
-  it('нормы дня пересчитываются под план и об этом сообщается один раз', async () => {
+  it('открыть «Цель» — ничего не меняет; нормы пересчитываются на записи (вес)', async () => {
     const g1 = (await as('pro', 'GET', '/api/goal')).json();
-    expect(g1.recalculated).toBeNull(); // уже пересчитано первым запросом
+    expect(g1.recalculated).toBeNull();
+    expect((await as('pro', 'GET', '/api/me')).json().profile.settings.kcal).toBe(2100); // GET без побочных действий
+    const w = (await as('pro', 'PUT', '/api/body/day', { day: today, weightKg: 98 })).json();
+    const g2 = (await as('pro', 'GET', '/api/goal')).json();
+    expect(w.recalculated).toEqual({ from: 2100, to: g2.plan.kcal });
     const t = (await app.inject({ method: 'GET', url: `/api/today?day=${today}`, headers: { ...H, cookie: cookies.pro! } })).json();
-    expect(t.plan.kcal).toBe(g1.plan.kcal);
+    expect(t.plan.kcal).toBe(g2.plan.kcal);
+    // снова то же — пересчитывать нечего
+    expect((await as('pro', 'PUT', '/api/body/day', { day: today, steps: 8000 })).json().recalculated).toBeNull();
   });
   it('активность недели меняет калории', async () => {
     const before = (await as('pro', 'GET', '/api/goal')).json();
@@ -67,11 +73,13 @@ describe('цель', () => {
   it('норма калорий, поправленная руками, не перезаписывается «Целью»; kcalManual:false возвращает расчёт', async () => {
     const plan = (await as('pro', 'GET', '/api/goal')).json().plan.kcal as number;
     expect((await as('pro', 'PUT', '/api/profile/settings', { kcal: plan + 300 })).statusCode).toBe(200);
-    await as('pro', 'GET', '/api/goal');
+    await as('pro', 'PUT', '/api/goal/activity', { level: 'mod' });
+    await as('pro', 'PUT', '/api/body/day', { day: today, weightKg: 97.5 });
     const me = (await as('pro', 'GET', '/api/me')).json();
     expect(me.profile.settings.kcal).toBe(plan + 300);
-    await as('pro', 'PUT', '/api/profile/settings', { kcalManual: false });
-    await as('pro', 'GET', '/api/goal');
-    expect((await as('pro', 'GET', '/api/me')).json().profile.settings.kcal).toBe(plan);
+    const back = (await as('pro', 'PUT', '/api/profile/settings', { kcalManual: false })).json();
+    const now = (await as('pro', 'GET', '/api/goal')).json().plan;
+    expect(back.settings).toMatchObject({ kcalManual: false, kcal: now.kcal, protein: now.protein });
+    expect((await as('pro', 'GET', '/api/me')).json().profile.settings.kcal).toBe(now.kcal);
   });
 });

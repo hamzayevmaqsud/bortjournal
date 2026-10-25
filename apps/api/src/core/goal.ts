@@ -1,9 +1,9 @@
 /**
  * «Цель и прогноз» (бесплатно): путь к желаемому весу, вехи, срок по реальному темпу, факт против плана, график, активность недели.
  * Те же формулы, что в старом журнале: план — из анкеты и текущего веса, факт — тренд веса за 4 недели и средняя еда.
- * Нормы дня пересчитываются под текущий вес, активность и средние шаги — и об этом говорится, чтобы цифры не «прыгали» молча.
+ * Нормы дня пересчитываются под текущий вес, активность и средние шаги — при записи (syncNorms), чтение ничего не меняет.
  */
-import { and, desc, eq, lte } from 'drizzle-orm';
+import { and, desc, eq, lte, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { ACTIVITY, addDays, computePlan, diffDays, factTdee, GOALS, localNow, PACE, simulate, trend, weeksTo, type ActivityLevel, type Goal, type Pace, type PlanProfile } from '@bortjournal/core';
 import type { DB, Tx } from '../db/index.js';
@@ -21,13 +21,12 @@ async function levelOn(db: Tx, userId: string, day: string): Promise<ActivityLev
   return (a?.level && a.level in ACTIVITY ? a.level : 'sed') as ActivityLevel;
 }
 
-export async function goalState(db: Tx, userId: string) {
+/** план на сегодня: анкета, текущий вес, активность недели и средние шаги; анкеты нет — null */
+async function planNow(db: Tx, userId: string) {
   const [u] = await db.select({ tz: users.tzOffset }).from(users).where(eq(users.id, userId));
   const today = localNow(u?.tz ?? 0).day;
   const [pr] = await db.select().from(profiles).where(eq(profiles.userId, userId));
-  if (!pr?.heightCm || !pr.sex || !pr.age) return { ready: false as const };
-  const settings = (pr.settings ?? {}) as Record<string, unknown>;
-
+  if (!pr?.heightCm || !pr.sex || !pr.age) return null;
   const body = await bodySeries(db, userId, addDays(today, -180), today);
   const weights = body.filter(b => b.weightKg !== null).map(b => ({ day: b.day, kg: b.weightKg! }));
   const last = weights.at(-1), w = last?.kg ?? pr.startWeightKg ?? 70;
@@ -39,7 +38,29 @@ export async function goalState(db: Tx, userId: string) {
   const age = pr.age + (pr.ageMeasuredOn ? Math.floor(diffDays(pr.ageMeasuredOn, today) / 365.25) : 0);
   const goal = (pr.goal && pr.goal in GOALS ? pr.goal : 'maintain') as Goal;
   const prof: PlanProfile = { sex: pr.sex as 'm' | 'f', age, height: pr.heightCm, goal, pace: (pr.pace ?? 'mid') as Pace, build: (pr.build ?? 'mid') as PlanProfile['build'], bodyFat: pr.bodyFat, steps: stepsInfo.steps };
-  const plan = computePlan(prof, w, level, stepsInfo.steps);
+  return { today, pr, settings: (pr.settings ?? {}) as Record<string, unknown>, body, weights, last, w, level, stepsInfo, age, goal, prof, plan: computePlan(prof, w, level, stepsInfo.steps) };
+}
+
+/**
+ * Нормы дня под текущий план — на записи (анкета, вес и шаги, активность недели, возврат к расчёту), не на чтении.
+ * Ручные нормы (kcalManual) не трогаем. Возвращает «было → стало», если калории поменялись
+ */
+export async function syncNorms(db: Tx, userId: string): Promise<{ from: number; to: number } | null> {
+  const p = await planNow(db, userId); if (!p) return null;
+  const { kcal, protein, fat, carbs } = p.plan, s = p.settings;
+  if (s.kcalManual === true || (s.kcal === kcal && s.protein === protein && s.fat === fat && s.carbs === carbs)) return null;
+  // слияние в базе и повторная проверка ручной нормы: параллельная правка настроек не потеряется
+  const out = await db.update(profiles).set({ settings: sql`${profiles.settings} || ${JSON.stringify({ kcal, protein, fat, carbs })}::jsonb`, updatedAt: new Date() })
+    .where(and(eq(profiles.userId, userId), sql`coalesce(${profiles.settings}->>'kcalManual', '') <> 'true'`)).returning({ userId: profiles.userId });
+  const old = Number(s.kcal) || 0;
+  return out.length && old && old !== kcal ? { from: old, to: kcal } : null;
+}
+
+/** «Цель и прогноз» — только чтение: нормы здесь не пересчитываются. recalculated — что поменяла запись перед этим */
+export async function goalState(db: Tx, userId: string, recalculated: { from: number; to: number } | null = null) {
+  const p = await planNow(db, userId);
+  if (!p) return { ready: false as const };
+  const { today, pr, settings, body, weights, last, w, level, stepsInfo, age, goal, prof, plan } = p;
 
   // факт за 4 недели: тренд веса и средняя еда (без сегодняшнего, недописанного дня)
   const s28 = addDays(today, -27);
@@ -76,14 +97,6 @@ export async function goalState(db: Tx, userId: string) {
     fact: tr ? [{ day: today, kg: r1(now) }, { day: addDays(today, 56), kg: r1(now + weekly * 8) }] : []
   };
 
-  // нормы дня — под текущий план
-  let recalculated: { from: number; to: number } | null = null;
-  const old = Number(settings.kcal) || 0;
-  if (!old || (settings.kcalManual !== true && Math.abs(old - plan.kcal) >= 10)) {
-    recalculated = old ? { from: old, to: plan.kcal } : null;
-    await db.update(profiles).set({ settings: { ...settings, kcal: plan.kcal, protein: plan.protein, fat: plan.fat, carbs: plan.carbs }, updatedAt: new Date() }).where(eq(profiles.userId, userId));
-  }
-
   const todayFood = (await foodSeries(db, userId, today, today))[0], todayBody = body.find(b => b.day === today);
   return {
     ready: true as const, today,
@@ -110,6 +123,6 @@ export async function goalRoutes(app: FastifyInstance, { db }: { db: DB }) {
     const [u] = await db.select({ tz: users.tzOffset }).from(users).where(eq(users.id, req.userId!));
     const weekStart = mondayOf(localNow(u?.tz ?? 0).day);
     await db.insert(activityWeeks).values({ userId: req.userId!, weekStart, level }).onConflictDoUpdate({ target: [activityWeeks.userId, activityWeeks.weekStart], set: { level } });
-    return goalState(db, req.userId!);
+    return goalState(db, req.userId!, await syncNorms(db, req.userId!));
   });
 }

@@ -151,6 +151,22 @@ describe('демо', () => {
     expect(login.statusCode).toBe(401);
   });
 
+  it('нормы по плану на всех экранах, «Цель» ничего не пересчитывает; просрочено — 1–2 дела', async () => {
+    const { cookie } = await demo('10.0.0.7'), r = as(cookie);
+    const before = (await r('GET', '/api/me')).json().profile.settings;
+    const g = (await r('GET', '/api/goal')).json();
+    expect(g.recalculated).toBeNull();
+    expect(before).toMatchObject({ kcal: g.plan.kcal, protein: g.plan.protein, fat: g.plan.fat, carbs: g.plan.carbs });
+    const t = (await r('GET', '/api/today')).json();
+    expect(t.plan.kcal).toBe(g.plan.kcal);
+    expect(t.parts.food.norm.kcal).toBe(g.plan.kcal);
+    expect((await r('GET', '/api/me')).json().profile.settings).toEqual(before);
+    // как в «Планах»: разовые дела с датой за 60 дней до сегодня, не сделанные
+    const old = (await r('GET', `/api/plans/tasks?from=${addDays(t.day, -60)}&to=${addDays(t.day, -1)}`)).json().items.filter((x: any) => x.day && !x.done && !x.repeat);
+    expect(old.length).toBeGreaterThanOrEqual(1);
+    expect(old.length).toBeLessThanOrEqual(2);
+  });
+
   it('не больше 10 демо в час с адреса', async () => {
     for (let i = 0; i < 10; i++) expect((await demo('10.0.0.9')).res.statusCode).toBe(201);
     expect((await demo('10.0.0.9')).res.statusCode).toBe(429);

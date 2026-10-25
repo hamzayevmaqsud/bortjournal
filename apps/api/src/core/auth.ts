@@ -15,6 +15,7 @@ import type { DB, Tx } from '../db/index.js';
 import { startTrial, subscription } from './billing.js';
 import { modulesOf } from './entitlements.js';
 import { isAdmin } from './admin.js';
+import { clientIp, sweepEvery } from './client-ip.js';
 import { authIdentities, profiles, sessions, users, userVisits } from './schema.js';
 
 const scrypt = promisify(crypto.scrypt) as (pw: string, salt: string, len: number, opts: crypto.ScryptOptions) => Promise<Buffer>;
@@ -39,6 +40,7 @@ export async function verifyPassword(pw: string, stored: string | null | undefin
 const fails = new Map<string, { n: number; until: number }>();
 // по логину отдельно от адреса — порог высокий: иначе любой мог бы закрыть вход в чужой аккаунт десятком неверных паролей
 const tooMany = (...keys: string[]) => keys.some(k => { const f = fails.get(k); return !!f && f.until > Date.now() && f.n >= (k.startsWith('u:') ? 100 : 10); });
+sweepEvery(fails, (f, now) => f.until <= now);
 const fail = (...keys: string[]) => keys.forEach(k => { const f = fails.get(k); fails.set(k, f && f.until > Date.now() ? { n: f.n + 1, until: f.until } : { n: 1, until: Date.now() + 15 * 60e3 }); });
 
 const isHttps = (req: FastifyRequest) => req.headers['x-forwarded-proto'] === 'https' || /\.ts\.net(:\d+)?$/.test(req.headers.host ?? '');
@@ -126,7 +128,7 @@ export async function authRoutes(app: FastifyInstance, { db }: { db: DB }) {
   app.post('/api/auth/login', { config: { public: true } }, async (req, reply) => {
     const body = (req.body ?? {}) as { username?: unknown; password?: unknown };
     const username = String(body.username ?? '').trim().toLowerCase().slice(0, 64), password = String(body.password ?? '').slice(0, 512);
-    const keys = [`ip:${req.ip}`, `ui:${username}|${req.ip}`, `u:${username}`];
+    const ip = clientIp(req), keys = [`ip:${ip}`, `ui:${username}|${ip}`, `u:${username}`];
     if (tooMany(...keys)) return reply.code(429).send({ error: 'Слишком много попыток. Подожди 15 минут.' });
     // войти можно по логину или по почте
     const [u] = await db.select().from(users).where(and(sql`(lower(${users.username}) = ${username} or lower(${users.email}) = ${username})`, sql`${users.deletedAt} is null`)).limit(1);
@@ -139,8 +141,9 @@ export async function authRoutes(app: FastifyInstance, { db }: { db: DB }) {
 
   // регистрация: логин (или почта вместо логина), пароль, почта обязательна; сразу 7 дней Pro и вход
   const regs = new Map<string, { n: number; until: number }>();
+  sweepEvery(regs, (r, now) => r.until <= now);
   app.post('/api/auth/register', async (req, reply) => {
-    const r = regs.get(req.ip);
+    const ip = clientIp(req), r = regs.get(ip);
     if (r && r.until > Date.now() && r.n >= 5) return reply.code(429).send({ error: 'Слишком много регистраций с этого адреса. Попробуй через час.' });
     const body = (req.body ?? {}) as Record<string, unknown>;
     const acc = await newAccount(db, body);
@@ -154,7 +157,7 @@ export async function authRoutes(app: FastifyInstance, { db }: { db: DB }) {
       return u!.id;
     });
     // считаем только созданные аккаунты: ошибки в форме не съедают лимит
-    regs.set(req.ip, r && r.until > Date.now() ? { n: r.n + 1, until: r.until } : { n: 1, until: Date.now() + 3600e3 });
+    regs.set(ip, r && r.until > Date.now() ? { n: r.n + 1, until: r.until } : { n: 1, until: Date.now() + 3600e3 });
     await startSession(db, req, reply, userId);
     return reply.code(201).send({ username });
   });
@@ -262,15 +265,22 @@ export async function authRoutes(app: FastifyInstance, { db }: { db: DB }) {
 
   app.get('/api/me', async (req, reply) => {
     if (!req.userId) return reply.code(401).send({ error: 'Нужно войти.' });
-    // часовой пояс приходит с устройства: по нему считаются «сегодня», «сейчас» и напоминания
-    const tz = Number((req.query as { tz?: string }).tz);
-    if (Number.isInteger(tz) && Math.abs(tz) <= 840) await db.update(users).set({ tzOffset: tz }).where(and(eq(users.id, req.userId), sql`${users.tzOffset} <> ${tz}`));
+    // GET ничего не меняет (часовой пояс — PUT /api/me/tz): иначе чужой сайт мог бы менять его ссылкой
     const [u] = await db.select({ username: users.username, isAdmin: users.isAdmin, tzOffset: users.tzOffset, seen: users.lastSeenAt, demoUntil: users.demoUntil }).from(users).where(eq(users.id, req.userId));
     if (!u!.seen || Date.now() - u!.seen.getTime() > 10 * 60e3) await db.update(users).set({ lastSeenAt: new Date() }).where(eq(users.id, req.userId));
     // заход за местный день — для админки; повторный за тот же день ничего не меняет
     await db.insert(userVisits).values({ userId: req.userId, day: localNow(u!.tzOffset).day }).onConflictDoNothing();
     const [p] = await db.select().from(profiles).where(eq(profiles.userId, req.userId));
     return { username: u!.username, tzOffset: u!.tzOffset, admin: isAdmin(u), demo: !!u!.demoUntil, demoUntil: u!.demoUntil?.toISOString() ?? null, modules: await modulesOf(db, req.userId), subscription: await subscription(db, req.userId), profile: p ?? null };
+  });
+
+  // часовой пояс с устройства (минуты к UTC): по нему считаются «сегодня», «сейчас» и напоминания
+  app.put('/api/me/tz', async (req, reply) => {
+    if (!req.userId) return reply.code(401).send({ error: 'Нужно войти.' });
+    const tz = Number((req.body as { tz?: unknown } | undefined)?.tz);
+    if (!Number.isInteger(tz) || Math.abs(tz) > 840) return reply.code(400).send({ error: 'Часовой пояс — целое число минут, до ±840.' });
+    await db.update(users).set({ tzOffset: tz }).where(and(eq(users.id, req.userId), sql`${users.tzOffset} <> ${tz}`));
+    return { tzOffset: tz };
   });
 }
 
