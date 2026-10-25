@@ -23,7 +23,7 @@ export function HelpButton({ tour, className = '' }: { tour: TourId; className?:
   }, []);
   return <span className={`help-slot ${className}`} ref={slot}>
     <button type="button" className="help-btn" data-tour="help" onClick={() => start(tour)} aria-label={label} title={label}>
-      <span className="help-rib" aria-hidden="true"><span className="help-q">?</span></span>
+      <span className="help-rib" aria-hidden="true"><span className="help-peek"><span className="help-q">?</span></span></span>
     </button>
   </span>;
 }

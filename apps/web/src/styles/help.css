@@ -2,19 +2,22 @@
    Видно кончик с «?»; иногда он сам чуть тянется вниз (приглашает потянуть); при наведении и фокусе лента выезжает */
 .help-slot{position:relative;flex:none;width:46px;height:44px}
 .help-btn{position:absolute;left:0;top:calc(-1 * var(--hang,0px));z-index:6;width:46px;height:64px;padding:0;border:0;background:none;cursor:pointer;
-  filter:drop-shadow(0 6px 10px rgba(40,24,12,.25));-webkit-tap-highlight-color:transparent}
-.help-rib{position:absolute;left:0;right:0;bottom:0;height:112px;display:grid;place-items:end center;padding-bottom:20px;box-sizing:border-box;
-  background:linear-gradient(180deg,#A94818,#B9501F 70%,#C25A26);color:#FFF7EE;clip-path:polygon(0 0,100% 0,100% 100%,50% 84%,0 100%);
-  transition:transform .45s cubic-bezier(.22,1.2,.36,1);animation:help-peek 9s cubic-bezier(.22,1.2,.36,1) 2.5s infinite}
-.help-q{font:italic 600 24px/1 'Playfair Display',Georgia,serif}
-.help-btn:hover .help-rib,.help-btn:focus-visible .help-rib{transform:translateY(26px);animation:none}
-.help-btn:active .help-rib{transform:translateY(34px);transition-duration:.15s}
+  filter:drop-shadow(0 6px 12px rgba(20,24,36,.28));-webkit-tap-highlight-color:transparent}
+/* два слоя: .help-rib — наведение (плавно выезжает), .help-peek — сама иногда тянется; складываются, не обрывая друг друга */
+.help-rib{position:absolute;left:0;right:0;bottom:0;height:112px;transition:transform .9s cubic-bezier(.33,1,.68,1)}
+.help-peek{position:absolute;inset:0;display:grid;place-items:end center;padding-bottom:27px;box-sizing:border-box;
+  background:linear-gradient(180deg,#26303F,#2F3B4F 70%,#3B4A63);color:#F4CF74;clip-path:polygon(0 0,100% 0,100% 100%,50% 84%,0 100%);
+  animation:help-peek 11s ease-in-out 3s infinite}
+.help-peek::before{content:"";position:absolute;inset:0 5px 18px;border-left:1.5px dashed rgba(244,207,116,.45);border-right:1.5px dashed rgba(244,207,116,.45)}
+.help-q{position:relative;font:italic 600 24px/1 'Playfair Display',Georgia,serif}
+.help-btn:hover .help-rib,.help-btn:focus-visible .help-rib{transform:translateY(24px)}
+.help-btn:active .help-rib{transform:translateY(30px);transition-duration:.25s}
 .help-btn:focus-visible{outline:none}
-.help-btn:focus-visible .help-q{outline:2px solid #FFF7EE;outline-offset:3px;border-radius:4px}
-@keyframes help-peek{0%,74%,100%{transform:translateY(0)}80%{transform:translateY(16px)}87%{transform:translateY(0)}}
-:root[data-theme=dark] .help-rib{background:linear-gradient(180deg,#B5541F,#C25A26 70%,#D0682F)}
-@media (prefers-color-scheme:dark){:root:not([data-theme=light]) .help-rib{background:linear-gradient(180deg,#B5541F,#C25A26 70%,#D0682F)}}
-@media (prefers-reduced-motion:reduce){.help-rib{animation:none;transition:none}}
+.help-btn:focus-visible .help-q{outline:2px solid #F4CF74;outline-offset:3px;border-radius:4px}
+@keyframes help-peek{0%,70%,100%{transform:translateY(0)}79%{transform:translateY(14px)}84%{transform:translateY(14px)}96%{transform:translateY(0)}}
+:root[data-theme=dark] .help-peek{background:linear-gradient(180deg,#2C3546,#3B4A63 70%,#4A5B78)}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]) .help-peek{background:linear-gradient(180deg,#2C3546,#3B4A63 70%,#4A5B78)}}
+@media (prefers-reduced-motion:reduce){.help-rib{transition:none}.help-peek{animation:none}}
 /* вращение вокруг башни в проекции: влево (scaleX −1) → к нам (≈0, вспышка) → вправо (1) */
 
 /* телефон: заголовок остаётся по центру, «?» — крайний справа, остальные кнопки — левее него */
@@ -35,7 +38,7 @@
 .food-page2.narrow .fp-top .help-slot{position:absolute;top:calc(14px + env(safe-area-inset-top,0px));right:16px;margin:0}
 
 /* «Сегодня»: на компьютере — над приветствием справа, на телефоне — рядом со стрелками дней */
-.wide-page:not(.narrow) .hero-side>.help-slot{margin:0 -7px -6px 0}
+.wide-page:not(.narrow) .hero-side>.help-slot{margin:0 -7px 30px 0}
 .wide-page.narrow .hero-side>.help-slot{position:absolute;top:calc(12px + env(safe-area-inset-top,0px));right:16px}
 /* телефон: закладка — всегда крайняя справа; стрелки дня («Сегодня», «Еда») — левее неё */
 .app:not(.wide) .narrow .datenav{right:66px}
