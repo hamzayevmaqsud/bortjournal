@@ -1,0 +1,25 @@
+/* «Сегодня»: неделя под датой и приветствие */
+.weekstrip{display:flex;align-items:center;gap:4px;margin-top:14px}
+.ws-day{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;min-width:42px;height:54px;padding:0;border:0;border-radius:14px;
+  background:transparent;color:var(--text-2);font:600 11px/1 var(--sans);text-transform:lowercase;cursor:pointer;transition:background .2s,color .2s}
+.ws-day b{font:700 17px/1 var(--display);color:var(--text);font-variant-numeric:tabular-nums}
+.ws-day:hover:not(:disabled):not(.on){background:color-mix(in srgb,var(--text) 6%,transparent)}
+.ws-day.today:not(.on){box-shadow:inset 0 0 0 1.5px color-mix(in srgb,var(--orange) 55%,transparent)}
+.ws-day.today:not(.on) span,.ws-day.today:not(.on) b{color:var(--orange-ink)}
+.ws-day.on{background:var(--navy);color:rgba(251,244,230,.75)}
+.ws-day.on b{color:#FBF4E6}
+.ws-day:disabled{opacity:.35;cursor:default}
+.ws-arrow{width:32px;height:32px;display:grid;place-items:center;border:0;border-radius:50%;background:none;color:var(--text-2);cursor:pointer;transition:background .2s}
+.ws-arrow .ic{width:16px;height:16px}
+.ws-arrow:hover:not(:disabled){background:color-mix(in srgb,var(--text) 6%,transparent)}
+.ws-arrow:disabled{opacity:.3;cursor:default}
+.narrow .weekstrip{width:100%;justify-content:space-between;gap:2px;margin-top:12px}
+.narrow .ws-day{min-width:0;flex:1;height:52px}
+.narrow .ws-arrow{width:28px;flex:none}
+
+/* приветствие: тепло и заметно — курсив с засечками и строка под настроение времени суток */
+.greet{display:flex;flex-direction:column;align-items:flex-end;gap:3px;margin:0 0 4px;text-align:right}
+.greet-hi{font:italic 600 24px/1.15 var(--serif,'Playfair Display',Georgia,serif);color:var(--text)}
+.greet-line{font-size:14px;color:var(--text-2)}
+.narrow .greet{display:flex!important;align-items:flex-start;text-align:left;margin:4px 0 2px;order:-1}
+.narrow .greet-hi{font-size:21px}

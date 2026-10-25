@@ -6,12 +6,13 @@
 import { can } from '../lib/features';
 import { g } from '../lib/gender';
 import { useEffect, useRef, useState } from 'react';
-import { parseDay } from '@bortjournal/core';
+import { diffDays, parseDay } from '@bortjournal/core';
 import { api, type Subscription, type Today as TodayData } from '../lib/api';
 import { fmt, fmt1, fmt2, MONG, plural, WDF } from '../lib/format';
 import { buzz, spring, useCountUp } from '../lib/motion';
 import { Icon } from '../components/Icon';
 import { HelpButton } from '../components/HelpButton';
+import { WeekStrip } from '../components/WeekStrip';
 import { Arc } from '../components/Ring';
 import { Habits } from '../components/Habits';
 import { Tasks } from '../components/Tasks';
@@ -20,7 +21,14 @@ import { useToast } from '../components/Toasts';
 import { DayTip } from '../components/DayTip';
 
 const MON = ['янв', 'фев', 'мар', 'апр', 'мая', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
-const greet = (hm: string) => { const h = +hm.slice(0, 2); return h < 5 ? 'Доброй ночи' : h < 12 ? 'Доброе утро' : h < 18 ? 'Добрый день' : 'Добрый вечер'; };
+/** приветствие по времени суток: обращение и тёплая строка под настроение */
+const greet = (hm: string): [string, string] => {
+  const h = +hm.slice(0, 2);
+  return h >= 5 && h < 11 ? ['Доброе утро', 'Новый день — чистая страница']
+    : h >= 11 && h < 17 ? ['Добрый день', 'Как идёт твой день?']
+    : h >= 17 && h < 23 ? ['Добрый вечер', 'Самое время подвести итог']
+    : ['Доброй ночи', 'Маяк горит — можно отдыхать'];
+};
 
 function Big({ v, of, unit, dec, dec2 }: { v: number; of?: string; unit?: string; dec?: boolean; dec2?: boolean }) {
   const n = useCountUp(v);
@@ -95,23 +103,15 @@ export function TodayWide({ wide = true, data, day, today, sub, still, settings 
 
   return <div className={`wide-page ${wide ? '' : 'narrow'}`} ref={page}>
     <header className="hero" ref={head}>
-      <div className="hero-left" data-tour={wide ? 'date' : undefined}>
+      <div className="hero-left">
         <span className="hero-wd">{rel ? `${rel} · ` : ''}{WDF[dt.getUTCDay()]}</span>
         <h1 className="hero-day">{dt.getUTCDate()}<span>{MONG[dt.getUTCMonth()]}</span></h1>
-        {wide && <div className="datenav dn-left">
-          <button onClick={() => onDay(-1)} aria-label="Предыдущий день"><Icon name="chevL" /></button>
-          {off !== 0 && <button className="cur not-today" onClick={() => onDay(-off)}>К сегодня</button>}
-          <button onClick={() => onDay(1)} aria-label="Следующий день"><Icon name="chev" /></button>
-        </div>}
+        <WeekStrip day={day} today={today} onPick={d => onDay(diffDays(day, d))} />
       </div>
       <div className="hero-side">
         <HelpButton tour="today" />
-        {!wide && <div className="datenav" data-tour="date">
-          <button onClick={() => onDay(-1)} aria-label="Предыдущий день"><Icon name="chevL" /></button>
-          <button className={`cur ${off ? 'not-today' : ''}`} onClick={() => off && onDay(-off)} title="К сегодняшнему дню">{rel || WDF[dt.getUTCDay()]} · {dt.getUTCDate()} {MON[dt.getUTCMonth()]}</button>
-          <button onClick={() => onDay(1)} aria-label="Следующий день"><Icon name="chev" /></button>
-        </div>}
-        {data && <span className="greet">{greet(data.now.hm)}{data.name ? `, ${data.name}` : ''}.</span>}
+        {data && (() => { const [hi, line] = greet(data.now.hm), name = data.name && data.name !== 'Гость' ? data.name : '';
+          return <p className="greet"><span className="greet-hi">{hi}{name ? `, ${name}` : ''}</span><span className="greet-line">{line}</span></p>; })()}
         {data && <div className="statgroup" data-tour="stats">
           {has('food') && <button onClick={() => onPro('Цель и прогноз')}><i><Icon name="today" />план</i><b>{fmt(data.plan.kcal)}<small>ккал</small></b><span>{data.plan.protein ? `белок ${fmt(data.plan.protein)} г` : 'норма по анкете'}</span></button>}
           {has('food') && <button onClick={onWeight}><i><Icon name="steps" />вес</i><b>{body?.weight ? fmt1(body.weight.kg) : '—'}<small>кг</small></b><span className={body?.weight?.today ? '' : 'go'}>{body?.weight?.today ? (data.isToday ? 'сегодня' : 'в этот день') : 'взвеситься →'}</span></button>}
