@@ -1,0 +1,79 @@
+/* «Как прошёл день?» и заморозки серии. Лица — от приглушённого серо-синего к тёплому золоту и оранжевому */
+
+.c-mood{--c:var(--mustard);
+  --m1:color-mix(in srgb,var(--navy) 45%,var(--text-3));
+  --m2:color-mix(in srgb,var(--water) 35%,var(--text-3));
+  --m3:color-mix(in srgb,var(--mustard) 40%,var(--text-3));
+  --m4:var(--mustard);
+  --m5:var(--orange)}
+:root[data-theme="dark"] .c-mood{--m1:color-mix(in srgb,#9FB0C8 70%,var(--text-3))}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .c-mood{--m1:color-mix(in srgb,#9FB0C8 70%,var(--text-3))}}
+
+/* место на «Сегодня»: сразу после привычек */
+@media (min-width:1101px){ .wide-page:not(.narrow) .today-main .c-mood{order:6} }
+@media (min-width:900px) and (max-width:1100px){ .wide-page .c-mood{order:11;--span:12} }
+
+.mood-q{margin:0;font-size:13px;color:var(--text-2)}
+.mood-row{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px}
+.mood-b{--mc:var(--m3);display:flex;flex-direction:column;align-items:center;gap:4px;min-width:0;padding:6px 2px 8px;border-radius:var(--r2);color:color-mix(in srgb,var(--mc) 75%,var(--text-3));
+  transition:background .2s,color .2s,transform .35s var(--spring)}
+.mood-b .face{width:44px;height:44px;border-radius:50%;display:grid;place-items:center;border:2px solid transparent;transition:border-color .2s,background .2s,transform .35s var(--spring)}
+.mood-b svg{width:34px;height:34px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.mood-b svg .eye{fill:currentColor;stroke:none}
+.mood-b small{font:600 11px/1.2 var(--sans);color:var(--text-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.mood-b:hover:not([disabled]) .face{background:color-mix(in srgb,var(--mc) 12%,transparent)}
+.mood-b:active:not([disabled]) .face{transform:scale(.9)}
+.mood-b[aria-pressed="true"]{color:var(--mc)}
+.mood-b[aria-pressed="true"] .face{background:color-mix(in srgb,var(--mc) 20%,transparent);border-color:var(--mc);animation:mood-pop .45s var(--spring)}
+.mood-b[aria-pressed="true"] small{color:var(--text);font-weight:700}
+.mood-row.picked .mood-b[aria-pressed="false"]{opacity:.62}
+.mood-b:focus-visible{outline:2px solid var(--orange);outline-offset:2px}
+.mood-b[disabled]{opacity:.45;cursor:not-allowed}
+@keyframes mood-pop{0%{transform:scale(.85)}60%{transform:scale(1.12)}100%{transform:scale(1)}}
+
+/* заметка: одна строка, по нажатию — поле побольше */
+.mood-note-line{display:flex;align-items:center;gap:8px;width:100%;min-height:44px;padding:10px 14px;border-radius:var(--r2);border:1.5px dashed var(--line-2);background:transparent;
+  font:500 14px var(--sans);color:var(--text-3);text-align:left;transition:border-color .2s,color .2s}
+.mood-note-line:hover{border-color:var(--c);color:var(--text-2)}
+.mood-note-line.has{border-style:solid;color:var(--text);background:var(--field)}
+.mood-note-line span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mood-note-line .ic{flex:none;width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2}
+.mood-note-line:focus-visible{outline:2px solid var(--orange);outline-offset:2px}
+.mood-note{display:flex;flex-direction:column;gap:8px}
+.mood-note textarea{min-height:88px;resize:vertical;font:500 15px/1.45 var(--sans)}
+.mood-note-acts{display:flex;align-items:center;gap:10px;justify-content:flex-end}
+.mood-note-acts .count{margin-right:auto;font-size:12px;color:var(--text-3)}
+.mood-saved{min-height:16px;margin:0;font-size:12px;color:var(--text-3)}
+
+/* утром — одна спокойная строка */
+.mood-later{padding:0;gap:0}
+.mood-later>button{display:flex;align-items:center;gap:10px;width:100%;min-height:52px;padding:12px 20px;font:600 14px var(--sans);color:var(--text-2);text-align:left;transition:color .2s,background .2s}
+.mood-later>button:hover{color:var(--text);background:var(--field)}
+.mood-later>button .ic{width:18px;height:18px;flex:none;color:var(--mustard)}
+.mood-later>button .ic.chev{margin-left:auto;width:16px;height:16px;color:var(--text-3)}
+.mood-later>button:focus-visible{outline:2px solid var(--orange);outline-offset:-2px}
+
+/* заморозки: в плитке серии, в календаре и итоге недели */
+.statgroup .st-fz{display:inline-flex;align-items:center;gap:3px;font-style:normal;white-space:nowrap}
+.statgroup .st-fz span{font:inherit;color:inherit}
+.narrow .statgroup .st-fz .fz-w{display:none}
+.statgroup .st-fz svg{width:11px;height:11px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round}
+.sc-cell.frozen,.hm-c.frozen{--ice:color-mix(in srgb,var(--water) 55%,var(--card))}
+.sc-cell.empty.frozen{background:color-mix(in srgb,var(--ice) 30%,transparent);border-radius:12px}
+.sc-cell .sc-ice{position:absolute;top:3px;right:3px;width:11px;height:11px;fill:none;stroke:var(--water);stroke-width:2;stroke-linecap:round;pointer-events:none}
+.hm-c.none.frozen{background:var(--ice);opacity:1}
+.legend .k-ice,.hm-legend i.ice{display:inline-block;width:12px;height:12px;border-radius:3px;background:color-mix(in srgb,var(--water) 55%,var(--card))}
+.wr-ice{display:flex;align-items:center;gap:8px;margin:0;font-size:13px;color:var(--text-2)}
+.wr-ice svg{width:16px;height:16px;flex:none;fill:none;stroke:var(--water);stroke-width:2;stroke-linecap:round}
+.wk2-mood{display:flex;align-items:center;gap:8px;margin:0;font-size:14px;color:var(--text)}
+.wk2-mood svg{width:20px;height:20px;flex:none;fill:none;color:var(--mustard);stroke:currentColor;stroke-width:1.8;stroke-linecap:round}
+.wk2-mood svg .eye{fill:currentColor;stroke:none}
+
+@media (max-width:420px){
+  .mood-row{gap:2px}
+  .mood-b small{font-size:10.5px}
+}
+@media (prefers-reduced-motion:reduce){
+  .mood-b,.mood-b .face{transition:none}
+  .mood-b[aria-pressed="true"] .face{animation:none}
+}

@@ -46,6 +46,8 @@ export interface DayFacts {
   pages?: number;
   tasks?: number; tasksDone?: number;
   budgetOk?: boolean; spent?: number;
+  /** настроение дня 1–5 (day_journal) — кладёт ядро, не модули */
+  mood?: number;
 }
 /** Пункт для Google Календаря: key — постоянный ключ (вид:id), time null — на весь день, minutes — длительность */
 export interface CalendarItem { key: string; title: string; day: string; time: string | null; minutes?: number; done?: boolean }

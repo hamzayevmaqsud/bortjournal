@@ -167,6 +167,15 @@ export interface DemoGoal { period: 'week' | 'month' | 'quarter'; periodKey: str
 export interface DemoWorkout { day: string; time: string; title: string; minutes: number; planIdx: number | null; exercises: Array<{ key: string; name: string; sets: GymSet[] }> }
 export interface DemoMoney { day: string; time: string; kind: 'in' | 'out'; category: string; amount: number; note: string | null }
 
+/** короткие заметки дня — по настроению */
+const NOTES: Record<number, readonly string[]> = {
+  1: ['Голова болела весь день, рано лёг.'],
+  2: ['Не выспался, всё валилось из рук.', 'Завал на работе, до зала не дошёл.'],
+  3: ['Обычный день, без происшествий.', 'Много звонков, вечером просто отдыхал.'],
+  4: ['Хорошая тренировка, потом прогулка у моря.', 'Закрыл задачу, которую откладывал неделю.', 'Ужинали с друзьями, много смеялись.'],
+  5: ['Новый рекорд в жиме — очень доволен!', 'Выспался, всё успел, вечером долго гуляли.', 'Отличный день: зал, книга и тишина.']
+};
+
 /** всё демо за 90 дней: today — местный день, nowHm — местное время «ЧЧ:ММ» */
 export function demoData(seed: string, today: string, nowHm: string) {
   const R = rng(seed), first = addDays(today, -(DEMO_DAYS - 1));
@@ -408,6 +417,16 @@ export function demoData(seed: string, today: string, nowHm: string) {
     srs: [...srs.entries()].map(([q, s]) => ({ q, ...s }))
   };
 
-  return { first, missed: [...missed].sort(), great: [...great].sort(), meals, drinks, body, tasks, series, goals, sessions, material, answers, workouts, gymPlans, money, books, reading, quotes, habits, checks };
+  /* «как прошёл день»: настроение ~80% прошлых дней с записями; зал, шаги и ранний сон — чуть лучше. Свой генератор — остальное демо не сдвигается */
+  const M = rng(`${seed}:mood`), journal: Array<{ day: string; mood: number; note: string | null }> = [];
+  const gymOn = new Set(workouts.map(w => w.day)), stepsOf = new Map(body.map(b => [b.day, b.steps ?? 0])), slept = new Set(checks.filter(c => c.habit === 3).map(c => c.day));
+  for (const [k, day] of days.entries()) {
+    if (day === today || missed.has(day) || !M.chance(0.8)) continue;
+    const v = 3 + 0.5 * (k / DEMO_DAYS) + (gymOn.has(day) ? 0.7 : 0) + ((stepsOf.get(day) ?? 0) >= 9000 ? 0.4 : 0) + (slept.has(day) ? 0.4 : 0) + (great.has(day) ? 0.4 : 0) - 0.6 + M.gauss() * 0.55;
+    const mood = Math.min(5, Math.max(1, Math.round(v)));
+    journal.push({ day, mood, note: M.chance(0.12) ? M.pick(NOTES[mood]!) : null });
+  }
+
+  return { first, missed: [...missed].sort(), great: [...great].sort(), meals, drinks, body, tasks, series, goals, sessions, material, answers, workouts, gymPlans, money, books, reading, quotes, habits, checks, journal };
 }
 export type DemoData = ReturnType<typeof demoData>;

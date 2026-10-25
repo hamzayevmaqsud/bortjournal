@@ -19,9 +19,10 @@ import type { DayFacts } from './module.js';
 import { SECTION_KEYS } from './profile.js';
 import { profiles, users } from './schema.js';
 import { collect, hasAny, review, score, tracked } from './stats.js';
+import { streakOf } from './streak.js';
 
 export type Area = (typeof SECTION_KEYS)[number];
-export type TipAction = 'meal' | 'water' | 'steps' | 'plans' | 'gym' | 'study' | 'quiz';
+export type TipAction = 'meal' | 'water' | 'steps' | 'plans' | 'gym' | 'study' | 'quiz' | 'mood';
 export interface Tip { key: string; text: string; tone: 'nudge' | 'good'; action?: TipAction; weight: number }
 export interface TipInput {
   /** местный день и минуты от полуночи */
@@ -36,6 +37,8 @@ export interface TipInput {
   score: number; perfectMonth: number; streak: number;
   /** цели из анкеты (settings.goals): советы про них поднимаются выше */
   goals?: ReadonlySet<string>;
+  /** напомнить вечером отметить настроение, если сегодня его нет (на «Сегодня» есть карточка «Как прошёл день?») */
+  askMood?: boolean;
 }
 
 const fmtN = (n: number) => Math.round(n).toLocaleString('ru-RU');
@@ -94,6 +97,8 @@ export function rankTips(x: TipInput): Tip[] {
     const studies = x.past.some(d => (d.studyMin ?? 0) > 0 && diffDays(d.day, x.day) <= 14);
     if (studies && N.study && min < N.study * 0.5) add('study', 18, min ? `Учёбы сегодня ${min} из ${N.study} мин — ещё 20 минут перед сном тоже считаются` : 'Сегодня без учёбы — 20 минут перед сном сохранят ритм', 'study');
   }
+  // настроение — тихо, ниже всех полезных советов: просто не забыть отметить
+  if (x.askMood && x.minutes >= EVENING && !t.mood) add('mood', 10, 'Отметь, как прошёл день', 'mood');
   if (x.score >= 0.95) add('perfect', 90, `Идеальный день — ${x.perfectMonth + 1}-й за месяц`, undefined, 'good');
   else if (x.score >= 0.8) add('strong', 12, `Сильный день: ${Math.round(x.score * 100)}%. Ещё немного — и будет идеальный`, undefined, 'good');
   if (x.goals?.size) for (const t of out) if (TIP_GOALS[t.key]?.some(g => x.goals!.has(g))) t.weight += GOAL_BOOST;
@@ -119,10 +124,11 @@ export async function tipInput(db: Tx, userId: string, at = Date.now()): Promise
   const { norms } = await userContext(db, userId, at);
   const from = addDays(now.day, -35), F = await collect(db, userId, from, now.day), A = tracked(F, now.day);
   const past = [...F.values()].filter(f => f.day < now.day);
-  let streak = 0; for (let d = addDays(now.day, -1); hasAny(F.get(d)) && d >= from; d = addDays(d, -1)) streak++;
+  // серия — общая (с заморозками), до вчера включительно: сегодняшний день ещё идёт
+  const streak = (await streakOf(db, userId, now.day)).upToYesterday;
   const month = now.day.slice(0, 7), perfectMonth = past.filter(f => f.day.startsWith(month) && score(f, A, norms) >= 0.95).length;
   const { day: _d, ...today } = F.get(now.day) ?? { day: now.day };
-  return { day: now.day, minutes: now.minutes, on, norms, today, past, score: score(F.get(now.day), A, norms), perfectMonth, streak, goals };
+  return { day: now.day, minutes: now.minutes, on, norms, today, past, score: score(F.get(now.day), A, norms), perfectMonth, streak, goals, askMood: true };
 }
 
 /* ---------- ИИ: одна фраза вместо текста правила ---------- */
@@ -157,6 +163,7 @@ export async function dayTips(db: Tx, userId: string, { at = Date.now(), ai = fa
 }
 
 /* ---------- итог недели ---------- */
+const WD_NOM = ['воскресенье', 'понедельник', 'вторник', 'среда', 'четверг', 'пятница', 'суббота'];
 const mondayOf = (d: string) => addDays(d, -((parseDay(d).getUTCDay() + 6) % 7));
 const hours = (m: number) => m >= 60 ? { value: fmt1(m / 60), unit: 'ч' } : { value: String(Math.round(m)), unit: 'мин' };
 export async function weekRecap(db: Tx, userId: string, end?: string, at = Date.now()) {
@@ -171,13 +178,17 @@ export async function weekRecap(db: Tx, userId: string, end?: string, at = Date.
   if (on.has('study') && W.study) { const h = hours(W.study); stats.push({ key: 'study', label: 'Учёба', ...h, note: `цель ${fmt1(N.study * 7 / 60)} ч за неделю`, ok: W.study >= N.study * 7 * 0.7 }); }
   if (on.has('gym') && (W.gym || r.kpis[1]!.prev)) stats.push({ key: 'gym', label: 'Тренировки', value: String(W.gym), unit: '', note: plural(W.gym, 'тренировка', 'тренировки', 'тренировок') + ` · неделей раньше ${r.kpis[1]!.prev}`, ok: W.gym > 0 });
   if (on.has('books') && W.pages) stats.push({ key: 'pages', label: 'Прочитано', value: String(W.pages), unit: 'стр.', note: W.booksDone.length ? `дочитано: ${W.booksDone.map(b => `«${b}»`).join(', ')}` : 'за неделю', ok: true });
+  if (W.mood !== null) stats.push({ key: 'mood', label: 'Настроение', value: fmt1(W.mood), unit: 'из 5', note: W.moodBest ? `лучше всего — ${WD_NOM[parseDay(W.moodBest).getUTCDay()]} · отмечено ${W.moodDays} из ${W.n}` : '', ok: null });
   const focus = r.focus[0] ?? (!W.logged ? 'Начать с малого: одна запись в день — еда, вода или шаги' : r.score >= 80 ? 'Держать ритм — те же привычки ещё одну неделю' : 'Выбрать одну привычку и закрывать её каждый день');
   return {
     mon: r.mon, sun: r.sun, isThis: r.isThis, today: W.today,
     score: r.score, prevScore: r.prevScore, scores: r.scores,
     days: W.logged, of: W.n, perfect: W.perfect, streak: W.streak,
     best: r.best ? { day: addDays(r.mon, r.best.k), score: r.best.score, parts: r.best.parts } : null,
-    stats, verdict: r.motto, focus, wins: r.wins.slice(0, 3)
+    stats, verdict: r.motto, focus, wins: r.wins.slice(0, 3),
+    // настроение недели: среднее и лучший день; frozen — дни недели, которые закрыла заморозка
+    mood: W.mood === null ? null : { avg: Math.round(W.mood * 10) / 10, days: W.moodDays, best: W.moodBest },
+    frozen: W.frozen, freezes: W.freezes
   };
 }
 

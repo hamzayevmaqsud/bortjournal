@@ -10,12 +10,15 @@ import { MONG, plural } from '../lib/format';
 import { Icon } from './Icon';
 import { useToast } from './Toasts';
 import '../styles/insights.css';
+import '../styles/mood.css';
 
 export interface WeekStat { key: string; label: string; value: string; unit: string; note: string; ok: boolean | null }
 export interface Week {
   mon: string; sun: string; isThis: boolean; today: string; score: number; prevScore: number | null; scores: Array<number | null>;
   days: number; of: number; perfect: number; streak: number; best: { day: string; score: number; parts: string[] } | null;
   stats: WeekStat[]; verdict: string; focus: string; wins: string[];
+  /** настроение недели и дни, которые закрыла заморозка серии */
+  mood?: { avg: number; days: number; best: string | null } | null; frozen?: string[];
 }
 const WD = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
 const WDL = ['воскресенье', 'понедельник', 'вторник', 'среда', 'четверг', 'пятница', 'суббота'];
@@ -67,6 +70,8 @@ export function WeekRecap({ end }: { end?: string }) {
         <span><b>{w.perfect}</b>{plural(w.perfect, 'идеальный', 'идеальных', 'идеальных')}</span>
         <span><b>{w.streak}</b>серия, {plural(w.streak, 'день', 'дня', 'дней')}</span>
       </div>
+      {!!w.frozen?.length && <p className="wr-ice"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v18M4.2 7.5l15.6 9M4.2 16.5l15.6-9" /></svg>
+        <span>{w.frozen.length === 1 ? 'Заморожен' : 'Заморожены'}: {w.frozen.map(dayName).join('; ')} — серия не прервалась</span></p>}
       {w.stats.length > 0 && <dl className="wr-stats">{w.stats.map(s => <div key={s.key} className={s.ok === true ? 'ok' : s.ok === false ? 'off' : ''}>
         <dt>{s.label}</dt><dd><b>{s.value}</b>{s.unit && <small>{s.unit}</small>}<small className="wr-note">{s.note}</small></dd></div>)}</dl>}
       {w.best && <p className="wr-best"><Icon name="star" /><span>Лучший день — {dayName(w.best.day)}, {w.best.score}%{w.best.parts.length ? ` · ${w.best.parts.join(', ')}` : ''}</span></p>}

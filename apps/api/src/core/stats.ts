@@ -3,7 +3,7 @@
  * по правилам старого журнала: оценка дня — из того, что человек реально ведёт (направление считается, если за 30 дней
  * в нём были записи); зал и чтение — бонус. Достижения — 4 ступени; открытые ступени сохраняются с датой.
  */
-import { eq } from 'drizzle-orm';
+import { and, eq, gte, isNotNull, lte } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { addDays, parseDay } from '@bortjournal/core';
 import type { DB, Tx } from '../db/index.js';
@@ -15,6 +15,7 @@ import type { DayFacts, Totals } from './module.js';
 import { achievements, dayJournal } from './schema.js';
 import { budgets } from '../modules/budget/schema.js';
 import { userContext, type Norms } from './context.js';
+import { streakOf } from './streak.js';
 
 type F = DayFacts & { day: string };
 const avg = (a: number[]) => a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0;
@@ -30,6 +31,10 @@ export async function collect(db: Tx, userId: string, from: string, to: string) 
     for (const [k, v] of Object.entries(r)) if (k !== 'day' && v !== undefined && v !== null) (cur as any)[k] = typeof v === 'number' ? ((cur as any)[k] ?? 0) + v : v;
     map.set(r.day, cur);
   }
+  // настроение дня — из заметки дня (общей для всех модулей)
+  const moods = await db.select({ day: dayJournal.day, mood: dayJournal.mood }).from(dayJournal)
+    .where(and(eq(dayJournal.userId, userId), isNotNull(dayJournal.mood), gte(dayJournal.day, from), lte(dayJournal.day, to)));
+  for (const m of moods) { const cur = map.get(m.day) ?? { day: m.day }; cur.mood = m.mood!; map.set(m.day, cur); }
   return map;
 }
 async function totals(db: Tx, userId: string) {
@@ -77,12 +82,15 @@ async function world(db: Tx, userId: string, at?: number) {
   const hist: string[] = []; for (let d = first; d <= c.today; d = addDays(d, 1)) hist.push(d);
   return { ...c, F, A, sc, first, hist };
 }
-type World = Awaited<ReturnType<typeof world>>;
-function streaks(w: World) {
-  let best = 0, cur = 0; for (const d of w.hist) { if (hasAny(w.F.get(d))) { cur++; best = Math.max(best, cur); } else cur = 0; }
-  let d = hasAny(w.F.get(w.today)) ? w.today : addDays(w.today, -1), now = 0;
-  while (hasAny(w.F.get(d)) && now < 3650) { now++; d = addDays(d, -1); }
-  return { now, best };
+/** bestStreak — лучшая серия с заморозками (кладёт streaks, чтобы достижения видели её) */
+type World = Awaited<ReturnType<typeof world>> & { bestStreak?: number };
+/** лучшая серия по дням с записями за всю историю (без заморозок — для дней старше окна серии) */
+const plainBest = (w: World) => { let best = 0, cur = 0; for (const d of w.hist) { if (hasAny(w.F.get(d))) { cur++; best = Math.max(best, cur); } else cur = 0; } return best; };
+/** серия — общая (core/streak.ts), лучшая — с учётом истории старше окна */
+async function streaks(db: Tx, userId: string, w: World) {
+  const s = await streakOf(db, userId, w.today, { F: w.F });
+  w.bestStreak = Math.max(s.best, plainBest(w));
+  return { ...s, best: w.bestStreak };
 }
 
 /* ---------- достижения ---------- */
@@ -91,7 +99,7 @@ interface Ach { k: string; n: string; u: string; ic: string; c: string; t: numbe
 const sumF = (w: World, f: (x: F) => number) => [...w.F.values()].reduce((a, x) => a + f(x), 0);
 const countF = (w: World, f: (x: F) => boolean, past = false) => [...w.F.values()].filter(x => (!past || x.day < w.today) && f(x)).length;
 const ACH: Ach[] = [
-  { k: 'streak', n: 'Не сдаваться', u: 'дней подряд с записями', ic: 'flame', c: 'orange', t: [3, 7, 30, 100], v: w => streaks(w).best },
+  { k: 'streak', n: 'Не сдаваться', u: 'дней подряд с записями', ic: 'flame', c: 'orange', t: [3, 7, 30, 100], v: w => w.bestStreak ?? plainBest(w) },
   { k: 'perfect', n: 'Идеальный день', u: 'дней с оценкой 95%+', ic: 'star', c: 'mustard', t: [1, 7, 30, 100], v: w => w.hist.filter(d => d < w.today && w.sc(d) >= 0.95).length },
   { k: 'food', n: 'Дневник еды', u: 'дней с записанной едой', ic: 'food', c: 'food', t: [7, 30, 100, 365], v: w => countF(w, x => (x.meals ?? 0) > 0) },
   { k: 'norm', n: 'В яблочко', u: 'дней в норме калорий', ic: 'target', c: 'food', t: [5, 20, 60, 150], v: w => countF(w, x => (x.meals ?? 0) > 0 && kcalLevel(x.kcal ?? 0, w.norms.kcal) === 'good', true) },
@@ -116,6 +124,7 @@ const ACH: Ach[] = [
 /** состояние достижений; новые ступени сохраняются с сегодняшней датой и возвращаются в fresh */
 export async function awardsState(db: Tx, userId: string, w?: World) {
   w ??= await world(db, userId);
+  if (w.bestStreak === undefined) await streaks(db, userId, w);
   const T = await totals(db, userId);
   const notes = (await db.select({ note: dayJournal.note }).from(dayJournal).where(eq(dayJournal.userId, userId))).filter(n => String(n.note ?? '').trim().length > 10).length;
   const list = ACH.filter(a => !a.hide?.(w!)).map(a => {
@@ -132,7 +141,7 @@ export async function awardsState(db: Tx, userId: string, w?: World) {
 
 /* ---------- обзор ---------- */
 const MN = ['январь', 'февраль', 'март', 'апрель', 'май', 'июнь', 'июль', 'август', 'сентябрь', 'октябрь', 'ноябрь', 'декабрь'];
-function calendar(w: World, month: string) {
+function calendar(w: World, month: string, frozen: ReadonlySet<string> = new Set()) {
   const [y, m] = month.split('-').map(Number) as [number, number], len = new Date(Date.UTC(y, m, 0)).getUTCDate();
   const cells = [], scores: Array<[string, number]> = [];
   let logged = 0;
@@ -140,7 +149,7 @@ function calendar(w: World, month: string) {
     const d = `${month}-${String(k).padStart(2, '0')}`, fut = d > w.today, f = w.F.get(d), s = fut ? null : w.sc(d);
     if (!fut && d < w.today && hasAny(f)) scores.push([d, s!]);
     if (!fut && hasAny(f)) logged++;
-    cells.push({ day: d, score: s === null ? null : pct(s), any: hasAny(f), parts: fut ? [] : parts(f, w.A, w.norms).map(([a, v]) => ({ area: a, name: AREA_NAMES[a], v: pct(v) })), gym: !!f?.workouts, pages: f?.pages ?? 0 });
+    cells.push({ day: d, score: s === null ? null : pct(s), any: hasAny(f), parts: fut ? [] : parts(f, w.A, w.norms).map(([a, v]) => ({ area: a, name: AREA_NAMES[a], v: pct(v) })), gym: !!f?.workouts, pages: f?.pages ?? 0, frozen: frozen.has(d) });
   }
   const pm = new Date(Date.UTC(y, m - 2, 1)), pk = `${pm.getUTCFullYear()}-${String(pm.getUTCMonth() + 1).padStart(2, '0')}`, plen = new Date(Date.UTC(pm.getUTCFullYear(), pm.getUTCMonth() + 1, 0)).getUTCDate();
   const prev: number[] = []; for (let k = 1; k <= plen; k++) { const d = `${pk}-${String(k).padStart(2, '0')}`; if (d < w.today && hasAny(w.F.get(d))) prev.push(w.sc(d)); }
@@ -153,11 +162,11 @@ function calendar(w: World, month: string) {
 }
 const monOf = (d: string) => addDays(d, -wdIdx(d));
 /** год клетками: с понедельника недели первой записи, но не меньше 16 недель и не больше 53; будущих дней нет */
-function heat(w: World) {
+function heat(w: World, frozen: ReadonlySet<string> = new Set()) {
   const t = w.today, min = addDays(monOf(t), -7 * 15), max = addDays(monOf(t), -7 * 52);
   let from = monOf(w.first); if (from > min) from = min; if (from < max) from = max;
-  const cells: Array<{ day: string; score: number | null }> = [];
-  for (let d = from; d <= t; d = addDays(d, 1)) cells.push({ day: d, score: hasAny(w.F.get(d)) ? pct(w.sc(d)) : null });
+  const cells: Array<{ day: string; score: number | null; frozen?: true }> = [];
+  for (let d = from; d <= t; d = addDays(d, 1)) cells.push({ day: d, score: hasAny(w.F.get(d)) ? pct(w.sc(d)) : null, ...(frozen.has(d) ? { frozen: true as const } : {}) });
   return { from, first: hasAny(w.F.get(w.first)) ? w.first : null, active: w.hist.filter(d => hasAny(w.F.get(d))).length, cells };
 }
 
@@ -172,7 +181,9 @@ function weekVsWeek(w: World) {
     const act = ds.filter(d => hasAny(f(d))), food = ds.filter(d => f(d)?.meals), water = ds.filter(d => f(d)?.waterMl), steps = ds.filter(d => f(d)?.steps);
     const sum = (k: keyof DayFacts) => ds.reduce((a, d) => a + (Number(f(d)?.[k]) || 0), 0);
     const kgs = ds.map(d => f(d)?.weightKg).filter(Boolean) as number[], base = lastKg(ds[0]!) ?? kgs[0];
+    const moods = ds.map(d => f(d)?.mood).filter(Boolean) as number[];
     return {
+      mood: moods.length ? r1(avg(moods)) : null, moodDays: moods.length,
       act: act.length, score: act.length ? pct(avg(act.map(w.sc))) : null,
       kcal: food.length ? Math.round(avg(food.map(d => f(d)!.kcal ?? 0))) : null,
       water: water.length ? Math.round(avg(water.map(d => f(d)!.waterMl!))) : null,
@@ -194,7 +205,8 @@ function weekVsWeek(w: World) {
     (C.tasks || P.tasks) && { key: 'tasks', name: 'Задачи', unit: '', cur: C.tasksDone, prev: P.tasksDone, of: C.tasks, better: up(C.tasksDone, P.tasksDone), note: `сделано из ${C.tasks}` },
     (A.study || C.study || P.study) && { key: 'study', name: 'Учёба', unit: 'мин', cur: C.study, prev: P.study, better: up(C.study, P.study), note: 'минут за 7 дней' },
     (C.gym || P.gym) && { key: 'gym', name: 'Зал', unit: '', cur: C.gym, prev: P.gym, better: up(C.gym, P.gym), note: 'тренировок' },
-    (C.hasSpent || P.hasSpent) && { key: 'spent', name: 'Траты', unit: '', cur: C.spent, prev: P.spent, better: C.spent === P.spent ? null : C.spent < P.spent, note: 'за 7 дней' }
+    (C.hasSpent || P.hasSpent) && { key: 'spent', name: 'Траты', unit: '', cur: C.spent, prev: P.spent, better: C.spent === P.spent ? null : C.spent < P.spent, note: 'за 7 дней' },
+    (C.mood !== null || P.mood !== null) && { key: 'mood', name: 'Настроение', unit: 'из 5', cur: C.mood, prev: P.mood, better: up(C.mood, P.mood), note: `в среднем; отмечено ${C.moodDays} из 7` }
   ].filter(Boolean);
   // подсказки: что получается лучше всего и где слабое место — по дням с записями из последних 7
   const act = cur.filter(d => hasAny(f(d))), n = act.length, insights: string[] = [];
@@ -212,7 +224,28 @@ function weekVsWeek(w: World) {
     if (best && best.v >= Math.ceil(n / 2)) insights.push(`Лучше всего у тебя получается ${NAMES_NOM[best.k]} — в норме ${best.v} ${of}`);
     if (worst && worst.k !== best?.k && worst.v < n / 2) insights.push(`Слабое место — ${NAMES_NOM[worst.k]}: ${worst.v} ${plural(worst.v, 'день', 'дня', 'дней')} ${of2}`);
   }
-  return { from: cur[0], to: cur[6], prevFrom: prev[0], prevTo: prev[6], days: C.act, prevDays: P.act, metrics, insights };
+  return { from: cur[0], to: cur[6], prevFrom: prev[0], prevTo: prev[6], days: C.act, prevDays: P.act, metrics, insights, moodInsight: moodLink(w) };
+}
+
+/** с чем связано настроение: завершённые дни за 60 дней с отметкой (нужно хотя бы 10); берём самую заметную прибавку */
+export const MOOD_MIN_DAYS = 10;
+export function moodLink(w: Pick<World, 'F' | 'today' | 'norms'>) {
+  const ds = days(60, addDays(w.today, -1)).map(d => w.F.get(d)).filter(f => f?.mood) as F[], N = w.norms;
+  if (ds.length < MOOD_MIN_DAYS) return null;
+  const tests: Array<[string, (x: F) => boolean]> = [
+    ['В дни с залом', x => (x.workouts ?? 0) > 0],
+    [`В дни с ${fmtN(N.steps)}+ шагов`, x => (x.steps ?? 0) >= N.steps],
+    ['В дни с учёбой', x => (x.studyMin ?? 0) > 0],
+    ['В дни с нормой воды', x => (x.waterMl ?? 0) >= N.water]
+  ];
+  let best: { text: string; d: number } | null = null;
+  for (const [text, ok] of tests) {
+    const yes = ds.filter(ok).map(x => x.mood!), no = ds.filter(x => !ok(x)).map(x => x.mood!);
+    if (yes.length < 3 || no.length < 3) continue;
+    const d = avg(yes) - avg(no);
+    if (d >= 0.3 && (!best || d > best.d)) best = { text, d };
+  }
+  return best ? `${best.text} настроение выше на ${fmt1(best.d)}` : null;
 }
 
 /* ---------- один день: оценка по частям и что записано ---------- */
@@ -232,7 +265,7 @@ async function dayDetail(db: Tx, userId: string, day: string) {
   };
 }
 async function overview(db: Tx, userId: string, month?: string) {
-  const w = await world(db, userId), t = w.today, st = streaks(w);
+  const w = await world(db, userId), t = w.today, st = await streaks(db, userId, w), frozen = new Set(st.frozen);
   const past = w.hist.filter(d => d < t && hasAny(w.F.get(d)));
   const yearDays = w.hist.filter(d => d >= addDays(t, -364) && d < t);
   // дни недели: средняя оценка завершённых дней с записями (последние 12 каждого дня); null — таких дней ещё не было
@@ -247,10 +280,10 @@ async function overview(db: Tx, userId: string, month?: string) {
     today: t, enough: w.hist.filter(d => hasAny(w.F.get(d))).length >= 2,
         // avg7 — средняя оценка завершённых дней с записями из последних 7 (days7 — сколько их); пустые дни не тянут вниз
     score: { now: pct(w.sc(t)), parts: parts(w.F.get(t), w.A, w.norms).map(([a, v]) => ({ area: a, name: AREA_NAMES[a], v: pct(v) })), avg7: last7.length ? pct(avg(last7.map(w.sc))) : null, days7: last7.length },
-    nums: { active365: yearDays.filter(d => hasAny(w.F.get(d))).length + (hasAny(w.F.get(t)) ? 1 : 0), perfect365: yearDays.filter(d => w.sc(d) >= 0.95).length, streak: st.now, bestStreak: st.best, tiers: aw.total },
-    calendar: calendar(w, month && /^\d{4}-\d{2}$/.test(month) && month <= t.slice(0, 7) ? month : t.slice(0, 7)),
+    nums: { active365: yearDays.filter(d => hasAny(w.F.get(d))).length + (hasAny(w.F.get(t)) ? 1 : 0), perfect365: yearDays.filter(d => w.sc(d) >= 0.95).length, streak: st.now, bestStreak: st.best, tiers: aw.total, freezes: st.freezes },
+    calendar: calendar(w, month && /^\d{4}-\d{2}$/.test(month) && month <= t.slice(0, 7) ? month : t.slice(0, 7), frozen),
     last30: pct(sAvg(days(30, addDays(t, -1)))), prev30: pct(sAvg(days(30, addDays(t, -31)))),
-    year: heat(w), weekdays: past.length ? wd : null, pastDays: past.length, week: weekVsWeek(w),
+    year: heat(w, frozen), weekdays: past.length ? wd : null, pastDays: past.length, week: weekVsWeek(w),
     records: [
       { name: 'Лучшая серия', value: `${st.best}`, unit: 'дн.', sub: `сейчас ${st.now}`, icon: 'flame' },
       rScore.day && { name: 'Лучший день', value: `${pct(rScore.v)}%`, sub: rScore.day, icon: 'star' },
@@ -303,7 +336,10 @@ function weekStats(w: World, mon: string, T: Totals, unlocked: Array<{ key: stri
   const logged = ds.filter(d => hasAny(f(d))), food = ds.filter(d => f(d)?.meals);
   const steps = ds.map(d => f(d)?.steps ?? 0), sd = steps.filter(Boolean);
   const ws = days(10, addDays(mon, 6)).map(d => f(d)?.weightKg).filter(Boolean) as number[];
+  const md = ds.filter(d => f(d)?.mood), mood = (d: string) => f(d)!.mood!;
   return {
+    // настроение: среднее по отмеченным дням и лучший из них (при равенстве — первый)
+    mood: md.length ? avg(md.map(mood)) : null, moodDays: md.length, moodBest: md.length ? md.reduce((b, d) => mood(d) > mood(b) ? d : b) : null,
     n: ds.length, logged: logged.length, score: avg(logged.map(w.sc)), scores: all.map(d => d <= w.today ? pct(w.sc(d)) : null),
     foodDays: food.length, inNorm: food.filter(d => kcalLevel(f(d)!.kcal ?? 0, N.kcal) === 'good').length,
     protein: food.filter(d => N.protein && (f(d)!.protein ?? 0) >= N.protein * 0.9).length,
@@ -322,7 +358,7 @@ export async function review(db: Tx, userId: string, monArg?: string, at?: numbe
   const w = await world(db, userId, at), t = w.today, thisMon = addDays(t, -wdIdx(t));
   // по умолчанию — прошлая неделя; в воскресенье — текущая
   const mon = monArg && /^\d{4}-\d{2}-\d{2}$/.test(monArg) && monArg <= thisMon ? addDays(monArg, -wdIdx(monArg)) : wdIdx(t) === 6 ? thisMon : addDays(thisMon, -7);
-  const T = await totals(db, userId), aw = await awardsState(db, userId, w);
+  const st = await streaks(db, userId, w), T = await totals(db, userId), aw = await awardsState(db, userId, w);
   const W = weekStats(w, mon, T, aw.unlocked), P = weekStats(w, addDays(mon, -7), T, aw.unlocked), N = w.norms, A = w.A;
   const wins: string[] = [], misses: string[] = [], focus: string[] = [];
   const add = (ok: boolean | null, win: string, miss: string, tip?: string) => { if (ok === true) wins.push(win); else if (ok === false) { misses.push(miss); if (tip) focus.push(tip); } };
@@ -353,7 +389,7 @@ export async function review(db: Tx, userId: string, monArg?: string, at?: numbe
       { name: 'Учёба, ч', value: Math.round(W.study / 6) / 10, prev: Math.round(P.study / 6) / 10 },
       { name: 'Шагов', value: W.stepsTot, prev: P.stepsTot }
     ], prevLogged: P.logged, wins, misses, focus: focus.slice(0, 2),
-    facts: { ...W, norms: N, areas: A, streak: streaks(w).now, today: t }
+    facts: { ...W, norms: N, areas: A, streak: st.now, freezes: st.freezes, frozen: st.frozen.filter(d => d >= mon && d <= addDays(mon, 6)), today: t }
   };
 }
 

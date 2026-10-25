@@ -11,7 +11,9 @@ import { Icon } from '../components/Icon';
 import { HelpButton } from '../components/HelpButton';
 import { Bars, Delta, Donut, HBars, human, humanLong, MonthCal, ScoreRing, scoreColor, YearHeat } from '../components/Charts';
 import { DayDetail } from '../components/StatsDay';
+import { Face } from '../components/DayMood';
 import '../styles/stats2.css';
+import '../styles/mood.css';
 
 export type StatsTab = 'overview' | 'food' | 'body' | 'study' | 'money' | 'books' | 'week' | 'awards';
 // вкладки разделов Pro показываются, только если раздел открыт
@@ -51,7 +53,8 @@ const WFMT: Record<string, { v: (n: number) => string; d: (n: number) => string 
   tasks: { v: n => String(n), d: n => sign(n) },
   study: { v: n => MINUTES(n), d: n => `${sign(n)} мин` },
   gym: { v: n => String(n), d: n => sign(n) },
-  spent: { v: n => fmt(n), d: n => sign(n) }
+  spent: { v: n => fmt(n), d: n => sign(n) },
+  mood: { v: n => `${fmt1(n)} из 5`, d: n => sign(n, fmt1) }
 };
 const NEED: Record<string, string> = { study: 'study', gym: 'gym', spent: 'budget', tasks: 'plans' };
 
@@ -62,7 +65,8 @@ function WeekVsWeek({ w, has }: { w: any; has: (f: string) => boolean }) {
     <div className="card-head"><h2>Неделя к неделе</h2><span className="wk2-range">{human(w.from)} — {human(w.to)} <small>против {human(w.prevFrom)} — {human(w.prevTo)}</small></span></div>
     {empty ? <p className="card-note">Здесь появится сравнение: последние 7 дней против 7 до них — оценка, калории, вода, шаги и всё, что ты ведёшь. Нужна хотя бы пара дней с записями.</p> : <>
       {w.insights.length > 0 ? <ul className="wk2-ins">{w.insights.map((x: string, k: number) => <li key={x} className={k ? 'weak' : 'strong'}><Icon name={k ? 'target' : 'star'} />{x}</li>)}</ul>
-        : <p className="card-note">{w.days < 2 ? `Подсказки появятся, когда за последние 7 дней наберётся хотя бы 2 дня с записями — сейчас ${w.days}.` : 'Всё, что ведёшь, держится ровно — ни явных побед, ни провалов.'}</p>}
+        : !w.moodInsight && <p className="card-note">{w.days < 2 ? `Подсказки появятся, когда за последние 7 дней наберётся хотя бы 2 дня с записями — сейчас ${w.days}.` : 'Всё, что ведёшь, держится ровно — ни явных побед, ни провалов.'}</p>}
+      {w.moodInsight && <p className="wk2-mood"><Face n={4} />{w.moodInsight}</p>}
       <div className="wk2-grid">{ms.map(m => {
         const F = WFMT[m.key] ?? WFMT.gym!, d = m.cur !== null && m.prev !== null && m.key !== 'weight' ? m.cur - m.prev : null;
         const tone = m.better === null ? '' : m.better ? 'good' : 'bad';
@@ -118,7 +122,7 @@ function Overview({ has, onOpenDay }: { has: (f: string) => boolean; onOpenDay?:
     <section className="wc span7" data-tour="calendar">
       <div className="card-head"><h2>Календарь</h2><div className="cal-nav"><button onClick={() => shift(-1)} aria-label="Предыдущий месяц"><Icon name="chevL" /></button><b aria-live="polite">{c.title}</b><button onClick={() => shift(1)} disabled={c.isCurrent} aria-label="Следующий месяц"><Icon name="chev" /></button></div></div>
       <MonthCal lead={c.lead} cells={c.cells} today={d.today} selected={pick?.at === 'cal' ? pick.day : null} onPick={x => choose(x.day, 'cal')} />
-      <div className="legend"><span><i style={{ background: 'var(--mustard)' }} />идеально ★</span><span><i style={{ background: 'var(--gym)' }} />70%+</span><span><i style={{ background: 'var(--steps)' }} />40%+</span><span><i style={{ background: 'var(--text-3)' }} />начало</span><span><i className="k-gymdot" />зал</span></div>
+      <div className="legend"><span><i style={{ background: 'var(--mustard)' }} />идеально ★</span><span><i style={{ background: 'var(--gym)' }} />70%+</span><span><i style={{ background: 'var(--steps)' }} />40%+</span><span><i style={{ background: 'var(--text-3)' }} />начало</span><span><i className="k-gymdot" />зал</span>{c.cells.some((x: any) => x.frozen) && <span><i className="k-ice" />заморожен</span>}</div>
       {panel('cal') ?? <p className="card-note st2-hint">Нажми на день — покажу, из чего сложилась оценка и что записано.</p>}
     </section>
     <section className="wc span5">
@@ -138,7 +142,7 @@ function Overview({ has, onOpenDay }: { has: (f: string) => boolean; onOpenDay?:
       <div className="card-head"><h2>{showHeat && y.first && y.first > addDays(d.today, -360) ? 'Дни с первой записи' : 'Год по дням'}</h2>{showHeat && y.first && <span className="wk2-range">с {humanLong(y.first < y.cells[0].day ? y.cells[0].day : y.first)}</span>}</div>
       {showHeat ? <>
         <YearHeat cells={y.cells} today={d.today} first={y.first} selected={pick?.at === 'heat' ? pick.day : null} onPick={day => choose(day, 'heat')} />
-        <div className="hm-legend" aria-hidden="true"><span>нет записей</span><i className="none" /><i style={{ background: 'var(--text-3)' }} /><i style={{ background: 'var(--steps)' }} /><i style={{ background: 'var(--gym)' }} /><i style={{ background: 'var(--mustard)' }} /><span>идеально ★</span><span className="hm-lt"><i className="today" />сегодня</span></div>
+        <div className="hm-legend" aria-hidden="true"><span>нет записей</span><i className="none" /><i style={{ background: 'var(--text-3)' }} /><i style={{ background: 'var(--steps)' }} /><i style={{ background: 'var(--gym)' }} /><i style={{ background: 'var(--mustard)' }} /><span>идеально ★</span><span className="hm-lt"><i className="today" />сегодня</span>{y.cells.some((x: any) => x.frozen) && <span className="hm-lt"><i className="ice" />заморожен</span>}</div>
         {panel('heat') ?? <p className="card-note">Каждая клетка — день, цвет — его оценка. Нажми на клетку — покажу подробности.</p>}
       </> : <div className="hm-soon">
         <p><b>Здесь появится твой год</b> — пока {dni(y.active)} с записями. Карта дней откроется с {HEAT_MIN}-го дня.</p>

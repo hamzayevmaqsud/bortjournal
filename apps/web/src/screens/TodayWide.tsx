@@ -6,7 +6,7 @@
 import { can } from '../lib/features';
 import { g } from '../lib/gender';
 import { useEffect, useRef, useState } from 'react';
-import { diffDays, parseDay } from '@bortjournal/core';
+import { addDays, diffDays, parseDay } from '@bortjournal/core';
 import { api, type Subscription, type Today as TodayData } from '../lib/api';
 import { fmt, fmt1, fmt2, MONG, plural, WDF } from '../lib/format';
 import { buzz, spring, useCountUp } from '../lib/motion';
@@ -19,8 +19,12 @@ import { Tasks } from '../components/Tasks';
 import { marksOf, Timeline, type Mark } from '../components/Timeline';
 import { useToast } from '../components/Toasts';
 import { DayTip } from '../components/DayTip';
+import { DayMood } from '../components/DayMood';
 
 const MON = ['янв', 'фев', 'мар', 'апр', 'мая', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
+/** заморозки серии в ответе /api/today */
+type TodayFz = TodayData & { freeze?: { left: number; max: number; usedYesterday: boolean; frozen: string[] } };
+const FREEZE_HINT = 'Заморозка закрывает пустой день, и серия не прерывается. +1 за каждые 7 дней подряд, в запасе до 2.';
 /** приветствие по времени суток: обращение и тёплая строка под настроение */
 const greet = (hm: string): [string, string] => {
   const h = +hm.slice(0, 2);
@@ -39,11 +43,13 @@ function RingBox({ v, max, color }: { v: number; max: number; color: string }) {
   return <span className="ringbox"><Arc size={132} sw={12} color={color} p={max ? v / max : 0} /><em>{max ? Math.round(v / max * 100) : 0}%</em></span>;
 }
 
-export function TodayWide({ wide = true, data, day, today, sub, still, settings = {}, onReminders, onSettingsSaved, onDay, onAdd, onDelete, onEdit, onToggleTask, onGo, onPro, onPaywall, onSteps, onWeight, onWater, onMeal, onAddWater, onTaskAdded, onTaskOpen, onWeek }: {
+export function TodayWide({ wide = true, data, day, today, sub, still, settings = {}, onReminders, onSettingsSaved, onDay, onAdd, onDelete, onEdit, onToggleTask, onGo, onPro, onPaywall, onSteps, onWeight, onWater, onMeal, onAddWater, onTaskAdded, onTaskOpen, onWeek, onJournal }: {
   wide?: boolean; data: TodayData | null; day: string; today: string; sub: Subscription; still: boolean; settings?: Record<string, any>; onReminders?: () => void; onSettingsSaved?: (s: Record<string, unknown>) => void;
   onDay: (dir: number) => void; onAdd: (time?: string) => void; onDelete: (m: Mark) => void; onEdit: (m: Mark) => void; onToggleTask: (id: string) => void;
   onGo: (tab: string) => void; onPro: (what: string) => void; onPaywall: () => void;
   onSteps: () => void; onWeight: () => void; onWater: () => void; onMeal: () => void; onAddWater: (ml: number) => void; onTaskAdded: (title: string) => void; onTaskOpen: () => void; onWeek?: () => void;
+  /** отметили настроение — серия могла измениться */
+  onJournal?: () => void;
 }) {
   const toast = useToast(), [title, setTitle] = useState(''), [busy, setBusy] = useState(false);
   const dt = parseDay(day), off = Math.round((dt.getTime() - parseDay(today).getTime()) / 864e5);
@@ -63,6 +69,14 @@ export function TodayWide({ wide = true, data, day, today, sub, still, settings 
   steps.push(['Включи напоминания', !!settings.remindSeen, () => { onReminders?.(); saveSettings({ remindSeen: true }); }]);
   const saveSettings = async (body: Record<string, unknown>) => { try { const r = await api<{ settings: Record<string, unknown> }>('/api/profile/settings', { method: 'PUT', body }); onSettingsSaved?.(r.settings); } catch { /* не страшно */ } };
   const showList = !settings.checklistDone && !!data?.isToday && steps.some(s => !s[1]);
+  // заморозки серии; вчера спасла заморозка — сказать один раз за день
+  const fz = (data as TodayFz | null)?.freeze;
+  useEffect(() => {
+    if (!fz?.usedYesterday || !data) return;
+    const k = `lumi.freeze.${data.now.day}`;
+    try { if (localStorage.getItem(k)) return; localStorage.setItem(k, '1'); } catch { /* без памяти — скажем ещё раз, не страшно */ }
+    toast(`Вчера серию спасла заморозка — ${fz.left ? `${plural(fz.left, 'осталась', 'осталось', 'осталось')} ${fz.left}` : 'заморозок больше нет'}`);
+  }, [fz?.usedYesterday, fz?.left, data?.now.day]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // смахивание шапки на телефоне: тянется за пальцем, отпущенная — листает день или возвращается
   const head = useRef<HTMLElement>(null), page = useRef<HTMLDivElement>(null);
@@ -115,7 +129,10 @@ export function TodayWide({ wide = true, data, day, today, sub, still, settings 
         {data && <div className="statgroup" data-tour="stats">
           {has('food') && <button onClick={() => onPro('Цель и прогноз')}><i><Icon name="today" />план</i><b>{fmt(data.plan.kcal)}<small>ккал</small></b><span>{data.plan.protein ? `белок ${fmt(data.plan.protein)} г` : 'норма по анкете'}</span></button>}
           {has('food') && <button onClick={onWeight}><i><Icon name="steps" />вес</i><b>{body?.weight ? fmt1(body.weight.kg) : '—'}<small>кг</small></b><span className={body?.weight?.today ? '' : 'go'}>{body?.weight?.today ? (data.isToday ? 'сегодня' : 'в этот день') : 'взвеситься →'}</span></button>}
-          <button className="hot" onClick={() => onPro('Статистика')}><i><Icon name="flame" />серия</i><b>{data.streak}<small>{plural(data.streak, 'день', 'дня', 'дней')}</small></b><span>подряд</span></button>
+          <button className="hot" onClick={() => onPro('Статистика')} title={fz ? FREEZE_HINT + (fz.frozen.length ? ` Заморожено: ${fz.frozen.map(d => d === addDays(data.now.day, -1) ? 'вчера' : `${+d.slice(8)} ${MON[+d.slice(5, 7) - 1]}`).join(', ')}.` : '') : undefined}
+            aria-label={`Серия: ${data.streak} ${plural(data.streak, 'день', 'дня', 'дней')} подряд${fz ? `, заморозок в запасе: ${fz.left}${fz.usedYesterday ? ', вчера заморожен' : ''}` : ''}. Открыть статистику`}>
+            <i><Icon name="flame" />серия</i><b>{data.streak}<small>{plural(data.streak, 'день', 'дня', 'дней')}</small></b>
+            <span>подряд{fz && <> · <em className="st-fz"><Icon name="snow" className="" />{fz.usedYesterday ? <>вчера<span className="fz-w"> заморожен</span></> : <><span className="fz-w">заморозок </span>{fz.left}</>}</em></>}</span></button>
         </div>}
       </div>
     </header>
@@ -203,6 +220,7 @@ export function TodayWide({ wide = true, data, day, today, sub, still, settings 
               <Tasks tasks={tasks} onToggle={onToggleTask} onOpen={() => onGo('plans')} empty="Задач на этот день нет." />
             </section>}
             <Habits day={day} today={today} isToday={data.isToday} />
+            <DayMood day={day} today={today} minutes={data.now.minutes} onSaved={onJournal} />
           </>;
           return wide && wideCols ? <div className="today-main">{main}</div> : main;
         })()}

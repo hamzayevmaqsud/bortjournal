@@ -23,7 +23,7 @@ import { startTrial } from './billing.js';
 import { syncNorms } from './goal.js';
 import { clientIp, sweepEvery } from './client-ip.js';
 import { demoData, DEMO_DAYS } from './demo-data.js';
-import { activityWeeks, entitlements, events, profiles, users } from './schema.js';
+import { activityWeeks, dayJournal, entitlements, events, profiles, users } from './schema.js';
 import { review } from './stats.js';
 
 export const DEMO_HOURS = 24;
@@ -116,6 +116,8 @@ export async function seedDemo(db: Tx, userId: string, tz: number) {
   const hs = D.habits.map((h, i) => ({ id: uuid(), userId, ...h, sort: i, createdAt: new Date(Date.now() - 90 * 864e5) }));
   await put(db, habits, hs);
   await put(db, habitChecks, D.checks.map(c => ({ habitId: hs[c.habit]!.id, userId, day: c.day })));
+  // «как прошёл день»: настроение и редкие заметки
+  await put(db, dayJournal, D.journal.map(j => ({ userId, ...j })));
 
   await put(db, events, ev);
 
