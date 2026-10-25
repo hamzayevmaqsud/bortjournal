@@ -5,7 +5,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { addDays, parseDay } from '@bortjournal/core';
 import { api, ApiError } from '../lib/api';
-import { fmt, fmt1, plural } from '../lib/format';
+import { fmt, fmt1, num, plural } from '../lib/format';
 import { buzz } from '../lib/motion';
 import { Icon } from '../components/Icon';
 import { HelpButton } from '../components/HelpButton';
@@ -19,9 +19,9 @@ export type StatsTab = 'overview' | 'food' | 'body' | 'study' | 'money' | 'books
 // вкладки разделов Pro показываются, только если раздел открыт
 const TABS: Array<[StatsTab, string, string?]> = [['overview', 'Обзор'], ['food', 'Еда'], ['body', 'Тело'], ['study', 'Учёба', 'study'], ['money', 'Деньги', 'budget'], ['books', 'Книги', 'books'], ['week', 'Неделя'], ['awards', 'Награды']];
 const MINUTES = (m: number) => m >= 60 ? `${Math.floor(m / 60)} ч${m % 60 ? ` ${m % 60} мин` : ''}` : `${m} мин`;
-const money = (v: number, cur: string) => `${v.toLocaleString('ru-RU', { maximumFractionDigits: v >= 100 ? 0 : 2 })} ${cur}`;
+const money = (v: number, cur: string) => `${num(v, v >= 100 ? 0 : 2)} ${cur}`;
 const MON = ['янв', 'фев', 'мар', 'апр', 'май', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
-const PALETTE = ['var(--books)', 'var(--study)', 'var(--food)', 'var(--water)', 'var(--mustard)', 'var(--navy)', 'var(--gym)', 'var(--steps)'];
+const PALETTE = ['var(--books)', 'var(--study)', 'var(--food)', 'var(--water)', 'var(--mustard)', 'var(--study)', 'var(--gym)', 'var(--steps)'];
 const WD = ['вс', 'пн', 'вт', 'ср', 'чт', 'пт', 'сб'], WDN = ['пн', 'вт', 'ср', 'чт', 'пт', 'сб', 'вс'];
 const WDL = ['понедельник', 'вторник', 'среду', 'четверг', 'пятницу', 'субботу', 'воскресенье'];
 const TIER_C = ['#B0713F', '#8C99A6', '#CFA232', '#D9622B'];
@@ -176,8 +176,8 @@ function FoodStats({ n }: { n: number }) {
       </section>
       <section className="wc span6"><div className="card-head"><h2>Белок, г</h2></div><Bars rows={d.rows.map((r: any) => ({ label: L(r.day), v: r.protein, hint: `${human(r.day)}: ${fmt(r.protein)} г` }))} color="var(--navy)" target={d.norms.protein || undefined} unit="г" every={every(n)} /></section>
       <section className="wc span6"><div className="card-head"><h2>Из чего калории</h2></div>
-        {d.macro ? <><div className="macro-wrap"><Donut parts={[{ name: 'Белки', v: d.macro.protein, color: 'var(--navy)' }, { name: 'Жиры', v: d.macro.fat, color: 'var(--mustard)' }, { name: 'Углеводы', v: d.macro.carbs, color: 'var(--food)' }]} center={<><b>{fmt(d.avgKcal)}</b><small>ккал/день</small></>} />
-          <ul className="macro-list">{([['Белки', d.macro.protein, 'var(--navy)', '10–35%'], ['Жиры', d.macro.fat, 'var(--mustard)', '20–35%'], ['Углеводы', d.macro.carbs, 'var(--food)', '45–65%']] as const).map(([nm, v, c, r]) => <li key={nm}><i style={{ background: c }} /><span>{nm}</span><b>{v}%</b><em>{r}</em></li>)}</ul></div>
+        {d.macro ? <><div className="macro-wrap"><Donut parts={[{ name: 'Белки', v: d.macro.protein, color: 'var(--study)' }, { name: 'Жиры', v: d.macro.fat, color: 'var(--mustard)' }, { name: 'Углеводы', v: d.macro.carbs, color: 'var(--food)' }]} center={<><b>{fmt(d.avgKcal)}</b><small>ккал/день</small></>} />
+          <ul className="macro-list">{([['Белки', d.macro.protein, 'var(--study)', '10–35%'], ['Жиры', d.macro.fat, 'var(--mustard)', '20–35%'], ['Углеводы', d.macro.carbs, 'var(--food)', '45–65%']] as const).map(([nm, v, c, r]) => <li key={nm}><i style={{ background: c }} /><span>{nm}</span><b>{v}%</b><em>{r}</em></li>)}</ul></div>
           <p className="card-note">Справа — здоровый диапазон по рекомендациям (AMDR).</p></> : <p className="card-note">Нет записей еды за период.</p>}
       </section>
       <section className="wc span6"><div className="card-head"><h2>Вода, л</h2></div><Bars rows={d.rows.map((r: any) => ({ label: L(r.day), v: Math.round(r.waterMl / 100) / 10, hint: `${human(r.day)}: ${fmt1(r.waterMl / 1000)} л` }))} color="var(--water)" target={d.norms.water / 1000} unit="л" every={every(n)} format={fmt1} /></section>

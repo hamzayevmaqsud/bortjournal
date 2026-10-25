@@ -12,7 +12,7 @@ const T0 = 6 * 60, SPAN = 18 * 60;
 const pct = (t: string) => Math.max(0, Math.min(100, (hmToMin(t) - T0) / SPAN * 100));
 
 export interface Mark { id: string; lane: string; time: string; title: string; sub?: string; value?: string; color: string; icon: string; kcal?: number; ml?: number; min?: number; open?: boolean; task?: boolean; deletable?: boolean }
-const LANES: Array<[string, string, string, string]> = [['food', 'food', 'var(--food)', 'Еда'], ['water', 'drop', 'var(--water)', 'Вода'], ['study', 'study', 'var(--study)', 'Учёба'], ['gym', 'gym', 'var(--gym)', 'Зал'], ['task', 'task', 'var(--orange)', 'Задачи'], ['cal', 'plans', 'var(--navy)', 'Календарь']];
+const LANES: Array<[string, string, string, string]> = [['food', 'food', 'var(--food)', 'Еда'], ['water', 'drop', 'var(--water)', 'Вода'], ['study', 'study', 'var(--study)', 'Учёба'], ['gym', 'gym', 'var(--gym)', 'Зал'], ['task', 'task', 'var(--orange)', 'Задачи'], ['cal', 'plans', 'var(--study)', 'Календарь']];
 
 /** события дня → отметки на дорожках */
 export function marksOf(events: DayEvent[], tasks: Task[], calendar: CalEvent[] = []): Mark[] {
@@ -25,7 +25,7 @@ export function marksOf(events: DayEvent[], tasks: Task[], calendar: CalEvent[] 
     else if (e.kind === 'workout') out.push({ id: e.id, lane: 'gym', time: e.time, title: e.title, value: e.value ? `${e.value} мин` : '', color: 'var(--gym)', icon: 'gym', min: e.value ?? 60 });
   }
   // встречи из Google Календаря — только посмотреть: ни изменить, ни удалить из Lumi
-  for (const c of calendar) if (c.time) out.push({ id: `cal-${c.id}`, lane: 'cal', time: c.time, title: c.title, sub: 'Google Календарь', value: c.minutes ? (c.minutes >= 60 ? `${Math.floor(c.minutes / 60)} ч${c.minutes % 60 ? ` ${c.minutes % 60} мин` : ''}` : `${c.minutes} мин`) : '', color: 'var(--navy)', icon: 'plans', min: c.minutes ?? 30 });
+  for (const c of calendar) if (c.time) out.push({ id: `cal-${c.id}`, lane: 'cal', time: c.time, title: c.title, sub: 'Google Календарь', value: c.minutes ? (c.minutes >= 60 ? `${Math.floor(c.minutes / 60)} ч${c.minutes % 60 ? ` ${c.minutes % 60} мин` : ''}` : `${c.minutes} мин`) : '', color: 'var(--study)', icon: 'plans', min: c.minutes ?? 30 });
   for (const t of tasks) if (t.time) out.push({ id: t.id, lane: 'task', time: t.time, title: t.title, sub: t.done ? 'сделано' : 'задача', value: t.done ? '✓' : '', color: 'var(--orange)', icon: 'task', open: !t.done, task: true });
   return out;
 }

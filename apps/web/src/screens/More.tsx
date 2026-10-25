@@ -60,6 +60,7 @@ export function More({ me, wide = false, summary = {}, onPaywall, onPro, onProfi
       <Icon name="chev" className="ic chev" />
     </button>
     <button className="sub-card" onClick={() => onPaywall()}>
+      <span className="chip-ic" style={{ ['--c' as string]: 'var(--quiz)' }}><Icon name="star" /></span>
       <span className="mid"><b>Подписка</b><small>{sub.beta ? 'Бета — всё открыто бесплатно' : sub.source === 'trial' ? `Пробный Pro закончится через ${sub.daysLeft} дн.` : sub.pro ? (sub.expiresAt ? `Pro до ${new Date(sub.expiresAt).toLocaleDateString('ru-RU')}` : 'Pro открыт навсегда') : sub.features?.length ? `Свой набор: ${sub.features.length} ${sub.features.length === 1 ? 'раздел' : sub.features.length < 5 ? 'раздела' : 'разделов'}${sub.expiresAt ? ` · до ${new Date(sub.expiresAt).toLocaleDateString('ru-RU')}` : ''}` : 'Еда, вода, шаги, задачи, цель и статистика — бесплатно'}</small></span>
       <SubStatus sub={sub} />
     </button>
@@ -71,10 +72,10 @@ export function More({ me, wide = false, summary = {}, onPaywall, onPro, onProfi
       </button>; })}
     </div>
     <div className="rows">
-      {onWhatsNew && <button className="row" onClick={onWhatsNew}><span className="chip-ic" style={{ ['--c' as string]: 'var(--navy)' }}><Icon name="flame" /></span><span className="mid"><b>Что нового</b><small>версия {APP_VERSION}</small></span><Icon name="chev" className="ic chev" /></button>}
+      {onWhatsNew && <button className="row" onClick={onWhatsNew}><span className="chip-ic" style={{ ['--c' as string]: 'var(--study)' }}><Icon name="flame" /></span><span className="mid"><b>Что нового</b><small>версия {APP_VERSION}</small></span><Icon name="chev" className="ic chev" /></button>}
       {onTour && <button className="row" data-tour="more-tour" onClick={onTour}><span className="chip-ic" style={{ ['--c' as string]: 'var(--steps)' }}><Icon name="quiz" /></span><span className="mid"><b>Как пользоваться Lumi</b><small>короткая экскурсия по главному — за минуту</small></span><Icon name="chev" className="ic chev" /></button>}
       {onFeedback && <button className="row" data-tour="more-feedback" onClick={onFeedback}><span className="chip-ic" style={{ ['--c' as string]: 'var(--orange)' }}><Icon name="edit" /></span><span className="mid"><b>Написать разработчику</b><small>что понравилось, что мешает, где ошибка</small></span><Icon name="chev" className="ic chev" /></button>}
-      {me.admin && onAdmin && <button className="row" onClick={onAdmin}><span className="chip-ic" style={{ ['--c' as string]: 'var(--navy)' }}><Icon name="stats" /></span><span className="mid"><b>Админка</b><small>пользователи, активность, ИИ, отзывы</small></span><Icon name="chev" className="ic chev" /></button>}
+      {me.admin && onAdmin && <button className="row" onClick={onAdmin}><span className="chip-ic" style={{ ['--c' as string]: 'var(--study)' }}><Icon name="stats" /></span><span className="mid"><b>Админка</b><small>пользователи, активность, ИИ, отзывы</small></span><Icon name="chev" className="ic chev" /></button>}
       {!installed() && <button className="row" onClick={onInstall}><span className="chip-ic" style={{ ['--c' as string]: 'var(--water)' }}><Icon name="plus" /></span><span className="mid"><b>Установить на телефон</b><small>как приложение, с иконкой на экране</small></span><Icon name="chev" className="ic chev" /></button>}
       <button className="row" onClick={() => setPw(true)}><span className="chip-ic" style={{ ['--c' as string]: 'var(--orange)' }}><Icon name="edit" /></span><span className="mid"><b>Сменить пароль</b><small>другие устройства выйдут из аккаунта</small></span><Icon name="chev" className="ic chev" /></button>
       <a className="row" href="/api/export" download><span className="chip-ic" style={{ ['--c' as string]: 'var(--steps)' }}><Icon name="file" /></span><span className="mid"><b>Выгрузить мои данные</b><small>всё, что записано, — одним файлом JSON</small></span><Icon name="chev" className="ic chev" /></a>

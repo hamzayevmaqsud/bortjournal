@@ -84,7 +84,7 @@
 .onb-habit small{position:absolute;right:14px;font-size:12px;color:var(--text-3)}
 .onb-habit .onb-tick{top:50%;right:14px;margin-top:-11px;width:22px;height:22px}
 .onb-habit.on{border-color:var(--orange);background:color-mix(in srgb,var(--orange) 7%,var(--field))}
-.onb-habit.on .onb-tick{background:var(--orange);border-color:var(--orange);color:#fff}
+.onb-habit.on .onb-tick{background:var(--fill-orange);border-color:var(--fill-orange);color:#fff}
 .onb-habit:disabled{opacity:.7;cursor:default}
 .onb-emoji{font-size:22px;width:28px;text-align:center;flex:none}
 

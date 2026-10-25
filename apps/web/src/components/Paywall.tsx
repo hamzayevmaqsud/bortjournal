@@ -11,10 +11,11 @@ import { buzz } from '../lib/motion';
 import { Icon } from './Icon';
 import { nativeApp } from '../lib/oauth';
 import { useToast } from './Toasts';
+import { num } from '../lib/format';
 
 // «20 октября 2027» — без «г.», чтобы точка в конце фразы не удваивалась
 const dateRu = (iso: string) => new Date(iso).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' }).replace(/\s*г\.$/, '');
-const usd = (n: number) => `${n.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} $`;
+const usd = (n: number) => `${num(n, 2, 2)} $`;
 const packName = (k: string) => PACKS.find(p => p.key === k)?.name ?? k;
 const word = (n: number) => n === 1 ? 'раздел' : n < 5 ? 'раздела' : 'разделов';
 

@@ -34,7 +34,7 @@ export function MealForm({ day, time, meal, onDone }: { day: string; time?: stri
   const body = { day, time: v.time, slot, name: v.name, kcal: v.kcal || 0, protein: v.protein || 0, fat: v.fat || 0, carbs: v.carbs || 0 };
   return <form className="form" onSubmit={e => { e.preventDefault(); run(() => meal ? api(`/api/food/meals/${meal.id}`, { method: 'PUT', body }) : api('/api/food/meals', { method: 'POST', body }), meal ? 'Сохранено' : `${v.name} — ${fmt(Number(v.kcal) || 0)} ккал`); }}>
     <label className="fld"><span>Что ел</span><input id="meal-name" className="in" value={v.name} onChange={set('name')} placeholder="Овсянка с бананом" required autoComplete="off" /></label>
-    {mine.length > 0 && !meal && <div className="chips" aria-label="Мои блюда">{mine.slice(0, 8).map(f => <button type="button" key={f.name} className="chip" onClick={() => { setV(x => ({ ...x, name: f.name, kcal: String(f.kcal), protein: String(f.protein), fat: String(f.fat), carbs: String(f.carbs) })); buzz(6); }}>{f.name}<small>{fmt(f.kcal)}</small></button>)}</div>}
+    {mine.length > 0 && !meal && <div className="chips chips-scroll" aria-label="Мои блюда">{mine.slice(0, 8).map(f => <button type="button" key={f.name} className="chip" onClick={() => { setV(x => ({ ...x, name: f.name, kcal: String(f.kcal), protein: String(f.protein), fat: String(f.fat), carbs: String(f.carbs) })); buzz(6); }}>{f.name}<small>{fmt(f.kcal)}</small></button>)}</div>}
     <div className="grid4f">
       <label className="fld"><span>Ккал</span><input id="meal-kcal" className="in" inputMode="numeric" value={v.kcal} onChange={set('kcal')} placeholder="0" required /></label>
       <label className="fld"><span>Белки</span><input id="meal-p" className="in" inputMode="decimal" value={v.protein} onChange={set('protein')} placeholder="0" /></label>
@@ -43,7 +43,7 @@ export function MealForm({ day, time, meal, onDone }: { day: string; time?: stri
     </div>
     <div className="chips" role="radiogroup" aria-label="Приём пищи">{SLOTS.map(([k, n]) => <button type="button" key={k} className={`chip ${slot === k ? 'on' : ''}`} onClick={() => setV(x => ({ ...x, slot: k }))}>{n}</button>)}
       <input id="meal-time" className="in" type="time" value={v.time} onChange={set('time')} style={{ width: 'auto', padding: '8px 12px', borderRadius: 999 }} aria-label="Время" /></div>
-    <div className="row-btns">
+    <div className="row-btns sticky-cta">
       {meal && <button type="button" className="danger" onClick={() => run(() => api(`/api/food/entries/${meal.id}`, { method: 'DELETE' }), 'Удалено')}>Удалить</button>}
       <button className="primary" disabled={busy}>{meal ? 'Сохранить' : 'Записать'}</button>
     </div>
