@@ -15,8 +15,10 @@
 .help-btn:focus-visible{outline:none}
 .help-btn:focus-visible .help-q{outline:2px solid #F4CF74;outline-offset:3px;border-radius:4px}
 @keyframes help-peek{0%,70%,100%{transform:translateY(0)}79%{transform:translateY(14px)}84%{transform:translateY(14px)}96%{transform:translateY(0)}}
-:root[data-theme=dark] .help-peek{background:linear-gradient(180deg,#2C3546,#3B4A63 70%,#4A5B78)}
-@media (prefers-color-scheme:dark){:root:not([data-theme=light]) .help-peek{background:linear-gradient(180deg,#2C3546,#3B4A63 70%,#4A5B78)}}
+/* тёмная тема: оранжевая — на тёмном фоне синяя теряется */
+:root[data-theme=dark] .help-peek{background:linear-gradient(180deg,#A94818,#C25A26 70%,#D0682F);color:#FFF4D6}
+:root[data-theme=dark] .help-peek::before{border-color:rgba(255,244,214,.45)}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]) .help-peek{background:linear-gradient(180deg,#A94818,#C25A26 70%,#D0682F);color:#FFF4D6}:root:not([data-theme=light]) .help-peek::before{border-color:rgba(255,244,214,.45)}}
 @media (prefers-reduced-motion:reduce){.help-rib{transition:none}.help-peek{animation:none}}
 /* вращение вокруг башни в проекции: влево (scaleX −1) → к нам (≈0, вспышка) → вправо (1) */
 
