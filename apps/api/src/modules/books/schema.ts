@@ -45,4 +45,4 @@ export const readingLog = pgTable('book_reading_log', {
   bookId: uuid('book_id').notNull().references(() => books.id, { onDelete: 'cascade' }),
   day: date('day', { mode: 'string' }).notNull(),
   pages: integer('pages').notNull()
-}, t => [index('book_reading_log_user_day_idx').on(t.userId, t.day), uniqueIndex('book_reading_log_legacy_uq').on(t.userId, t.legacyId).where(sql`${t.legacyId} is not null`)]);
+}, t => [index('book_reading_log_user_day_idx').on(t.userId, t.day), index('book_reading_log_book_idx').on(t.bookId),uniqueIndex('book_reading_log_legacy_uq').on(t.userId, t.legacyId).where(sql`${t.legacyId} is not null`)]);

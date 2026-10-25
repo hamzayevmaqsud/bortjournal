@@ -9,7 +9,9 @@ import type { DB } from '../db/index.js';
 import { setBodyDay } from '../modules/body/index.js';
 import { activeHabits, addHabit, colorOf, HABITS_LIMIT, iconOf, titleOf } from '../modules/habits/service.js';
 import { requireUser } from './auth.js';
+import { syncNorms } from './goal.js';
 import { bad } from './http.js';
+import { patchSettings } from './settings.js';
 import { activityWeeks, profiles, users } from './schema.js';
 
 /** что человек ведёт: от этого зависят «Сегодня», нижняя панель и нужна ли анкета тела */
@@ -32,8 +34,6 @@ export async function profileRoutes(app: FastifyInstance, { db }: { db: DB }) {
   app.post('/api/profile/onboarding', { preHandler: requireUser }, async req => {
     const b = (req.body ?? {}) as Record<string, unknown>, userId = req.userId!;
     const fresh = b.goals !== undefined, withBody = !fresh || (b.sex !== undefined && b.sex !== null && b.sex !== '');
-    const [cur] = await db.select().from(profiles).where(eq(profiles.userId, userId));
-    const old = (cur?.settings ?? {}) as Record<string, any>;
     const [u] = await db.select({ tz: users.tzOffset }).from(users).where(eq(users.id, userId));
     const today = localNow(u!.tz).day;
 
@@ -49,12 +49,7 @@ export async function profileRoutes(app: FastifyInstance, { db }: { db: DB }) {
       steps: N.steps === undefined ? undefined : Math.round(num(N.steps, 1000, 50000, 'Шаги'))
     };
 
-    const settings: Record<string, any> = { ...old };
-    if (sections) settings.sections = sections;
-    if (goals) settings.goals = goals;
-    settings.name = fresh && b.name !== undefined ? nameOf(b.name) : nameOf(b.name) ?? old.name ?? null;
-
-    let body: { level: ActivityLevel; weight: number; v: Record<string, unknown> } | null = null, plan = null;
+    let body: { level: ActivityLevel; weight: number; v: Record<string, unknown> } | null = null, plan = null, planSet: Record<string, unknown> = {};
     if (withBody) {
       const sex = b.sex === 'f' ? 'f' : b.sex === 'm' ? 'm' : null; if (!sex) throw bad('Выбери пол — от него зависит обмен веществ.');
       const age = Math.round(num(b.age, 14, 100, 'Возраст')), height = Math.round(num(b.height, 120, 230, 'Рост')), weight = num(b.weight, 30, 300, 'Вес');
@@ -63,25 +58,34 @@ export async function profileRoutes(app: FastifyInstance, { db }: { db: DB }) {
       const target = goal === 'maintain' || b.target === undefined || b.target === null || b.target === '' ? null : num(b.target, 30, 300, 'Желаемый вес');
       const prof = { sex, age, height, goal, pace, steps } as const;
       const p = computePlan(prof, weight, level, steps);
-      Object.assign(settings, { kcal: p.kcal, protein: p.protein, fat: p.fat, carbs: p.carbs, steps: stepsGoal(steps), water: waterGoal(sex, level), kcalManual: false });
+      planSet = { kcal: p.kcal, protein: p.protein, fat: p.fat, carbs: p.carbs, steps: stepsGoal(steps), water: waterGoal(sex, level), kcalManual: false };
       plan = { ...p, weeks: target ? weeksTo(prof, weight, p.kcal, level, target, steps) : null };
       body = { level, weight, v: { sex, age, ageMeasuredOn: today, heightCm: height, goal, pace, targetKg: target, startWeightKg: weight, startedOn: today, plannedSteps: steps } };
     }
-    // нормы, поправленные в анкете руками; калории сменились — углеводы добирают разницу
-    for (const k of ['kcal', 'protein', 'water', 'steps'] as const) if (norms[k] !== undefined) settings[k] = norms[k];
-    // калории или белок поправлены руками — «Цель» их больше не пересчитывает (пока анкету не пройдут заново без правок)
-    if ((norms.kcal !== undefined && norms.kcal !== plan?.kcal) || (norms.protein !== undefined && norms.protein !== plan?.protein)) settings.kcalManual = true;
-    if ((norms.kcal !== undefined || norms.protein !== undefined) && settings.fat !== undefined) settings.carbs = Math.max(0, Math.round((settings.kcal - (settings.protein ?? 0) * 4 - settings.fat * 9) / 4 / 5) * 5);
-    if (b.remind !== undefined) {
-      const r = (b.remind ?? {}) as { off?: unknown; kinds?: Record<string, unknown> }, R: Record<string, unknown> = { ...(old.remind ?? {}) };
-      if (typeof r.off === 'boolean') R.off = r.off;
-      for (const k of REMIND_KEYS) if (typeof r.kinds?.[k] === 'boolean') R[k] = r.kinds[k];
-      settings.remind = R;
-    }
-    settings.onboarded = true;
 
     const created: string[] = [];
+    const settings: Record<string, any> = {};
     await db.transaction(async tx => {
+      // настройки читаем под блокировкой строки: параллельная правка (тема, напоминания) не потеряется
+      const [cur] = await tx.select({ s: profiles.settings }).from(profiles).where(eq(profiles.userId, userId)).for('update');
+      const old = (cur?.s ?? {}) as Record<string, any>;
+      Object.assign(settings, old);
+      if (sections) settings.sections = sections;
+      if (goals) settings.goals = goals;
+      settings.name = fresh && b.name !== undefined ? nameOf(b.name) : nameOf(b.name) ?? old.name ?? null;
+      Object.assign(settings, planSet);
+      // нормы, поправленные в анкете руками; калории сменились — углеводы добирают разницу
+      for (const k of ['kcal', 'protein', 'water', 'steps'] as const) if (norms[k] !== undefined) settings[k] = norms[k];
+      // калории или белок поправлены руками — «Цель» их больше не пересчитывает (пока анкету не пройдут заново без правок)
+      if ((norms.kcal !== undefined && norms.kcal !== plan?.kcal) || (norms.protein !== undefined && norms.protein !== plan?.protein)) settings.kcalManual = true;
+      if ((norms.kcal !== undefined || norms.protein !== undefined) && settings.fat !== undefined) settings.carbs = Math.max(0, Math.round((settings.kcal - (settings.protein ?? 0) * 4 - settings.fat * 9) / 4 / 5) * 5);
+      if (b.remind !== undefined) {
+        const r = (b.remind ?? {}) as { off?: unknown; kinds?: Record<string, unknown> }, R: Record<string, unknown> = { ...(old.remind ?? {}) };
+        if (typeof r.off === 'boolean') R.off = r.off;
+        for (const k of REMIND_KEYS) if (typeof r.kinds?.[k] === 'boolean') R[k] = r.kinds[k];
+        settings.remind = R;
+      }
+      settings.onboarded = true;
       const v = { ...(body?.v ?? {}), settings, updatedAt: new Date() };
       await tx.insert(profiles).values({ userId, ...v }).onConflictDoUpdate({ target: profiles.userId, set: v });
       if (body) {
@@ -102,8 +106,8 @@ export async function profileRoutes(app: FastifyInstance, { db }: { db: DB }) {
   // ручная правка норм и имени
   app.put('/api/profile/settings', { preHandler: requireUser }, async req => {
     const b = (req.body ?? {}) as Record<string, unknown>;
-    const [cur] = await db.select().from(profiles).where(eq(profiles.userId, req.userId!));
-    const s: Record<string, unknown> = { ...(cur?.settings ?? {}) };
+    // только присланные ключи — слиянием в базе: одновременная правка с другого устройства не затирается
+    const s: Record<string, unknown> = {};
     if (b.name !== undefined) s.name = nameOf(b.name);
     if (b.kcal !== undefined) s.kcal = Math.round(num(b.kcal, 800, 6000, 'Калории'));
     if (b.protein !== undefined) s.protein = Math.round(num(b.protein, 0, 400, 'Белок'));
@@ -125,7 +129,9 @@ export async function profileRoutes(app: FastifyInstance, { db }: { db: DB }) {
     if (b.booksGoal !== undefined) s.booksGoal = Math.round(num(b.booksGoal, 1, 365, 'Книг в год'));
     // оформление общее для всех устройств: system — как в настройках телефона или компьютера
     if (b.theme !== undefined) { if (!['system', 'light', 'dark'].includes(String(b.theme))) throw bad('Тема: system, light или dark.'); s.theme = b.theme; }
-    await db.insert(profiles).values({ userId: req.userId!, settings: s }).onConflictDoUpdate({ target: profiles.userId, set: { settings: s, updatedAt: new Date() } });
-    return { settings: s };
+    let settings = await patchSettings(db, req.userId!, s);
+    // вернулись к расчёту — нормы сразу под текущий план
+    if (s.kcalManual === false && await syncNorms(db, req.userId!)) settings = (await db.select({ s: profiles.settings }).from(profiles).where(eq(profiles.userId, req.userId!)))[0]?.s ?? settings;
+    return { settings };
   });
 }

@@ -8,6 +8,8 @@ import { connect, type DB } from './db/index.js';
 import { MODULES_LIST } from './modules/index.js';
 import { workCalendars } from './core/gcal.js';
 import { cleanupDemos } from './core/demo.js';
+import { sql } from 'drizzle-orm';
+import { sessions } from './core/schema.js';
 
 let demoSweep = 0;
 
@@ -16,8 +18,11 @@ export async function runJobsOnce(db: DB, at?: Date) {
   let n = 0;
   for (const m of MODULES_LIST) if (m.work) n += await m.work(db, at);
   n += await workCalendars(db, at);
-  // просроченные демо — не чаще раза в 10 минут (или сразу, если тест задал время)
-  if (at || Date.now() - demoSweep > 10 * 60e3) { demoSweep = Date.now(); n += await cleanupDemos(db, at); }
+  // просроченные демо и сессии — не чаще раза в 10 минут (или сразу, если тест задал время)
+  if (at || Date.now() - demoSweep > 10 * 60e3) {
+    demoSweep = Date.now(); n += await cleanupDemos(db, at);
+    n += (await db.delete(sessions).where(sql`${sessions.expiresAt} < ${at ?? new Date()}`).returning({ h: sessions.tokenHash })).length;
+  }
   return n;
 }
 

@@ -14,7 +14,7 @@ export const userExercises = pgTable('gym_user_exercises', {
   icon: text('icon').notNull(),
   equipment: text('equipment'),
   createdAt: createdAt()
-}, t => [uniqueIndex('gym_user_exercises_legacy_uq').on(t.userId, t.legacyId).where(sql`${t.legacyId} is not null`)]);
+}, t => [index('gym_user_exercises_user_idx').on(t.userId), uniqueIndex('gym_user_exercises_legacy_uq').on(t.userId, t.legacyId).where(sql`${t.legacyId} is not null`)]);
 
 export const workouts = pgTable('gym_workouts', {
   id: id(), userId: owner(), legacyId: legacyId(),
@@ -55,7 +55,7 @@ export const workoutPlans = pgTable('gym_plans', {
   time: hhmm('time'),
   exercises: jsonb('exercises').$type<Array<{ exerciseKey: string | null; name: string; sets: number }>>().notNull(),
   createdAt: createdAt()
-}, t => [uniqueIndex('gym_plans_legacy_uq').on(t.userId, t.legacyId).where(sql`${t.legacyId} is not null`)]);
+}, t => [index('gym_plans_user_idx').on(t.userId), uniqueIndex('gym_plans_legacy_uq').on(t.userId, t.legacyId).where(sql`${t.legacyId} is not null`)]);
 
 /** Идущая тренировка — черновик, переживает закрытие приложения; одна на человека */
 export const liveWorkouts = pgTable('gym_live', {

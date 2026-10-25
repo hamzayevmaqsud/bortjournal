@@ -57,7 +57,7 @@ export const mealSets = pgTable('food_meal_sets', {
   name: text('name').notNull(),
   items: jsonb('items').$type<Array<{ name: string; kcal: number; protein: number; fat: number; carbs: number }>>().notNull(),
   createdAt: createdAt()
-}, t => [uniqueIndex('food_meal_sets_legacy_uq').on(t.userId, t.legacyId).where(sql`${t.legacyId} is not null`)]);
+}, t => [index('food_meal_sets_user_idx').on(t.userId), uniqueIndex('food_meal_sets_legacy_uq').on(t.userId, t.legacyId).where(sql`${t.legacyId} is not null`)]);
 
 /**
  * Черновик приёма: фото еды, которое разбирает воркер. Таблица одновременно и очередь (ADR-0002):

@@ -94,7 +94,7 @@ export const questions = pgTable('study_questions', {
   correct: integer('correct').notNull(),
   explain: text('explain'),
   createdAt: createdAt()
-}, t => [index('study_questions_material_idx').on(t.materialId)]);
+}, t => [index('study_questions_material_idx').on(t.materialId), index('study_questions_user_idx').on(t.userId)]);
 
 /** Ответы на вопросы: из них прогресс дня и точность */
 export const answers = pgTable('study_answers', {
@@ -103,4 +103,4 @@ export const answers = pgTable('study_answers', {
   day: date('day', { mode: 'string' }).notNull(),
   correct: boolean('correct').notNull(),
   createdAt: createdAt()
-}, t => [index('study_answers_user_day_idx').on(t.userId, t.day)]);
+}, t => [index('study_answers_user_day_idx').on(t.userId, t.day), index('study_answers_question_idx').on(t.questionId)]);

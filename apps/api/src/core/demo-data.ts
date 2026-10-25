@@ -363,6 +363,19 @@ export function demoData(seed: string, today: string, nowHm: string) {
     const day = addDays(today, n);
     tasks.push({ title, day, time: null, done: done && !missed.has(day), prio: false, goal: gi, createdOn: addDays(day, -3) });
   }
+  // прошлые разовые дела почти все закрыты: сделаны в свой день или перенесены и сделаны позже (с пропущенного дня — всегда перенос).
+  // Висят только 1–2 свежих по целям — «Просрочено 30+» выглядело бы как брошенный журнал
+  for (const t of tasks) {
+    if (t.series !== undefined || !t.day || t.day >= today || t.done) continue;
+    if (t.goal !== undefined && t.day >= addDays(today, -3)) continue;
+    if (missed.has(t.day) || R.chance(0.3)) {
+      let to = addDays(t.day, R.ri(1, 3));
+      while (to < today && missed.has(to)) to = addDays(to, 1);
+      if (to >= today) { t.day = today; continue; } // перенесено на сегодня — ещё впереди
+      t.day = to;
+    }
+    t.done = true;
+  }
 
   // книги
   const kahn = bookDates[1]!.startedOn ? reading.filter(x => x.book === 1).reduce((a, x) => a + x.pages, 0) : 0;

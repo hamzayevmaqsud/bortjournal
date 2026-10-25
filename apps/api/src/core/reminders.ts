@@ -75,8 +75,24 @@ export async function remindTick(db: DB, at = Date.now()) {
   return total;
 }
 
+/** замок проходов в базе: при нескольких репликах API напоминания шлёт одна */
+export const REMIND_LOCK = 8_400_001;
+/** проход под замком; замок занят (идёт проход в другом процессе) — null */
+export async function remindTickLocked(db: DB, at = Date.now()) {
+  return db.transaction(async tx => {
+    const r = await tx.execute<{ ok: boolean }>(sql`select pg_try_advisory_xact_lock(${REMIND_LOCK}) as ok`);
+    return r.rows[0]?.ok ? remindTick(db, at) : null;
+  });
+}
+
 export function startReminders(db: DB, log: (m: string) => void) {
-  const t = setInterval(() => { remindTick(db).catch(e => log(`напоминания: ${(e as Error).message}`)); }, 60e3);
+  // прошлый проход ещё идёт (много устройств, медленный push) — новый не начинаем
+  let running = false;
+  const t = setInterval(() => {
+    if (running) return;
+    running = true;
+    remindTickLocked(db).catch(e => log(`напоминания: ${(e as Error).message}`)).finally(() => { running = false; });
+  }, 60e3);
   t.unref();
   return () => clearInterval(t);
 }
@@ -102,11 +118,16 @@ export async function reminderRoutes(app: FastifyInstance, { db }: { db: DB }) {
     return view(uid(req));
   });
   app.put('/api/push/settings', { preHandler: requireUser }, async req => {
-    const b = (req.body ?? {}) as Record<string, unknown>, s = await settingsOf(uid(req)), R: RemindSettings = { ...(s.remind ?? {}) };
-    if (typeof b.off === 'boolean') R.off = b.off;
-    if (b.lead !== undefined) { const l = Math.round(Number(b.lead)); if (!(l >= 0 && l <= 120)) throw bad('За сколько минут напоминать: от 0 до 120.'); R.lead = l; }
-    for (const k of REMIND_KINDS) if (typeof (b.kinds as any)?.[k] === 'boolean') R[k] = (b.kinds as any)[k];
-    await db.update(profiles).set({ settings: { ...s, remind: R } }).where(eq(profiles.userId, uid(req)));
+    const b = (req.body ?? {}) as Record<string, unknown>;
+    // читаем и пишем под блокировкой строки: параллельная правка других настроек не потеряется
+    await db.transaction(async tx => {
+      const [p] = await tx.select({ s: profiles.settings }).from(profiles).where(eq(profiles.userId, uid(req))).for('update');
+      const R: RemindSettings = { ...(((p?.s ?? {}) as Record<string, any>).remind ?? {}) };
+      if (typeof b.off === 'boolean') R.off = b.off;
+      if (b.lead !== undefined) { const l = Math.round(Number(b.lead)); if (!(l >= 0 && l <= 120)) throw bad('За сколько минут напоминать: от 0 до 120.'); R.lead = l; }
+      for (const k of REMIND_KINDS) if (typeof (b.kinds as any)?.[k] === 'boolean') R[k] = (b.kinds as any)[k];
+      await tx.update(profiles).set({ settings: sql`${profiles.settings} || ${JSON.stringify({ remind: R })}::jsonb` }).where(eq(profiles.userId, uid(req)));
+    });
     return view(uid(req));
   });
   app.post('/api/push/test', { preHandler: requireUser }, async (req, reply) => {

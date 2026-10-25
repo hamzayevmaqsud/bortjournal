@@ -1,7 +1,7 @@
 /**
  * Демо без регистрации: временный аккаунт demo-… без пароля на сутки, с Pro и записями за три месяца —
  * чтобы посмотреть журнал живым. «Сохранить как аккаунт» (claim) задаёт логин и пароль и оставляет записи.
- * Просроченные демо удаляются целиком (каскадом) — воркером и при создании нового демо.
+ * Просроченные демо удаляются целиком (каскадом) — воркером.
  */
 import crypto from 'node:crypto';
 import { and, eq, lt, sql } from 'drizzle-orm';
@@ -20,6 +20,8 @@ import { budgetEntries, budgets } from '../modules/budget/schema.js';
 import { bookQuotes, books, readingLog } from '../modules/books/schema.js';
 import { hashPassword, newAccount, removeUserFiles, startSession } from './auth.js';
 import { startTrial } from './billing.js';
+import { syncNorms } from './goal.js';
+import { clientIp, sweepEvery } from './client-ip.js';
 import { demoData, DEMO_DAYS } from './demo-data.js';
 import { activityWeeks, entitlements, events, profiles, users } from './schema.js';
 import { review } from './stats.js';
@@ -117,19 +119,23 @@ export async function seedDemo(db: Tx, userId: string, tz: number) {
 
   await put(db, events, ev);
 
+  // нормы дня — ровно по плану из анкеты, веса и шагов демо: «Сегодня», «Еда» и «Цель» показывают одно и то же
+  await syncNorms(db, userId);
+
   // достижения открываются по ходу истории: пересчёт на прошлые даты (каждые две недели) и на сейчас
   for (const back of [76, 62, 48, 34, 20, 6, 0]) await review(db, userId, undefined, Date.now() - back * 864e5);
 }
 
 export async function demoRoutes(app: FastifyInstance, { db }: { db: DB }) {
   // не больше 10 демо в час с одного адреса; с самой машины (локальная разработка, проверки) — без лимита:
-  // на сервере за прокси (TRUST_PROXY) у посетителя всегда свой адрес, 127.0.0.1 там не бывает
+  // на сервере за прокси (TRUST_PROXY) адрес посетителя — из CF-Connecting-IP или правого края цепочки, 127.0.0.1 там не бывает.
+  // Просроченные демо чистит воркер — не в запросе
   const made = new Map<string, { n: number; until: number }>();
-  const local = (ip: string) => ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1';
+  sweepEvery(made, (r, now) => r.until <= now);
+  const local = (ip: string) => ip === '127.0.0.1' || ip === '::1';
   app.post('/api/auth/demo', { config: { public: true } }, async (req, reply) => {
-    const r = made.get(req.ip);
-    if (!local(req.ip) && r && r.until > Date.now() && r.n >= 10) return reply.code(429).send({ error: 'Слишком много демо с этого адреса. Попробуй через час.' });
-    await cleanupDemos(db);
+    const ip = clientIp(req), r = made.get(ip);
+    if (!local(ip) && r && r.until > Date.now() && r.n >= 10) return reply.code(429).send({ error: 'Слишком много демо с этого адреса. Попробуй через час.' });
     const t = Number((req.body as { tz?: unknown } | undefined)?.tz), tz = Number.isInteger(t) && Math.abs(t) <= 840 ? t : 0;
     const username = `demo-${crypto.randomBytes(6).toString('hex')}`;
     const userId = await db.transaction(async tx => {
@@ -143,7 +149,7 @@ export async function demoRoutes(app: FastifyInstance, { db }: { db: DB }) {
       await seedDemo(tx, u!.id, tz);
       return u!.id;
     });
-    made.set(req.ip, r && r.until > Date.now() ? { n: r.n + 1, until: r.until } : { n: 1, until: Date.now() + 3600e3 });
+    made.set(ip, r && r.until > Date.now() ? { n: r.n + 1, until: r.until } : { n: 1, until: Date.now() + 3600e3 });
     await startSession(db, req, reply, userId);
     return reply.code(201).send({ username });
   });

@@ -5,10 +5,18 @@
 
 name: lumi
 
+# логи контейнеров не растут бесконечно: до 3 файлов по 10 МБ на сервис
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   db:
     image: postgres:18
     restart: unless-stopped
+    logging: *logging
     environment:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?впиши POSTGRES_PASSWORD в deploy/.env}
       POSTGRES_DB: lumi
@@ -27,10 +35,13 @@ services:
     build: ..
     image: lumi-app
     restart: unless-stopped
+    logging: *logging
     env_file: .env
     environment:
       DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@db:5432/lumi
-      TRUST_PROXY: "true"
+      # верим X-Forwarded-For только от своих: туннель и docker-proxy — в частной подсети Docker.
+      # Не "true": тогда адрес берётся из левого края цепочки, а его пишет сам посетитель (обход лимитов)
+      TRUST_PROXY: "loopback,uniquelocal"
     ports:
       - "127.0.0.1:4010:4000"
     volumes:
@@ -49,6 +60,7 @@ services:
   worker:
     image: lumi-app
     restart: unless-stopped
+    logging: *logging
     env_file: .env
     environment:
       DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@db:5432/lumi
@@ -64,6 +76,7 @@ services:
   backup:
     image: postgres:18
     restart: unless-stopped
+    logging: *logging
     environment:
       PGHOST: db
       PGUSER: postgres
@@ -85,6 +98,7 @@ services:
   tunnel:
     image: cloudflare/cloudflared:2025.10.0
     restart: unless-stopped
+    logging: *logging
     command: ["tunnel", "--no-autoupdate", "run"]
     environment:
       TUNNEL_TOKEN: ${TUNNEL_TOKEN:-}
@@ -99,6 +113,7 @@ services:
   dbadmin:
     image: sosedoff/pgweb:0.16.2
     restart: unless-stopped
+    logging: *logging
     environment:
       PGWEB_DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@db:5432/lumi?sslmode=disable
       DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@db:5432/lumi?sslmode=disable

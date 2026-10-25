@@ -74,6 +74,10 @@ export async function habitsRoutes(app: FastifyInstance, { db }: { db: DB }) {
     if (day > today) throw bad('Отметить можно только прошедший или сегодняшний день.');
     const h = await ownHabit(db, userId, id);
     if (!h || h.archivedAt) return notFound(reply);
+    // давнее прошлое не отмечаем: не раньше чем за неделю до появления привычки (последние 7 дней можно дописать) и не старше года
+    const [u] = await db.select({ tz: users.tzOffset }).from(users).where(eq(users.id, userId));
+    const born = localNow(u?.tz ?? 0, h.createdAt.getTime()).day;
+    if (day < addDays(born, -7) || day < addDays(today, -365)) throw bad('Так давно отметить нельзя: привычки тогда ещё не было.');
     await setCheck(db, userId, id, day, b.done);
     const v = await habitOn(db, userId, h, day);
     return { id, day, done: v.done, streak: v.streak, last7: v.last7 };

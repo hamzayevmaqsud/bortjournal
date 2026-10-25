@@ -6,13 +6,14 @@
 import { APP_VERSION } from '@bortjournal/core';
 import Fastify from 'fastify';
 import fastifyStatic from '@fastify/static';
-import { eq, sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { authRoutes, sessionHook } from './core/auth.js';
 import { billingRoutes } from './core/billing.js';
 import { demoRoutes } from './core/demo.js';
 import { HttpError } from './core/http.js';
+import { proxyTrust } from './core/client-ip.js';
 import { profileRoutes } from './core/profile.js';
 import { goalRoutes } from './core/goal.js';
 import { exportRoutes } from './core/export.js';
@@ -36,10 +37,11 @@ const CSP = ["default-src 'self'", "script-src 'self'", "style-src 'self' 'unsaf
 // принимаем только свои адреса: защита от подмены Host (DNS rebinding)
 const hostOk = (host = '') => { const h = host.replace(/:\d+$/, '').toLowerCase(); return h === 'localhost' || h === '127.0.0.1' || h.endsWith('.ts.net') || (process.env.ALLOWED_HOSTS ?? '').split(',').map(s => s.trim()).includes(h); };
 
-/** чьим заголовкам X-Forwarded-* верить: по умолчанию только локальному прокси; за Caddy в Docker — TRUST_PROXY=true или подсеть */
-const trustProxy = () => { const v = process.env.TRUST_PROXY?.trim(); return !v ? '127.0.0.1' : v === 'true' ? true : v.split(',').map(x => x.trim()); };
 export async function buildApp({ db, serveWeb = fs.existsSync(WEB_DIST) }: { db: DB; serveWeb?: boolean }) {
-  const app = Fastify({ logger: process.env.NODE_ENV === 'test' ? false : { level: process.env.LOG_LEVEL ?? 'info' }, bodyLimit: 1_000_000, trustProxy: trustProxy() });
+  // чьим X-Forwarded-For верить — TRUST_PROXY (core/client-ip.ts); та же функция нужна лимитам по адресу
+  const trust = proxyTrust();
+  const app = Fastify({ logger: process.env.NODE_ENV === 'test' ? false : { level: process.env.LOG_LEVEL ?? 'info' }, bodyLimit: 1_000_000, trustProxy: trust });
+  app.decorate('proxyTrust', trust);
 
   app.addHook('onRequest', async (req, reply) => {
     if (!hostOk(req.headers.host)) return reply.code(421).send({ error: 'Неизвестный адрес.' });
@@ -67,7 +69,9 @@ export async function buildApp({ db, serveWeb = fs.existsSync(WEB_DIST) }: { db:
   };
   app.addHook('preHandler', async (req, reply) => {
     const k = idemKey(req as any); if (!k) return;
-    const took = await db.insert(idempotency).values({ key: k }).onConflictDoNothing().returning({ key: idempotency.key });
+    let took = await db.insert(idempotency).values({ key: k }).onConflictDoNothing().returning({ key: idempotency.key });
+    // ключ занят дольше 2 минут без ответа — процесс умер посреди запроса; забираем, иначе очередь телефона встанет навсегда
+    if (!took.length) took = await db.update(idempotency).set({ createdAt: new Date() }).where(and(eq(idempotency.key, k), eq(idempotency.status, 0), sql`${idempotency.createdAt} < now() - interval '2 minutes'`)).returning({ key: idempotency.key });
     if (took.length) { (req as any).idemOwner = true; if (Math.random() < 0.01) await db.delete(idempotency).where(sql`${idempotency.createdAt} < now() - interval '2 days'`); return; }
     const [hit] = await db.select().from(idempotency).where(eq(idempotency.key, k));
     if (hit && hit.status > 0) return reply.code(hit.status).header('Content-Type', 'application/json; charset=utf-8').header('Idempotent-Replay', '1').send(hit.body ?? '{}');
@@ -88,6 +92,8 @@ export async function buildApp({ db, serveWeb = fs.existsSync(WEB_DIST) }: { db:
   for (const m of MODULES_LIST) if (m.routes) await app.register(async scope => { await m.routes!(scope, { db }); }, { prefix: `/api/${m.name}` });
 
   if (serveWeb) {
+    // карты исходников (если остались от старой сборки) не раздаём
+    app.addHook('onRequest', async (req, reply) => { if (/\.map(\?|$)/.test(req.url) && !req.url.startsWith('/api/')) return reply.code(404).send({ error: 'Нет такого файла.' }); });
     await app.register(fastifyStatic, { root: WEB_DIST, setHeaders: (res, file) => {
       if (file.endsWith('.html')) { res.header('Content-Security-Policy', CSP); res.header('Cache-Control', 'no-cache'); }
       else if (file.endsWith('sw.js') || file.endsWith('.webmanifest')) res.header('Cache-Control', 'no-cache');

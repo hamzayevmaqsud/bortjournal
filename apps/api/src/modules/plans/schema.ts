@@ -30,7 +30,7 @@ export const taskSeries = pgTable('plan_task_series', {
   endOn: date('end_on', { mode: 'string' }),
   skipDays: date('skip_days', { mode: 'string' }).array().notNull().default(sql`'{}'::date[]`),
   createdAt: createdAt()
-}, t => [uniqueIndex('plan_task_series_legacy_uq').on(t.userId, t.legacyId).where(sql`${t.legacyId} is not null`)]);
+}, t => [index('plan_task_series_user_idx').on(t.userId), uniqueIndex('plan_task_series_legacy_uq').on(t.userId, t.legacyId).where(sql`${t.legacyId} is not null`)]);
 
 export const tasks = pgTable('plan_tasks', {
   id: id(), userId: owner(), legacyId: legacyId(),
