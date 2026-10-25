@@ -1,6 +1,7 @@
 /* Обучение: затемнение с окошком вокруг цели и карточка-подсказка. Поверх листов (31), под тостами (50) */
-.tour{--tour-dim:rgba(18,15,11,.6);--tour-ring:rgba(251,244,230,.92);--tour-card:var(--card);--tour-edge:var(--line);position:fixed;inset:0;z-index:45;animation:tour-in .3s var(--ease) both}
-.tour.out{opacity:0;transition:opacity .2s var(--ease)}
+.tour{--tour-dim:rgba(18,15,11,.6);--tour-ring:rgba(251,244,230,.92);--tour-card:var(--card);--tour-edge:var(--line);position:fixed;inset:0;z-index:45;animation:tour-in .5s var(--ease) both}
+.tour.out{opacity:0;transition:opacity .3s var(--ease)}
+.tour.out .tour-card{translate:0 8px;scale:.98;transition:translate .3s var(--ease),scale .3s var(--ease)}
 @media (prefers-color-scheme: dark){ :root:not([data-theme="light"]) .tour{--tour-dim:rgba(0,0,0,.7);--tour-ring:rgba(229,115,60,.85);--tour-card:var(--field);--tour-edge:var(--line-2)} }
 :root[data-theme="dark"] .tour{--tour-dim:rgba(0,0,0,.7);--tour-ring:rgba(229,115,60,.85);--tour-card:var(--field);--tour-edge:var(--line-2)}
 
@@ -40,6 +41,9 @@
 .tour.phone .tour-act .tour-next{flex:1.4}
 
 @keyframes tour-in{from{opacity:0}}
+/* карточка появляется плавно: всплывает чуть снизу и проявляется (translate/scale — отдельные свойства, transform карточки не трогают) */
+.tour-card{animation:tour-card-in .6s cubic-bezier(.22,1,.36,1) .12s both}
+@keyframes tour-card-in{from{opacity:0;translate:0 16px;scale:.96}}
 @keyframes tour-text{from{opacity:0;transform:translateY(4px)}}
 @keyframes tour-pulse{0%{box-shadow:0 0 0 0 var(--tour-ring);opacity:.7}70%,100%{box-shadow:0 0 0 10px var(--tour-ring);opacity:0}}
-@media (prefers-reduced-motion:reduce){.tour,.tour-body,.tour-hole::after{animation:none}.tour-hole,.tour-card{transition:none}}
+@media (prefers-reduced-motion:reduce){.tour,.tour-body,.tour-card,.tour-hole::after{animation:none}.tour-hole,.tour-card{transition:none}}
