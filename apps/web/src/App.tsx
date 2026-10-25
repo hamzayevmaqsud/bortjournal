@@ -339,7 +339,6 @@ export function App() {
 
   return <TourStart.Provider value={startTour}><div className={`app ${wide ? 'wide' : ''} ${me.demo ? 'demo-on' : ''}`}>
     {me.demo && <DemoBanner onTour={tourHere} onLogout={logout} onClaimed={async () => { await loadMe(); toast('Аккаунт сохранён — записи на месте'); }} />}
-    {wide && <header className="brand"><img className="brand-mark" src="/favicon.svg" alt="" />Lumi</header>}
     {tab in SECTIONS && SECTIONS[tab] && sub.ended && !can(sub, SECTIONS[tab]!) && <button className="ro-bar" onClick={() => open({ kind: 'paywall', focus: SECTION_NAME[tab] })}><Icon name="file" />Только просмотр — Pro закончился. Продлить</button>}
     {queued === 0 && drafts.length > 0 && (() => {
       const ready = drafts.filter(d => d.state === 'ready'), failed = drafts.filter(d => d.state === 'failed'), busy = drafts.filter(draftPending);
