@@ -431,7 +431,7 @@ export function App() {
       <Boundary key={sheet.kind} name={`лист ${sheet.kind}`}>
       {sheet.kind === 'add' && <>
         <div className="big2">
-          <button className="bigt" style={{ background: 'var(--food)' }} onClick={() => open({ kind: 'meal', at: sheet.at })}><span className="chip-ic"><Icon name="food" /></span><b>Приём пищи</b><small>калории и БЖУ вручную</small></button>
+          <button className="bigt" style={{ background: 'var(--fill-orange)' }} onClick={() => open({ kind: 'meal', at: sheet.at })}><span className="chip-ic"><Icon name="food" /></span><b>Приём пищи</b><small>калории и БЖУ вручную</small></button>
           <button className="bigt" style={{ background: 'var(--navy)' }} onClick={() => pro('Фото и описание еды', sheet.at)}><span className="chip-ic"><Icon name="camera" /></span><b>Фото еды</b><small>калории посчитает ИИ</small>{!can(sub, 'food') && <span className="lock">PRO</span>}</button>
         </div>
         <button className="voice-row" onClick={() => open({ kind: 'voice' })}><span className="chip-ic" style={{ ['--c' as string]: 'var(--orange)' }}><Icon name="mic" /></span><span className="mid"><b>Голосом</b><small>задача с напоминанием или заметка — скажи, ИИ разберёт</small></span><Icon name="chev" className="ic chev" /></button>
@@ -442,7 +442,7 @@ export function App() {
           <button className="ml" onClick={() => open({ kind: 'drink', at: sheet.at })} aria-label="Другой напиток">…</button>
         </div>
         <div className="grid4">
-          <button className="tile" onClick={() => open({ kind: 'weight' })}><span className="chip-ic" style={{ ['--c' as string]: 'var(--navy)' }}><Icon name="scale" /></span>Вес</button>
+          <button className="tile" onClick={() => open({ kind: 'weight' })}><span className="chip-ic" style={{ ['--c' as string]: 'var(--study)' }}><Icon name="scale" /></span>Вес</button>
           <button className="tile" onClick={() => open({ kind: 'steps' })}><span className="chip-ic" style={{ ['--c' as string]: 'var(--steps)' }}><Icon name="steps" /></span>Шаги</button>
           <button className="tile" onClick={() => open({ kind: 'task', day })}><span className="chip-ic" style={{ ['--c' as string]: 'var(--quiz)' }}><Icon name="task" /></span>Задача</button>
           {lockTile('Поиск еды', 'search', 'var(--food)')}

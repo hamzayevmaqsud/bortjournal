@@ -5,13 +5,13 @@
 import { useCallback, useEffect, useState } from 'react';
 import { addDays } from '@bortjournal/core';
 import { api, ApiError } from '../lib/api';
-import { fmt, plural } from '../lib/format';
+import { fmt, num, plural } from '../lib/format';
 import { Bars, human } from '../components/Charts';
 import { Icon } from '../components/Icon';
 import { useToast } from '../components/Toasts';
 
 const ago = (iso: string | null) => { if (!iso) return 'не заходил'; const m = Math.round((Date.now() - Date.parse(iso)) / 60e3); return m < 2 ? 'сейчас' : m < 60 ? `${m} мин назад` : m < 1440 ? `${Math.round(m / 60)} ч назад` : `${Math.round(m / 1440)} дн. назад`; };
-const money = (n: number) => `${(Math.round(n * 100) / 100).toLocaleString('ru-RU', { minimumFractionDigits: n % 1 ? 2 : 0, maximumFractionDigits: 2 })} $`;
+const money = (n: number) => `${num(Math.round(n * 100) / 100, 2, n % 1 ? 2 : 0)} $`;
 const SECT: Record<string, string> = { food: 'еда', water: 'вода', steps: 'шаги', tasks: 'задачи', gym: 'зал', study: 'учёба', budget: 'бюджет', books: 'книги' };
 
 export function Admin({ wide, onBack }: { wide: boolean; onBack: () => void }) {

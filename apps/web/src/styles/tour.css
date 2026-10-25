@@ -23,7 +23,7 @@
 .tour-dots i{width:6px;height:6px;border-radius:3px;background:var(--track);transition:width .3s var(--ease),background .3s}
 .tour-dots i.past{background:color-mix(in srgb,var(--orange) 45%,var(--track))}
 .tour-dots i.on{width:18px;background:var(--orange)}
-.tour-n{font:700 11.5px var(--sans);letter-spacing:.04em;color:var(--text-3);white-space:nowrap}
+.tour-n{font:700 var(--fs-xs) var(--sans);letter-spacing:.04em;color:var(--text-3);white-space:nowrap}
 .tour-skip{margin-left:auto;padding:6px 2px;font:700 12.5px var(--sans);color:var(--text-2);transition:color .2s}
 .tour-skip:hover{color:var(--text)}
 

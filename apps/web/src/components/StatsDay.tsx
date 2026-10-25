@@ -5,7 +5,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { parseDay } from '@bortjournal/core';
 import { api, ApiError } from '../lib/api';
-import { fmt, fmt1, plural } from '../lib/format';
+import { fmt, fmt1, fmt2, plural } from '../lib/format';
 import { humanLong, ScoreRing, verdict } from './Charts';
 
 const WDF = ['воскресенье', 'понедельник', 'вторник', 'среда', 'четверг', 'пятница', 'суббота'];
@@ -64,7 +64,7 @@ export function DayDetail({ day, has, onClose, onOpenDay }: { day: string; has: 
           {d.facts.quizTotal > 0 && <Row name="Вопросы" value={String(d.facts.quizAnswered)} of={`из ${d.facts.quizTotal}`} v={d.facts.quizAnswered / d.facts.quizTotal * 100} />}
           {(has('gym') || d.facts.workouts > 0) && <Row name="Зал" value={d.facts.workouts ? `${d.facts.workouts} ${plural(d.facts.workouts, 'тренировка', 'тренировки', 'тренировок')}` : '—'} of={d.facts.gymMin ? `· ${MIN(d.facts.gymMin)}` : d.facts.workouts ? '' : 'не было'} />}
           {d.facts.pages > 0 && <Row name="Чтение" value={String(d.facts.pages)} of="стр." />}
-          {d.facts.spent !== null && has('budget') && <Row name="Потрачено" value={d.facts.spent ? d.facts.spent.toLocaleString('ru-RU', { maximumFractionDigits: 2 }) : '—'} of={d.facts.currency ?? ''} />}
+          {d.facts.spent !== null && has('budget') && <Row name="Потрачено" value={d.facts.spent ? fmt2(d.facts.spent) : '—'} of={d.facts.currency ?? ''} />}
         </ul>}
     </>}
     {onOpenDay && !d?.future && <div className="sd-foot">

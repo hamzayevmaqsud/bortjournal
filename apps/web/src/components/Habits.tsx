@@ -88,7 +88,7 @@ export function Habits({ day, today, isToday, index = 8 }: { day: string; today:
   const n = items?.length ?? 0, done = items?.filter(h => h.done).length ?? 0;
   return <section className="wc span7 c-habits" data-tour="habits" style={{ ['--i' as string]: index }} aria-labelledby="hb-h">
     <div className="card-head">
-      <h2 id="hb-h">{isToday ? 'Привычки сегодня' : 'Привычки'}</h2>
+      <h2 id="hb-h">Привычки</h2>
       <div className="card-actions">
         {n > 0 && !edit && <span className="count">{done} из {n}</span>}
         {n > 0 && <button className="link-btn hb-edit" onClick={() => setEdit(e => !e)} aria-pressed={edit}>{edit ? 'Готово' : 'Изменить'}</button>}

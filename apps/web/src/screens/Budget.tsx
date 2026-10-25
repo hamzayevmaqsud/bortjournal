@@ -6,7 +6,7 @@ import { useQuick } from '../lib/quick';
 import { useCallback, useEffect, useState } from 'react';
 import { addDays, CURRENCIES, MONEY_CATS, parseAmount } from '@bortjournal/core';
 import { api, ApiError } from '../lib/api';
-import { plural } from '../lib/format';
+import { num, plural } from '../lib/format';
 import { buzz } from '../lib/motion';
 import { Bars, Donut, human } from '../components/Charts';
 import { Icon } from '../components/Icon';
@@ -16,7 +16,7 @@ import { Sheet } from '../components/Sheet';
 import { useToast } from '../components/Toasts';
 
 const nowHm = () => { const d = new Date(); return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
-const money = (v: number, cur: string) => `${(Math.round(v * 100) / 100).toLocaleString('ru-RU', { maximumFractionDigits: 2 })} ${cur}`;
+const money = (v: number, cur: string) => `${num(Math.round(v * 100) / 100, 2)} ${cur}`;
 const catOf = (kind: string, k: string) => MONEY_CATS[kind === 'in' ? 'in' : 'out'].find(c => c[0] === k) ?? ['other', 'Другое', '#A19682'];
 
 function Setup({ s, onDone }: { s?: { amount: number; startDay: number; savings: number; currency: string }; onDone: () => void }) {

@@ -7,7 +7,7 @@
 import { useQuick } from '../lib/quick';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, ApiError } from '../lib/api';
-import { fmt, plural } from '../lib/format';
+import { fmt, fmt1, plural } from '../lib/format';
 import { headId, markTerms, mdToHtml } from '../lib/md';
 import { buzz } from '../lib/motion';
 import { g } from '../lib/gender';
@@ -18,7 +18,7 @@ import { Sheet } from '../components/Sheet';
 import { useToast } from '../components/Toasts';
 
 const nowHm = () => { const d = new Date(); return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
-const hours = (m: number) => (Math.round(m / 6) / 10).toLocaleString('ru-RU');
+const hours = (m: number) => fmt1(m / 60);
 const fmtMin = (m: number) => m >= 60 ? `${Math.floor(m / 60)} ч${m % 60 ? ` ${m % 60} мин` : ''}` : `${m} мин`;
 const noteShort = (t: string) => String(t).replace(/\s*[—–-]\s*конспект.*$/i, '').replace(/\s*\(.*\)\s*$/, '').trim() || t;
 const ago = (iso: string | null) => { if (!iso) return 'ещё не было'; const m = Math.round((Date.now() - Date.parse(iso)) / 60e3); return m < 1 ? 'только что' : m < 60 ? `${m} мин назад` : m < 1440 ? `${Math.round(m / 60)} ч назад` : human(iso.slice(0, 10)); };

@@ -1,12 +1,13 @@
-/* Система Lumi: ретро-палитра, 4px-сетка, 4 радиуса, 3 уровня тени. Тёмная тема — по настройке телефона */
+/* Система Lumi: ретро-палитра, 4px-сетка, 4 радиуса, 3 уровня тени. Тёмная тема — по настройке телефона.
+   --fill-* — заливки под светлым текстом (≥4,5:1 в обеих темах); --gym/--good/--bad — для текста и линий, не для фона под белым */
 :root{
   --bg:#EFE3CE; --card:#FBF4E6; --field:#FFFAF1; --track:#E6D8C0;
   --line:rgba(46,58,78,.10); --line-2:rgba(46,58,78,.18);
-  --text:#2B3445; --text-2:#665F50; --text-3:#736956;
+  --text:#2B3445; --text-2:#665F50; --text-3:#6B614F;
   --navy:#2F3B4F; --on-navy:#FBF4E6;
   --orange:#B9501F; --orange-soft:#F4D4BE; --orange-ink:#9E3F14;
   /* заливки под белым текстом — контраст не ниже 4,5:1 в обеих темах */
-  --fill-orange:#B9501F; --fill-water:#2775B0;
+  --fill-orange:#AE4A1B; --fill-water:#2775B0; --fill-gym:#3C5B38; --fill-bad:#B8432E; --fill-study:#2F3B4F; --fill-books:#7A4B2A;
   --food:#B9501F; --water:#2775B0; --steps:#4D7B78; --study:#2F3B4F; --gym:#3C5B38; --money:#2E6B57; --books:#7A4B2A; --quiz:#B5891E;
   --good:#3C5B38; --bad:#B8432E; --bad-soft:#F3C8BB; --mustard:#CFA232;
   --sage:#C8D8BD; --on-sage:#3C5B38; --peach:#F4D4BE; --on-peach:#8E2F22; --on-mustard:#2B3445; --water-on-navy:#6FB4EA;
@@ -17,6 +18,10 @@
   --r1:10px; --r2:14px; --r3:20px; --r4:28px;
   --sh1:0 1px 0 rgba(46,58,78,.05); --sh2:0 6px 18px rgba(46,58,78,.10); --sh3:0 -12px 40px rgba(35,42,56,.22);
   --spring:cubic-bezier(.22,1.2,.36,1); --ease:cubic-bezier(.2,.7,.2,1);
+  /* шкала текста: мельче 12 px не бывает */
+  --fs-xs:12px; --fs-sm:13px; --fs-base:15px; --fs-md:17px; --fs-lg:22px; --fs-xl:28px;
+  /* время движения */
+  --t-fast:.15s; --t:.25s; --t-slow:.45s;
   color-scheme:light;
 }
 @media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
@@ -25,10 +30,10 @@
   --line:rgba(251,244,230,.08); --line-2:rgba(251,244,230,.15);
   --text:#F3EADA; --text-2:#B8AD9A; --text-3:#9A8F7F;
   --navy:#2C3546; --on-navy:#F3EADA;
-  --orange:#E5733C; --orange-soft:#4A2E20; --orange-ink:#F2A26F; --fill-orange:#B5541F; --fill-water:#2F6FA8;
+  --orange:#E5733C; --orange-soft:#4A2E20; --orange-ink:#F2A26F; --fill-orange:#A94C1D; --fill-water:#2F6FA8; --fill-gym:#44663F; --fill-bad:#B04A33; --fill-study:#45557A; --fill-books:#8A5530;
   --food:#E5733C; --water:#5AA6E0; --steps:#6FA9A4; --study:#9AAACB; --gym:#7FA877; --money:#5DAA8A; --books:#C08A5E; --quiz:#D9B04A;
   --good:#7FA877; --bad:#E07A62; --bad-soft:#4A2620; --mustard:#D9B04A;
-  --sage:#2E3A2B; --on-sage:#B9D3AE; --peach:#3F2A21; --on-peach:#F2C2A6; --on-mustard:#FFF3D6; --water-on-navy:#6FB4EA; --mustard-solid:#8A6A1A;
+  --sage:#2E3A2B; --on-sage:#B9D3AE; --peach:#3F2A21; --on-peach:#F2C2A6; --on-mustard:#17130B; --water-on-navy:#6FB4EA; --mustard-solid:#A57F22;
   --c-kcal:#E5733C; --c-prot:#6E9BE0; --c-fat:#D9A93A; --c-carb:#3DBB95; --c-water:#5AA6E0; --c-caf:#B58A63; --c-fiber:#94B84A; --c-sugar:#E8649A; --c-salt:#9AA7B8;
   --st-good:#7FBF6E; --st-warn:#E0B44A; --st-bad:#EA7A62;
   --sh1:0 1px 0 rgba(0,0,0,.2); --sh2:0 8px 22px rgba(0,0,0,.35); --sh3:0 -12px 40px rgba(0,0,0,.5);
@@ -39,10 +44,10 @@
   --line:rgba(251,244,230,.08); --line-2:rgba(251,244,230,.15);
   --text:#F3EADA; --text-2:#B8AD9A; --text-3:#9A8F7F;
   --navy:#2C3546; --on-navy:#F3EADA;
-  --orange:#E5733C; --orange-soft:#4A2E20; --orange-ink:#F2A26F; --fill-orange:#B5541F; --fill-water:#2F6FA8;
+  --orange:#E5733C; --orange-soft:#4A2E20; --orange-ink:#F2A26F; --fill-orange:#A94C1D; --fill-water:#2F6FA8; --fill-gym:#44663F; --fill-bad:#B04A33; --fill-study:#45557A; --fill-books:#8A5530;
   --food:#E5733C; --water:#5AA6E0; --steps:#6FA9A4; --study:#9AAACB; --gym:#7FA877; --money:#5DAA8A; --books:#C08A5E; --quiz:#D9B04A;
   --good:#7FA877; --bad:#E07A62; --bad-soft:#4A2620; --mustard:#D9B04A;
-  --sage:#2E3A2B; --on-sage:#B9D3AE; --peach:#3F2A21; --on-peach:#F2C2A6; --on-mustard:#FFF3D6; --water-on-navy:#6FB4EA; --mustard-solid:#8A6A1A;
+  --sage:#2E3A2B; --on-sage:#B9D3AE; --peach:#3F2A21; --on-peach:#F2C2A6; --on-mustard:#17130B; --water-on-navy:#6FB4EA; --mustard-solid:#A57F22;
   --c-kcal:#E5733C; --c-prot:#6E9BE0; --c-fat:#D9A93A; --c-carb:#3DBB95; --c-water:#5AA6E0; --c-caf:#B58A63; --c-fiber:#94B84A; --c-sugar:#E8649A; --c-salt:#9AA7B8;
   --st-good:#7FBF6E; --st-warn:#E0B44A; --st-bad:#EA7A62;
   --sh1:0 1px 0 rgba(0,0,0,.2); --sh2:0 8px 22px rgba(0,0,0,.35); --sh3:0 -12px 40px rgba(0,0,0,.5);

@@ -5,7 +5,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { addDays, parseDay } from '@bortjournal/core';
 import { api, ApiError } from '../lib/api';
-import { fmt, fmt1, MONG, plural } from '../lib/format';
+import { fmt, fmt1, fmt2, MONG, plural } from '../lib/format';
 import { buzz } from '../lib/motion';
 import { Icon } from '../components/Icon';
 import { HelpButton } from '../components/HelpButton';
@@ -29,7 +29,7 @@ interface GoalData {
 const MONP = ['январе', 'феврале', 'марте', 'апреле', 'мае', 'июне', 'июле', 'августе', 'сентябре', 'октябре', 'ноябре', 'декабре'];
 const MONN = ['январь', 'февраль', 'март', 'апрель', 'май', 'июнь', 'июль', 'август', 'сентябрь', 'октябрь', 'ноябрь', 'декабрь'];
 const when = (today: string, weeks: number | null, names = MONP) => { if (weeks === null || !isFinite(weeks)) return null; const d = parseDay(addDays(today, Math.round(weeks * 7))); return `${names[d.getUTCMonth()]} ${d.getUTCFullYear()}`; };
-const kg2 = (v: number) => (Math.round(Math.abs(v) * 100) / 100).toLocaleString('ru-RU');
+const kg2 = (v: number) => fmt2(Math.abs(v));
 const kgWeek = (v: number) => Math.abs(v) < 0.005 ? '±0 кг/нед' : `${v > 0 ? '+' : '−'}${kg2(v)} кг/нед`;
 
 export function Goal({ wide, onBack, onWeigh, onRedo, onChanged }: { wide: boolean; onBack: () => void; onWeigh: () => void; onRedo: () => void; onChanged: () => void }) {
@@ -114,7 +114,7 @@ export function Goal({ wide, onBack, onWeigh, onRedo, onChanged }: { wide: boole
       <div className={`verdict ${v[0]}`}><b>{v[1]}</b><span>За {w.span} {plural(w.span, 'день', 'дня', 'дней')} {dir < 0 ? (fact < 0 ? 'ушло' : 'прибавилось') : (fact > 0 ? 'прибавилось' : 'ушло')} ≈ {fmt1(Math.abs(fact * w.span / 7))} кг.</span></div>
       <div className="pace">
         <div><span>План</span><i><b style={{ width: `${Math.abs(plan) / mx * 100}%`, background: 'var(--orange)' }} /></i><em>{kgWeek(plan)}</em></div>
-        <div><span>Факт</span><i><b style={{ width: `${Math.abs(fact) / mx * 100}%`, background: 'var(--navy)' }} /></i><em>{kgWeek(fact)}</em></div>
+        <div><span>Факт</span><i><b style={{ width: `${Math.abs(fact) / mx * 100}%`, background: 'var(--study)' }} /></i><em>{kgWeek(fact)}</em></div>
       </div>
       <p className="card-note">{why}</p>
     </>;
