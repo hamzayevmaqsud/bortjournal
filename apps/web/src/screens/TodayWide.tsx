@@ -40,6 +40,37 @@ function Big({ v, of, unit, dec, dec2 }: { v: number; of?: string; unit?: string
   return <div className="wbig"><b>{dec2 ? fmt2(n) : dec ? fmt1(n) : fmt(n)}</b>{of && <small>/ {of}</small>}{unit && <small>{unit}</small>}</div>;
 }
 
+/** «Оценка дня» на «Сегодня»: процент дня и что осталось — конкретно (ккал, литры, шаги, задачи); то же, что в статистике */
+interface DayDetail { isToday: boolean; future: boolean; score: number | null; parts: Array<{ area: string; name: string; v: number }>;
+  norms: { kcal: number; protein: number; water: number; steps: number; study: number }; facts: { kcal: number; protein: number; meals: number; waterMl: number; steps: number; tasks: number; tasksDone: number; studyMin: number; quizTotal: number; quizAnswered: number } }
+function DayScore({ day, version }: { day: string; version: string }) {
+  const [d, setD] = useState<DayDetail | null>(null);
+  useEffect(() => { let live = true; api<DayDetail>(`/api/stats/day?day=${day}`).then(x => { if (live) setD(x); }, () => {}); return () => { live = false; }; }, [day, version]);
+  if (!d || d.future || d.score === null || !d.parts.length) return null;
+  const f = d.facts, n = d.norms, left: string[] = [];
+  for (const p of d.parts) {
+    if (p.v >= 99) continue;
+    if (p.area === 'food' && f.kcal < n.kcal) left.push(`${fmt(n.kcal - f.kcal)} ккал`);
+    else if (p.area === 'protein' && n.protein && f.protein < n.protein) left.push(`${fmt(n.protein - f.protein)} г белка`);
+    else if (p.area === 'water' && f.waterMl < n.water) left.push(`${fmt1((n.water - f.waterMl) / 1000)} л воды`);
+    else if (p.area === 'steps' && f.steps < n.steps) left.push(`${fmt(n.steps - f.steps)} шагов`);
+    else if (p.area === 'study' && f.studyMin < n.study) left.push(`${n.study - f.studyMin} мин учёбы`);
+    else if (p.area === 'tasks' && f.tasks > f.tasksDone) left.push(`${f.tasks - f.tasksDone} ${plural(f.tasks - f.tasksDone, 'задача', 'задачи', 'задач')}`);
+    else if (p.area === 'quiz' && f.quizTotal > f.quizAnswered) left.push(`${f.quizTotal - f.quizAnswered} ${plural(f.quizTotal - f.quizAnswered, 'вопрос', 'вопроса', 'вопросов')}`);
+  }
+  const line = d.score >= 95 ? 'Идеальный день — всё в норме.' : !left.length ? 'Всё главное сделано.' : `${d.isToday ? 'Осталось' : 'Не хватило'}: ${left.join(', ')}.`;
+  return <section className="wc c-score span7">
+    <div className="card-head"><h2>Оценка дня</h2><span className="count">{d.isToday ? 'день ещё идёт' : 'итог дня'}</span></div>
+    <div className="ds-row">
+      <RingBox v={d.score} max={100} color="var(--orange)" />
+      <div className="ds-meta">
+        <p className="ds-line">{line}</p>
+        <div className="ds-parts">{d.parts.map(p => <span key={p.area} className={p.v >= 99 ? 'ok' : ''} style={{ ['--w' as string]: `${Math.max(3, p.v)}%` }}><b>{p.v >= 99 ? '✓' : `${p.v}%`}</b>{p.name}</span>)}</div>
+      </div>
+    </div>
+  </section>;
+}
+
 function RingBox({ v, max, color }: { v: number; max: number; color: string }) {
   return <span className="ringbox"><Arc size={132} sw={12} color={color} p={max ? v / max : 0} /><em>{max ? Math.round(v / max * 100) : 0}%</em></span>;
 }
@@ -54,6 +85,8 @@ export function TodayWide({ wide = true, data, day, today, sub, still, settings 
 }) {
   const toast = useToast(), [title, setTitle] = useState(''), [busy, setBusy] = useState(false);
   const look = useLook(); // значок серии — за уровень
+  // «Итог недели» — по воскресеньям и понедельникам (как в «Совете дня»)
+  const weekLink = !!onWeek && day === today && [0, 1].includes(parseDay(today).getUTCDay());
   const dt = parseDay(day), off = Math.round((dt.getTime() - parseDay(today).getTime()) / 864e5);
   const rel = off === 0 ? 'сегодня' : off === -1 ? 'вчера' : off === 1 ? 'завтра' : '';
   const P = data?.parts ?? {}, food = P.food, body = P.body, study = P.study, gym = P.gym, tasks = P.plans?.tasks ?? [];
@@ -128,6 +161,7 @@ export function TodayWide({ wide = true, data, day, today, sub, still, settings 
         <span className="hero-wd">{rel ? `${rel} · ` : ''}{WDF[dt.getUTCDay()]}</span>
         <h1 className="hero-day">{dt.getUTCDate()}<span>{MONG[dt.getUTCMonth()]}</span></h1>
         <WeekStrip day={day} today={today} onPick={d => onDay(diffDays(day, d))} />
+        {wide && weekLink && <button type="button" className="week-link hero-week" onClick={onWeek}><Icon name="stats" />Итог недели<Icon name="chev" /></button>}
       </div>
       <div className="hero-side">
         <HelpButton tour="today" />
@@ -145,7 +179,7 @@ export function TodayWide({ wide = true, data, day, today, sub, still, settings 
     </header>
     {/* главное действие — фото тарелки — сразу на первом экране телефона, без прокрутки и без «Записать» */}
     {has('food') && <button type="button" className="snap-food" onClick={() => onPro('Фото и описание еды')}><Icon name="camera" /><span><b>Сфотографировать еду</b><small>ИИ посчитает калории за пару секунд</small></span>{!can(sub, 'Фото и описание еды') && <span className="lock">PRO</span>}</button>}
-    <DayTip data={data} today={today} onMeal={onMeal} onWater={onWater} onSteps={onSteps} onGo={onGo} onPro={onPro} onWeek={onWeek} />
+    <DayTip data={data} today={today} onMeal={onMeal} onWater={onWater} onSteps={onSteps} onGo={onGo} onPro={onPro} onWeek={wide ? undefined : onWeek} />
 
     {sub.source === 'trial' && <button className="trial-bar" onClick={onPaywall}><Icon name="flame" /><span>Пробный Pro: <b>ещё {sub.daysLeft} {plural(sub.daysLeft ?? 0, 'день', 'дня', 'дней')}</b> — потом еда, вода, шаги, задачи, цель и статистика остаются бесплатными</span><em>Тарифы</em></button>}
     {!sub.pro && sub.ended && <button className="trial-bar" onClick={onPaywall}><Icon name="flame" /><span>Pro закончился — еда, вода, шаги, задачи, цель и статистика остаются</span><em>Продлить</em></button>}
@@ -183,8 +217,9 @@ export function TodayWide({ wide = true, data, day, today, sub, still, settings 
 
         {body && has('steps') && <section className="wc solid s-mustard c-steps" style={{ ['--i' as string]: 2 }}>
           <div className="card-head"><h2>Шаги</h2><div className="card-actions"><button className="btn-accent" onClick={onSteps}><Icon name="plus" />Записать</button></div></div>
-          <Big v={body.steps} of={fmt(body.stepsGoal)} />
-          <span className="wbar"><i style={{ width: `${Math.min(100, body.stepsGoal ? body.steps / body.stepsGoal * 100 : 0)}%` }} /></span>
+          <div className="ring-row"><RingBox v={body.steps} max={body.stepsGoal} color="var(--navy)" />
+            <div className="ring-meta"><Big v={body.steps} of={`${fmt(body.stepsGoal)} шагов`} /></div>
+          </div>
           <p className="card-note">{!body.steps ? 'Шаги за день ещё не записаны' : body.steps >= body.stepsGoal ? 'Цель по шагам выполнена' : `Осталось ${fmt(body.stepsGoal - body.steps)} шагов`}</p>
         </section>}
 
@@ -212,13 +247,16 @@ export function TodayWide({ wide = true, data, day, today, sub, still, settings 
               <button className="btn-accent" onClick={onPaywall}>Посмотреть тарифы<Icon name="chev" /></button>
             </section>}
           </>;
-          // на компьютере правая колонка — одним блоком рядом с задачами, на телефоне — карточки по порядку
-          return wide && wideCols ? <div className="today-side">{side}</div> : side;
+          // на компьютере правая колонка — «Остальное» и привычки (колонки выходят одной высоты), на телефоне — карточки по порядку
+          return wide && wideCols ? <div className="today-side">{side}<Habits day={day} today={today} isToday={data.isToday} /></div> : side;
         })()}
 
         {(() => {
           // задачи и сразу под ними привычки; на компьютере — одной колонкой слева от «Остального»
+          const two = wide && wideCols;
           const main = <>
+            {/* пересчитать, когда меняются записи дня: еда, вода, шаги, задачи */}
+            <DayScore day={day} version={`${food?.kcal ?? 0}|${food?.waterMl ?? 0}|${body?.steps ?? 0}|${done}|${tasks.length}`} />
             {has('tasks') && <section className="wc span7 c-tasks" style={{ ['--i' as string]: 7 }}>
               <div className="card-head"><h2>Задачи</h2><div className="card-actions"><span className="count">{done} из {tasks.length}</span><button className="btn-accent" onClick={() => onGo('plans')}>Планы</button></div></div>
               <form className="task-add" onSubmit={e => { e.preventDefault(); addTask(); }}>
@@ -228,7 +266,7 @@ export function TodayWide({ wide = true, data, day, today, sub, still, settings 
               </form>
               <Tasks tasks={tasks} onToggle={onToggleTask} onOpen={() => onGo('plans')} empty="Задач на этот день нет." />
             </section>}
-            <Habits day={day} today={today} isToday={data.isToday} />
+            {!two && <Habits day={day} today={today} isToday={data.isToday} />}
             <DayMood day={day} today={today} minutes={data.now.minutes} onSaved={onJournal} />
           </>;
           return wide && wideCols ? <div className="today-main">{main}</div> : main;

@@ -61,7 +61,7 @@ function parts(f: F | undefined, A: Areas, N: Norms, live = false): Array<[strin
   const out: Array<[string, number]> = [], kcal = f?.kcal ?? 0, meals = f?.meals ?? 0;
   if (A.food) {
     const r = N.kcal ? kcal / N.kcal : 0, fit = Math.max(0, 1 - Math.max(0, Math.abs(r - 1) - 0.1) * 3);
-    out.push(['food', !meals ? 0 : live && r < 1 ? Math.min(1, r / 0.9) : fit]);
+    out.push(['food', !meals ? 0 : live && r < 1 ? Math.min(1, r) : fit]); // днём — та же доля, что на кольце «Еда»
     if (N.protein) out.push(['protein', meals ? Math.min(1, (f?.protein ?? 0) / (N.protein * 0.9)) : 0]);
   }
   if (A.water) out.push(['water', Math.min(1, (f?.waterMl ?? 0) / N.water)]);

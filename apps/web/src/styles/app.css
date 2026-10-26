@@ -2259,3 +2259,21 @@ input::placeholder,textarea::placeholder{color:var(--text-3);font-style:italic;o
 .side{transition:width .25s var(--ease)}
 
 .app.desk-side .tabs{display:none!important}
+/* «Сегодня» на компьютере: закладка «?» — поверх угла шапки, а не отдельной строкой (над датой не было бы пустоты) */
+.wide-page:not(.narrow) .hero{position:relative}
+.wide-page:not(.narrow) .hero-side>.help-slot{position:absolute;top:0;right:-7px;margin:0}
+.wide-page:not(.narrow) .hero-side .greet{padding-right:58px}
+.app.wide .screen[data-pos] .wide-page{padding-top:0}
+.hero-week{align-self:flex-start;margin-top:10px}
+/* «Оценка дня»: кольцо, что осталось и части дня тонкими полосками */
+.c-score .ds-row{display:flex;align-items:center;gap:20px}
+.c-score .ds-meta{flex:1;min-width:0;display:flex;flex-direction:column;gap:12px}
+.c-score .ds-line{margin:0;font-weight:600;font-size:var(--fs-base);color:var(--text);line-height:1.45}
+.c-score .ds-parts{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px 14px}
+.c-score .ds-parts span{display:flex;align-items:baseline;gap:6px;padding-bottom:7px;font-size:var(--fs-sm);color:var(--text-2);
+  background:linear-gradient(var(--orange),var(--orange)) 0 100%/var(--w) 3px no-repeat,linear-gradient(var(--track),var(--track)) 0 100%/100% 3px no-repeat}
+.c-score .ds-parts span b{color:var(--text);font:700 var(--fs-sm) var(--display)}
+.c-score .ds-parts span.ok{background:linear-gradient(var(--good),var(--good)) 0 100%/100% 3px no-repeat}
+.c-score .ds-parts span.ok b{color:var(--good)}
+.narrow .c-score{order:0}
+@media (max-width:600px){.c-score .ds-row{align-items:flex-start}}
