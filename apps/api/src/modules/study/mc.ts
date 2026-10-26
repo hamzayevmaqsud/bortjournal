@@ -5,7 +5,7 @@
  * В день: всё, что пора повторить, и до 10 новых вопросов (кнопка «ещё» добавляет новые).
  */
 import { and, asc, eq, gte, inArray, isNull, lte, sql } from 'drizzle-orm';
-import { aiEnabled, gemini } from '../../core/gemini.js';
+import { AI, aiEnabled, gemini } from '../../core/gemini.js';
 import type { DB, Tx } from '../../db/index.js';
 import { grade, hash, rng, shuffle, type SrsState } from './cards.js';
 import { chunksOf } from './extract.js';
@@ -56,7 +56,7 @@ async function generate(db: DB, materialId: string) {
 ${part}`;
     let out: any = null;
     for (let attempt = 0; attempt < 4 && !out; attempt++) {
-      try { out = await gemini([{ text: prompt }], Q_SCHEMA, { timeout: 120e3 }); }
+      try { out = await gemini([{ text: prompt }], Q_SCHEMA, AI.quiz); }
       catch (e) {
         const status = (e as { status?: number }).status;
         if (status === 429 && attempt < 3) { await wait(30e3 * (attempt + 1)); continue; }

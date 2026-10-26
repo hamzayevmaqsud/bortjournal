@@ -7,13 +7,30 @@
 import { HttpError } from './http.js';
 
 export const aiEnabled = () => !!process.env.GEMINI_API_KEY;
-const DEFAULT_MODELS = 'gemini-3.5-flash,gemini-3.8-flash,gemini-3.1-flash-lite';
+const DEFAULT_MODELS = ['gemini-3.5-flash', 'gemini-3.8-flash', 'gemini-3.1-flash-lite'];
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
-export async function gemini(parts: unknown[], schema: unknown, { timeout = 60e3, perTry = timeout }: { timeout?: number; perTry?: number } = {}): Promise<any> {
+type Thinking = 'minimal' | 'low' | 'medium' | 'high';
+export interface GeminiOpts { timeout?: number; perTry?: number; models?: string[]; thinking?: Thinking }
+/**
+ * Модели под задачу — подобраны замером на платном тарифе (фото еды: 6 снимков, вопросы по конспекту):
+ * - food: человек ждёт на экране — быстрая flash с коротким обдумыванием (~3–5 с, цифры те же, что с полным);
+ * - quiz: вопросы составляются в фоне — pro пишет лучшие (ситуации, равные по длине варианты), ~20 с на кусок;
+ * - quick: короткие ответы (голосовой ввод, перефраз совета) — быстрее всего.
+ * GEMINI_MODEL в .env перекрывает всё (тесты подставляют свою модель).
+ */
+export const AI = {
+  food: { models: ['gemini-3.5-flash', 'gemini-3.8-flash', 'gemini-3.1-flash-lite'], thinking: 'low', timeout: 45e3, perTry: 15e3 },
+  quiz: { models: ['gemini-3.1-pro-preview', 'gemini-3.5-flash'], timeout: 120e3, perTry: 60e3 },
+  quick: { models: ['gemini-3.5-flash', 'gemini-3.1-flash-lite'], thinking: 'low', timeout: 30e3, perTry: 12e3 }
+} satisfies Record<string, GeminiOpts>;
+/** уровень обдумывания понимают модели Gemini 3.5+ flash и pro; старым и lite его не шлём */
+const thinks = (model: string) => /^gemini-3\.[5-9]-flash$|^gemini-3[\d.]*-pro/.test(model);
+
+export async function gemini(parts: unknown[], schema: unknown, { timeout = 60e3, perTry = timeout, models: own, thinking }: GeminiOpts = {}): Promise<any> {
   const base = process.env.GEMINI_BASE_URL || 'https://generativelanguage.googleapis.com';
-  const models = (process.env.GEMINI_MODEL || DEFAULT_MODELS).split(',').map(s => s.trim()).filter(Boolean);
-  const body = JSON.stringify({ contents: [{ role: 'user', parts }], generationConfig: { responseMimeType: 'application/json', responseSchema: schema } });
+  const models = process.env.GEMINI_MODEL ? process.env.GEMINI_MODEL.split(',').map(s => s.trim()).filter(Boolean) : own?.length ? own : DEFAULT_MODELS;
+  const bodyFor = (model: string) => JSON.stringify({ contents: [{ role: 'user', parts }], generationConfig: { responseMimeType: 'application/json', responseSchema: schema, ...(thinking && thinks(model) ? { thinkingConfig: { thinkingLevel: thinking } } : {}) } });
   const deadline = Date.now() + timeout;
   let last: { status: number; message: string } | undefined;
   for (const model of models) {
@@ -22,7 +39,7 @@ export async function gemini(parts: unknown[], schema: unknown, { timeout = 60e3
       if (left < 3000) break;
       let r: Response;
       try {
-        r = await fetch(`${base}/v1beta/models/${encodeURIComponent(model)}:generateContent`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': process.env.GEMINI_API_KEY! }, body, signal: AbortSignal.timeout(Math.min(perTry, left)) });
+        r = await fetch(`${base}/v1beta/models/${encodeURIComponent(model)}:generateContent`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': process.env.GEMINI_API_KEY! }, body: bodyFor(model), signal: AbortSignal.timeout(Math.min(perTry, left)) });
       } catch (e) { last = { status: 502, message: (e as Error).name === 'TimeoutError' ? 'ИИ не ответил вовремя.' : 'Нет связи с ИИ.' }; break; }
       const data = await r.json().catch(() => ({})) as any;
       if (!r.ok) {

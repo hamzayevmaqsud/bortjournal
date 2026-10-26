@@ -59,7 +59,7 @@ const me = (cookie: string) => app.inject({ method: 'GET', url: '/api/account', 
 
 describe('вход через Google и Apple', () => {
   it('кнопки видны, когда ключи заданы; ссылка на Google собрана верно', async () => {
-    expect((await app.inject({ method: 'GET', url: '/api/auth/providers', headers: H })).json()).toEqual({ google: true, apple: true });
+    expect((await app.inject({ method: 'GET', url: '/api/auth/providers', headers: H })).json()).toEqual({ google: true, apple: true, beta: false });
     const a = await start('google', '?back=/m');
     expect(a.url.origin + a.url.pathname).toBe('https://accounts.google.com/o/oauth2/v2/auth');
     expect(a.url.searchParams.get('redirect_uri')).toBe('http://localhost/api/auth/google/callback');

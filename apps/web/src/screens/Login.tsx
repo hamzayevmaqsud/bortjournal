@@ -291,7 +291,7 @@ export function Login({ onDone }: { onDone: () => void }) {
       <button type="submit" disabled={busy}>{busy ? (up ? 'Создаю…' : 'Вхожу…') : up ? 'Создать аккаунт' : 'Войти'}</button>
     </form>
     {/* демо: временный аккаунт с примером дня, удаляется через сутки; можно сохранить как настоящий */}
-    {up && <p className="trust">Без карты · {TRIAL_DAYS} дней Pro бесплатно · данные только твои</p>}
+    {up && <p className="trust">{pv.beta ? 'Бета: всё бесплатно · без карты · данные только твои' : <>Без карты · {TRIAL_DAYS} дней Pro бесплатно · данные только твои</>}</p>}
   </>; })();
 
   return <div className="login-scene lw-scene">

@@ -14,6 +14,7 @@ import { buzz } from '../lib/motion';
 import { pushSupported, subscribeHere } from '../lib/push';
 import { Icon } from '../components/Icon';
 import { useToast } from '../components/Toasts';
+import { useProviders } from '../lib/oauth';
 import '../styles/onboarding.css';
 
 export interface OnboardingValues { name: string; sex: '' | 'm' | 'f'; age: string; height: string; weight: string; activity: ActivityLevel; steps: string; goal: Goal; pace: Pace; target: string }
@@ -242,6 +243,7 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
 
 /** итог: что включено — разделы, нормы, привычки, напоминания */
 function Done({ saved, name, sections, redo, onDone }: { saved: Saved; name: string; sections: string[]; redo: boolean; onDone: () => void }) {
+  const { beta } = useProviders();
   const s = saved.settings, R = s.remind ?? {}, on = remindFor(sections).filter(r => R[r.kind] !== false).length;
   const btn = useRef<HTMLButtonElement>(null);
   useEffect(() => { btn.current?.focus({ preventScroll: true }); }, []);
@@ -259,7 +261,9 @@ function Done({ saved, name, sections, redo, onDone }: { saved: Saved; name: str
           <li><b>Напоминания</b><span>{R.off ? 'выключены' : on ? `${on} — ${remindFor(sections).filter(r => R[r.kind] !== false).map(r => r.name.toLowerCase()).join(', ')}` : 'не выбраны'}</span></li>
         </ul>
         {saved.plan && <p className="onb-note">Нормы — ориентир по общепринятым формулам, а не медицинская рекомендация. При заболеваниях или беременности сначала посоветуйся с врачом.</p>}
-        {!redo && <p className="onb-trial"><b>{TRIAL_DAYS} дней Pro бесплатно.</b> Фото еды с ИИ, зал, учёба, бюджет и книги открыты. Потом еда, вода, шаги, задачи, цель и статистика остаются бесплатными.</p>}
+        {!redo && (beta
+          ? <p className="onb-trial"><b>Бета — всё бесплатно.</b> Фото еды с ИИ, зал, учёба, бюджет и книги открыты. О платных функциях предупредим заранее.</p>
+          : <p className="onb-trial"><b>{TRIAL_DAYS} дней Pro бесплатно.</b> Фото еды с ИИ, зал, учёба, бюджет и книги открыты. Потом еда, вода, шаги, задачи, цель и статистика остаются бесплатными.</p>)}
       </section>
       <footer className="onb-nav"><div className="onb-btns"><button ref={btn} type="button" className="primary onb-next onb-wide" onClick={onDone}>Открыть «Сегодня»</button></div></footer>
     </div>

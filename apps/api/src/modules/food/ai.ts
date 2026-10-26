@@ -3,7 +3,7 @@
  * Ключ и адрес читаются при каждом вызове (GEMINI_API_KEY, GEMINI_BASE_URL, GEMINI_MODEL) — тесты подставляют свой сервер.
  * Мягкий дневной лимит на человека, чтобы один не выел общую квоту.
  */
-import { gemini } from '../../core/gemini.js';
+import { AI, gemini } from '../../core/gemini.js';
 export { aiEnabled } from '../../core/gemini.js';
 
 const SCALES: Record<string, string> = {
@@ -58,8 +58,8 @@ export async function recognizeFood({ image, mime, note, scale, answers }: AiInp
   const text = [PROMPT, SCALES[scale] ?? 'Эталона размера в кадре нет.', image ? '' : 'Фото нет — только текстовое описание.',
     note ? `${image ? 'Подпись пользователя' : 'Описание еды от пользователя'}: ${note}` : '',
     answers.length ? `Ответы пользователя на уточнения:\n${answers.map(a => `- ${a}`).join('\n')}` : ''].filter(Boolean).join('\n\n');
-  // человек ждёт ответа на экране: одну модель ждём до 30 с, весь ответ — до 75 с
-  const out = await gemini(image ? [{ inline_data: { mime_type: mime, data: image } }, { text }] : [{ text }], SCHEMA, { timeout: 75e3, perTry: 30e3 });
+  // человек ждёт ответа на экране: быстрая модель с коротким обдумыванием (AI.food в core/gemini.ts)
+  const out = await gemini(image ? [{ inline_data: { mime_type: mime, data: image } }, { text }] : [{ text }], SCHEMA, AI.food);
   const items: AiItem[] = (Array.isArray(out?.items) ? out.items : []).slice(0, 20).map((it: any) => ({
     name: String(it.name || 'Без названия').slice(0, 80), grams: clamp(it.grams, 3000), kcal: Math.round(clamp(it.kcal, 6000)),
     protein: clamp(it.protein, 500), fat: clamp(it.fat, 500), carbs: clamp(it.carbs, 1000), fiber: clamp(it.fiber, 200), sugar: clamp(it.sugar, 500), salt: clamp(it.salt, 50),

@@ -12,8 +12,8 @@ export const nativeApp = () => !!(window as { Capacitor?: { isNativePlatform?: (
 export const startUrl = (p: ProviderId, link = false) => `/api/auth/${p}/start?back=${mobileOnly() ? '/m' : '/'}${link ? '&link=1' : ''}`;
 
 export function useProviders() {
-  const [v, setV] = useState<Record<ProviderId, boolean>>({ google: false, apple: false });
-  useEffect(() => { fetch('/api/auth/providers').then(r => r.json()).then(j => setV({ google: !!j.google && !nativeApp(), apple: !!j.apple }), () => {}); }, []);
+  const [v, setV] = useState<Record<ProviderId | 'beta', boolean>>({ google: false, apple: false, beta: false });
+  useEffect(() => { fetch('/api/auth/providers').then(r => r.json()).then(j => setV({ google: !!j.google && !nativeApp(), apple: !!j.apple, beta: !!j.beta }), () => {}); }, []);
   return v;
 }
 /** прочитать и убрать из адреса результат входа */

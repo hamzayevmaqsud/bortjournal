@@ -10,7 +10,7 @@ import { and, asc, desc, eq, gte, isNotNull, lte } from 'drizzle-orm';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { addDays, isDay, localNow, parseDay } from '@bortjournal/core';
 import { recordEvent } from '../../core/events.js';
-import { aiEnabled, gemini } from '../../core/gemini.js';
+import { AI, aiEnabled, gemini } from '../../core/gemini.js';
 import { ConsentError, takeAi } from '../../core/ai-quota.js';
 import { bad, idParam, notFound, uid } from '../../core/http.js';
 import { profiles, users } from '../../core/schema.js';
@@ -43,7 +43,7 @@ day — дата в формате ГГГГ-ММ-ДД, если она назв�
 time — ЧЧ:ММ в 24-часовом формате, если названо время («в 3 дня» = 15:00, «в полвосьмого вечера» = 19:30, «через час» — от текущего времени), иначе null.
 details — подробности, если они не влезли в title, иначе null.`;
   const parts: unknown[] = input.audio ? [{ inline_data: { mime_type: input.audio.mime, data: input.audio.data } }, { text: prompt }] : [{ text: prompt }];
-  const out = await gemini(parts, SCHEMA, { timeout: 45e3, perTry: 20e3 });
+  const out = await gemini(parts, SCHEMA, AI.quick);
   const heard = String(out?.heard ?? text).trim().slice(0, 1000);
   if (!heard) throw bad('Ничего не расслышал. Попробуй ещё раз.');
   let day = isDay(out?.day) && out.day >= addDays(now.day, -1) && out.day <= addDays(now.day, 400) ? out.day as string : null;

@@ -144,7 +144,7 @@ async function polish(db: Tx, userId: string, day: string, base: string) {
   try {
     await takeAi(db, userId, 'tip');
     const r = await gemini([{ text: `Перепиши совет для дневника здоровья одной дружелюбной фразой на «ты», до 120 символов. Сохрани все числа как есть, ничего не выдумывай, без эмодзи и кавычек.\nСовет: ${base}` }],
-      { type: 'OBJECT', properties: { text: { type: 'STRING' } }, required: ['text'] }, { timeout: 8000 });
+      { type: 'OBJECT', properties: { text: { type: 'STRING' } }, required: ['text'] }, { models: ['gemini-3.1-flash-lite', 'gemini-3.5-flash'], timeout: 8000 });
     const s = String(r?.text ?? '').replace(/\s+/g, ' ').trim();
     // ИИ не должен терять или менять цифры
     if (s.length >= 10 && s.length <= 180 && digits(s) === digits(base)) text = s;

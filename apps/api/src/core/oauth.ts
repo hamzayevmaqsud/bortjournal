@@ -18,7 +18,7 @@ import { and, eq, sql } from 'drizzle-orm';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type { DB } from '../db/index.js';
 import { freeUsername, isHttps, requireUser, startSession } from './auth.js';
-import { startTrial } from './billing.js';
+import { betaOn, startTrial } from './billing.js';
 import { authIdentities, profiles, users } from './schema.js';
 
 type ProviderId = 'google' | 'apple';
@@ -99,7 +99,8 @@ export async function oauthRoutes(app: FastifyInstance, { db }: { db: DB }) {
   const toApp = (reply: FastifyReply, back: string, err?: string, note?: string) =>
     reply.header('Cache-Control', 'no-store').redirect(`${back}${err ? `#auth-error=${encodeURIComponent(err)}` : note ? `#auth-ok=${encodeURIComponent(note)}` : ''}`, 303);
 
-  app.get('/api/auth/providers', async () => ({ google: enabled('google'), apple: enabled('apple') }));
+  // beta — закрытая бета: экран входа и анкета говорят «всё бесплатно», а не про пробный период
+  app.get('/api/auth/providers', async () => ({ google: enabled('google'), apple: enabled('apple'), beta: betaOn() }));
 
   app.get('/api/auth/:p/start', async (req, reply) => {
     const p = (req.params as { p: string }).p as ProviderId, q = req.query as { back?: string; link?: string };
