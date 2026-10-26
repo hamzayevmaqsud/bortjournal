@@ -141,6 +141,8 @@ export function TodayWide({ wide = true, data, day, today, sub, still, settings 
         </div>}
       </div>
     </header>
+    {/* главное действие — фото тарелки — сразу на первом экране телефона, без прокрутки и без «Записать» */}
+    {has('food') && <button type="button" className="snap-food" onClick={() => onPro('Фото и описание еды')}><Icon name="camera" /><span><b>Сфотографировать еду</b><small>ИИ посчитает калории за пару секунд</small></span>{!can(sub, 'Фото и описание еды') && <span className="lock">PRO</span>}</button>}
     <DayTip data={data} today={today} onMeal={onMeal} onWater={onWater} onSteps={onSteps} onGo={onGo} onPro={onPro} onWeek={onWeek} />
 
     {sub.source === 'trial' && <button className="trial-bar" onClick={onPaywall}><Icon name="flame" /><span>Пробный Pro: <b>ещё {sub.daysLeft} {plural(sub.daysLeft ?? 0, 'день', 'дня', 'дней')}</b> — потом еда, вода, шаги, задачи, цель и статистика остаются бесплатными</span><em>Тарифы</em></button>}

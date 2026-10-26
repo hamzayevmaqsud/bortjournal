@@ -2207,3 +2207,10 @@ input::placeholder,textarea::placeholder{color:var(--text-3);font-style:italic;o
 .ad-fn b{font:800 15px var(--display);text-align:right}
 .ad-fn small{color:var(--text-2)}
 @media (max-width:600px){.ad-fn{grid-template-columns:1fr auto;row-gap:4px}.ad-fn-bar{grid-column:1/-1;order:3}.ad-fn small{grid-column:1/-1;order:4}}
+/* «Сегодня» на телефоне: кнопка фото еды на первом экране; на компьютере есть «Фото» в карточке «Еда» */
+.snap-food{display:none}
+.app:not(.wide) .snap-food{display:flex;align-items:center;gap:12px;width:100%;margin:2px 0 14px;padding:14px 16px;border-radius:var(--r2,18px);background:var(--navy);color:var(--on-navy,#fff);text-align:left;box-shadow:var(--sh1)}
+.snap-food .ic{width:24px;height:24px;flex:none}
+.snap-food span{display:flex;flex-direction:column;gap:2px;flex:1}
+.snap-food b{font-size:16px}
+.snap-food small{font-size:12.5px;opacity:.8}
