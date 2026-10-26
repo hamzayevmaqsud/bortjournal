@@ -1,0 +1,80 @@
+/* Темы за уровень (packages/core/src/looks.ts): палитры фона, карточек, текста и акцента — день и ночь.
+   Подключается после tokens.css и color.css: те же переменные, селекторы точнее — побеждают. Цвета разделов общие для всех тем. */
+/* sea */
+@media (prefers-color-scheme: light){:root[data-look="sea"]:not([data-theme="dark"]){--bg:#E3EEF0;--card:#F5FAFA;--field:#FBFEFE;--track:#CFE0E3;--text:#1E2D38;--text-2:#4F626B;--text-3:#56686F;--navy:#1F3F57;--on-navy:#F0F7F8;--orange:#11707F;--orange-soft:#CDE8EB;--orange-ink:#0D5F6B;--fill-orange:#11707F;--sky:color-mix(in srgb,#11707F 14%,#E3EEF0);--sky-2:#E3EEF0;--glow:color-mix(in srgb,#11707F 12%,transparent)}}
+:root[data-look="sea"][data-theme="light"]{--bg:#E3EEF0;--card:#F5FAFA;--field:#FBFEFE;--track:#CFE0E3;--text:#1E2D38;--text-2:#4F626B;--text-3:#56686F;--navy:#1F3F57;--on-navy:#F0F7F8;--orange:#11707F;--orange-soft:#CDE8EB;--orange-ink:#0D5F6B;--fill-orange:#11707F;--sky:color-mix(in srgb,#11707F 14%,#E3EEF0);--sky-2:#E3EEF0;--glow:color-mix(in srgb,#11707F 12%,transparent)}
+@media (prefers-color-scheme: dark){:root[data-look="sea"]:not([data-theme="light"]){--bg:#10191D;--card:#172328;--field:#1D2B31;--track:#26363D;--text:#E4EEF0;--text-2:#A6B8BD;--text-3:#8EA2A8;--navy:#1A2E3B;--on-navy:#E4F1F3;--orange:#3FB6C4;--orange-soft:#183B41;--orange-ink:#7FD3DC;--fill-orange:#157F8C;--sky:color-mix(in srgb,#3FB6C4 14%,#10191D);--sky-2:#10191D;--glow:color-mix(in srgb,#3FB6C4 12%,transparent)}}
+:root[data-look="sea"][data-theme="dark"]{--bg:#10191D;--card:#172328;--field:#1D2B31;--track:#26363D;--text:#E4EEF0;--text-2:#A6B8BD;--text-3:#8EA2A8;--navy:#1A2E3B;--on-navy:#E4F1F3;--orange:#3FB6C4;--orange-soft:#183B41;--orange-ink:#7FD3DC;--fill-orange:#157F8C;--sky:color-mix(in srgb,#3FB6C4 14%,#10191D);--sky-2:#10191D;--glow:color-mix(in srgb,#3FB6C4 12%,transparent)}
+/* garden */
+@media (prefers-color-scheme: light){:root[data-look="garden"]:not([data-theme="dark"]){--bg:#E8EDDD;--card:#F7F9F0;--field:#FCFDF7;--track:#D6E0C6;--text:#263325;--text-2:#5A6550;--text-3:#5C6852;--navy:#2F4A35;--on-navy:#F4F8EC;--orange:#4A7536;--orange-soft:#DCE9CC;--orange-ink:#3B6129;--fill-orange:#4A7536;--sky:color-mix(in srgb,#4A7536 14%,#E8EDDD);--sky-2:#E8EDDD;--glow:color-mix(in srgb,#4A7536 12%,transparent)}}
+:root[data-look="garden"][data-theme="light"]{--bg:#E8EDDD;--card:#F7F9F0;--field:#FCFDF7;--track:#D6E0C6;--text:#263325;--text-2:#5A6550;--text-3:#5C6852;--navy:#2F4A35;--on-navy:#F4F8EC;--orange:#4A7536;--orange-soft:#DCE9CC;--orange-ink:#3B6129;--fill-orange:#4A7536;--sky:color-mix(in srgb,#4A7536 14%,#E8EDDD);--sky-2:#E8EDDD;--glow:color-mix(in srgb,#4A7536 12%,transparent)}
+@media (prefers-color-scheme: dark){:root[data-look="garden"]:not([data-theme="light"]){--bg:#141A13;--card:#1C241A;--field:#232C20;--track:#2F3A2A;--text:#E8EEDF;--text-2:#AFBBA3;--text-3:#96A38B;--navy:#24331F;--on-navy:#E8F0DF;--orange:#8BBF6A;--orange-soft:#2C3C24;--orange-ink:#B2D99A;--fill-orange:#4E7A3A;--sky:color-mix(in srgb,#8BBF6A 14%,#141A13);--sky-2:#141A13;--glow:color-mix(in srgb,#8BBF6A 12%,transparent)}}
+:root[data-look="garden"][data-theme="dark"]{--bg:#141A13;--card:#1C241A;--field:#232C20;--track:#2F3A2A;--text:#E8EEDF;--text-2:#AFBBA3;--text-3:#96A38B;--navy:#24331F;--on-navy:#E8F0DF;--orange:#8BBF6A;--orange-soft:#2C3C24;--orange-ink:#B2D99A;--fill-orange:#4E7A3A;--sky:color-mix(in srgb,#8BBF6A 14%,#141A13);--sky-2:#141A13;--glow:color-mix(in srgb,#8BBF6A 12%,transparent)}
+/* sunset */
+@media (prefers-color-scheme: light){:root[data-look="sunset"]:not([data-theme="dark"]){--bg:#F6E3DA;--card:#FFF4EE;--field:#FFF9F5;--track:#EED2C4;--text:#3A2730;--text-2:#6E5560;--text-3:#6F5660;--navy:#4A2E3B;--on-navy:#FFF1EA;--orange:#B9472F;--orange-soft:#F9D3C8;--orange-ink:#A63A27;--fill-orange:#B9472F;--sky:color-mix(in srgb,#B9472F 14%,#F6E3DA);--sky-2:#F6E3DA;--glow:color-mix(in srgb,#B9472F 12%,transparent)}}
+:root[data-look="sunset"][data-theme="light"]{--bg:#F6E3DA;--card:#FFF4EE;--field:#FFF9F5;--track:#EED2C4;--text:#3A2730;--text-2:#6E5560;--text-3:#6F5660;--navy:#4A2E3B;--on-navy:#FFF1EA;--orange:#B9472F;--orange-soft:#F9D3C8;--orange-ink:#A63A27;--fill-orange:#B9472F;--sky:color-mix(in srgb,#B9472F 14%,#F6E3DA);--sky-2:#F6E3DA;--glow:color-mix(in srgb,#B9472F 12%,transparent)}
+@media (prefers-color-scheme: dark){:root[data-look="sunset"]:not([data-theme="light"]){--bg:#1E1517;--card:#2A1D20;--field:#322326;--track:#3F2C30;--text:#F6E6E0;--text-2:#C2A9A6;--text-3:#A88E8B;--navy:#3A2430;--on-navy:#FBE6DD;--orange:#F08A6E;--orange-soft:#4A2B26;--orange-ink:#F7B49E;--fill-orange:#B54A33;--sky:color-mix(in srgb,#F08A6E 14%,#1E1517);--sky-2:#1E1517;--glow:color-mix(in srgb,#F08A6E 12%,transparent)}}
+:root[data-look="sunset"][data-theme="dark"]{--bg:#1E1517;--card:#2A1D20;--field:#322326;--track:#3F2C30;--text:#F6E6E0;--text-2:#C2A9A6;--text-3:#A88E8B;--navy:#3A2430;--on-navy:#FBE6DD;--orange:#F08A6E;--orange-soft:#4A2B26;--orange-ink:#F7B49E;--fill-orange:#B54A33;--sky:color-mix(in srgb,#F08A6E 14%,#1E1517);--sky-2:#1E1517;--glow:color-mix(in srgb,#F08A6E 12%,transparent)}
+/* baku */
+@media (prefers-color-scheme: light){:root[data-look="baku"]:not([data-theme="dark"]){--bg:#E6E3EE;--card:#F6F4FA;--field:#FBFAFD;--track:#D6D2E3;--text:#232742;--text-2:#575B75;--text-3:#595D77;--navy:#23284A;--on-navy:#F3F1FA;--orange:#8F6A12;--orange-soft:#EFE1BC;--orange-ink:#7A590C;--fill-orange:#8F6A12;--sky:color-mix(in srgb,#8F6A12 14%,#E6E3EE);--sky-2:#E6E3EE;--glow:color-mix(in srgb,#8F6A12 12%,transparent)}}
+:root[data-look="baku"][data-theme="light"]{--bg:#E6E3EE;--card:#F6F4FA;--field:#FBFAFD;--track:#D6D2E3;--text:#232742;--text-2:#575B75;--text-3:#595D77;--navy:#23284A;--on-navy:#F3F1FA;--orange:#8F6A12;--orange-soft:#EFE1BC;--orange-ink:#7A590C;--fill-orange:#8F6A12;--sky:color-mix(in srgb,#8F6A12 14%,#E6E3EE);--sky-2:#E6E3EE;--glow:color-mix(in srgb,#8F6A12 12%,transparent)}
+@media (prefers-color-scheme: dark){:root[data-look="baku"]:not([data-theme="light"]){--bg:#0F1224;--card:#171B33;--field:#1D223D;--track:#282E4D;--text:#EEEAF8;--text-2:#B0AECB;--text-3:#9894B5;--navy:#1B2140;--on-navy:#EDE9F8;--orange:#E2B544;--orange-soft:#3A3220;--orange-ink:#F2D488;--fill-orange:#9E7A1C;--sky:color-mix(in srgb,#E2B544 14%,#0F1224);--sky-2:#0F1224;--glow:color-mix(in srgb,#E2B544 12%,transparent)}}
+:root[data-look="baku"][data-theme="dark"]{--bg:#0F1224;--card:#171B33;--field:#1D223D;--track:#282E4D;--text:#EEEAF8;--text-2:#B0AECB;--text-3:#9894B5;--navy:#1B2140;--on-navy:#EDE9F8;--orange:#E2B544;--orange-soft:#3A3220;--orange-ink:#F2D488;--fill-orange:#9E7A1C;--sky:color-mix(in srgb,#E2B544 14%,#0F1224);--sky-2:#0F1224;--glow:color-mix(in srgb,#E2B544 12%,transparent)}
+/* paper */
+@media (prefers-color-scheme: light){:root[data-look="paper"]:not([data-theme="dark"]){--bg:#EDE4D3;--card:#F8F1E3;--field:#FCF8EE;--track:#E0D3BC;--text:#33281C;--text-2:#6A5A47;--text-3:#6A5A46;--navy:#4A3B2A;--on-navy:#F8F1E3;--orange:#7E5025;--orange-soft:#EBDCC4;--orange-ink:#6E4520;--fill-orange:#7E5025;--sky:color-mix(in srgb,#7E5025 14%,#EDE4D3);--sky-2:#EDE4D3;--glow:color-mix(in srgb,#7E5025 12%,transparent)}}
+:root[data-look="paper"][data-theme="light"]{--bg:#EDE4D3;--card:#F8F1E3;--field:#FCF8EE;--track:#E0D3BC;--text:#33281C;--text-2:#6A5A47;--text-3:#6A5A46;--navy:#4A3B2A;--on-navy:#F8F1E3;--orange:#7E5025;--orange-soft:#EBDCC4;--orange-ink:#6E4520;--fill-orange:#7E5025;--sky:color-mix(in srgb,#7E5025 14%,#EDE4D3);--sky-2:#EDE4D3;--glow:color-mix(in srgb,#7E5025 12%,transparent)}
+@media (prefers-color-scheme: dark){:root[data-look="paper"]:not([data-theme="light"]){--bg:#1C1814;--card:#26201A;--field:#2D261F;--track:#3A3128;--text:#F1E6D3;--text-2:#BBA98F;--text-3:#A08F78;--navy:#33291F;--on-navy:#F1E6D3;--orange:#D2A574;--orange-soft:#3F3022;--orange-ink:#E6C49C;--fill-orange:#8E5F30;--sky:color-mix(in srgb,#D2A574 14%,#1C1814);--sky-2:#1C1814;--glow:color-mix(in srgb,#D2A574 12%,transparent)}}
+:root[data-look="paper"][data-theme="dark"]{--bg:#1C1814;--card:#26201A;--field:#2D261F;--track:#3A3128;--text:#F1E6D3;--text-2:#BBA98F;--text-3:#A08F78;--navy:#33291F;--on-navy:#F1E6D3;--orange:#D2A574;--orange-soft:#3F3022;--orange-ink:#E6C49C;--fill-orange:#8E5F30;--sky:color-mix(in srgb,#D2A574 14%,#1C1814);--sky-2:#1C1814;--glow:color-mix(in srgb,#D2A574 12%,transparent)}
+/* neon */
+@media (prefers-color-scheme: light){:root[data-look="neon"]:not([data-theme="dark"]){--bg:#ECEAF6;--card:#FAF9FF;--field:#FFFFFF;--track:#DEDAF0;--text:#1E1A33;--text-2:#555070;--text-3:#57526F;--navy:#1E1A3A;--on-navy:#F4F2FF;--orange:#6A2FE0;--orange-soft:#E3D8FD;--orange-ink:#5A22C8;--fill-orange:#6A2FE0;--sky:color-mix(in srgb,#6A2FE0 14%,#ECEAF6);--sky-2:#ECEAF6;--glow:color-mix(in srgb,#6A2FE0 12%,transparent)}}
+:root[data-look="neon"][data-theme="light"]{--bg:#ECEAF6;--card:#FAF9FF;--field:#FFFFFF;--track:#DEDAF0;--text:#1E1A33;--text-2:#555070;--text-3:#57526F;--navy:#1E1A3A;--on-navy:#F4F2FF;--orange:#6A2FE0;--orange-soft:#E3D8FD;--orange-ink:#5A22C8;--fill-orange:#6A2FE0;--sky:color-mix(in srgb,#6A2FE0 14%,#ECEAF6);--sky-2:#ECEAF6;--glow:color-mix(in srgb,#6A2FE0 12%,transparent)}
+@media (prefers-color-scheme: dark){:root[data-look="neon"]:not([data-theme="light"]){--bg:#0C0B14;--card:#15131F;--field:#1B1928;--track:#252236;--text:#F1EEFF;--text-2:#B4AED0;--text-3:#9A93BA;--navy:#1A1730;--on-navy:#F1EEFF;--orange:#B488FF;--orange-soft:#2E2350;--orange-ink:#D4BDFF;--fill-orange:#7440E8;--sky:color-mix(in srgb,#B488FF 14%,#0C0B14);--sky-2:#0C0B14;--glow:color-mix(in srgb,#B488FF 12%,transparent)}}
+:root[data-look="neon"][data-theme="dark"]{--bg:#0C0B14;--card:#15131F;--field:#1B1928;--track:#252236;--text:#F1EEFF;--text-2:#B4AED0;--text-3:#9A93BA;--navy:#1A1730;--on-navy:#F1EEFF;--orange:#B488FF;--orange-soft:#2E2350;--orange-ink:#D4BDFF;--fill-orange:#7440E8;--sky:color-mix(in srgb,#B488FF 14%,#0C0B14);--sky-2:#0C0B14;--glow:color-mix(in srgb,#B488FF 12%,transparent)}
+/* шрифт заголовков «Антиква» (уровень 7) */
+:root[data-font="serif"] .daytitle b,:root[data-font="serif"] .card-head h2,:root[data-font="serif"] .panel-h h2,:root[data-font="serif"] .sheet h2,:root[data-font="serif"] h1{font-family:'Playfair Display',Georgia,serif;font-weight:600;letter-spacing:0}
+/* праздник за задачу: луч маяка или звёзды из галочки */
+.cele{position:fixed;z-index:60;pointer-events:none;width:0;height:0}
+.cele i{position:absolute;left:0;top:0;width:8px;height:8px;margin:-4px;border-radius:50%;background:var(--orange);animation:cele-fly .8s var(--ease) forwards}
+.cele.stars i{width:10px;height:10px;margin:-5px;border-radius:0;background:var(--mustard);clip-path:polygon(50% 0,61% 35%,98% 35%,68% 57%,79% 91%,50% 70%,21% 91%,32% 57%,2% 35%,39% 35%)}
+@keyframes cele-fly{from{opacity:1;transform:translate(0,0) scale(1)}to{opacity:0;transform:translate(var(--dx),var(--dy)) scale(.4)}}
+.cele.beam::before{content:"";position:absolute;left:0;top:-14px;width:180px;height:28px;transform-origin:0 50%;background:linear-gradient(90deg,rgba(255,214,120,.85),rgba(255,214,120,0));clip-path:polygon(0 42%,100% 0,100% 100%,0 58%);animation:cele-beam .9s var(--ease) forwards}
+@keyframes cele-beam{0%{opacity:0;transform:rotate(-40deg)}30%{opacity:1}100%{opacity:0;transform:rotate(40deg)}}
+@media (prefers-reduced-motion:reduce){.cele{display:none}}
+
+/* лист «Внешний вид» */
+.looks{display:flex;flex-direction:column;gap:16px}
+.lk-level{margin:0;color:var(--text-2);font-size:var(--fs-sm);line-height:1.5}
+.lk-level b{color:var(--text)}
+.lk-themes{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+.lk-theme{position:relative;display:flex;flex-direction:column;align-items:flex-start;gap:4px;padding:10px;border-radius:var(--r2);background:var(--field);border:2px solid transparent;text-align:left;transition:border-color .15s,transform .15s}
+.lk-theme:hover{transform:translateY(-1px)}
+.lk-theme.on{border-color:var(--orange)}
+.lk-theme:focus-visible{outline:2px solid var(--orange);outline-offset:2px}
+.lk-theme b{font-size:var(--fs-base);color:var(--text)}
+.lk-theme small{font-size:var(--fs-xs);color:var(--text-3)}
+.lk-theme.locked .lk-sw{filter:saturate(.55) brightness(.92)}
+.lk-theme.locked small{color:var(--text-2);font-weight:700}
+.lk-sw{width:100%;height:56px;border-radius:10px;display:flex;align-items:flex-end;gap:6px;padding:8px;box-shadow:inset 0 0 0 1px rgba(0,0,0,.06)}
+.lk-sw i{width:22px;height:22px;border-radius:50%;box-shadow:0 0 0 2px rgba(255,255,255,.6)}
+.lk-preview{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;border-radius:var(--r2);background:var(--orange-soft);color:var(--text);font-size:var(--fs-sm)}
+.lk-extra{display:flex;flex-direction:column;gap:8px;padding-top:12px;border-top:1px solid var(--line)}
+.lk-x-h{display:flex;align-items:baseline;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.lk-x-h small{color:var(--text-3);font-size:var(--fs-xs)}
+.lk-extra.locked .lk-x-h small{color:var(--text-2);font-weight:700}
+.lk-opts{display:flex;flex-wrap:wrap;gap:6px}
+.lk-opts button{display:inline-flex;align-items:center;gap:6px;min-height:40px;padding:0 14px;border-radius:999px;background:var(--field);color:var(--text-2);font-weight:600}
+.lk-opts button.on{background:var(--orange);color:#fff}
+.lk-opts button:disabled{opacity:.45;cursor:not-allowed}
+.lk-opts .ic{width:16px;height:16px}
+/* «Новый уровень!» */
+.levelup{align-items:center;text-align:center}
+.lu-badge{display:grid;place-items:center;width:112px;height:112px;margin:4px auto 8px;border-radius:50%;background:radial-gradient(circle at 50% 35%,var(--mustard),var(--orange));color:#fff;box-shadow:0 0 0 8px var(--orange-soft),0 12px 30px rgba(0,0,0,.18);animation:lu-pop .6s var(--spring)}
+.lu-badge span{font-size:11px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;opacity:.9;margin-bottom:-14px}
+.lu-badge b{font:800 44px var(--display)}
+@keyframes lu-pop{from{transform:scale(.6);opacity:0}to{transform:scale(1);opacity:1}}
+.lu-lead{margin:0;color:var(--text-2)}
+.lu-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px;width:100%}
+.lu-list li{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:var(--r2);background:var(--field);font-weight:600;text-align:left}
+.lu-list li .ic{width:18px;height:18px;color:var(--orange);flex:none}
+.lu-list li small{margin-left:auto;color:var(--text-3);font-weight:500}
+@media (prefers-reduced-motion:reduce){.lu-badge{animation:none}}

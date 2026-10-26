@@ -12,7 +12,7 @@ import { MODULES_LIST } from '../modules/index.js';
 import { requireUser } from './auth.js';
 import { dayParam, statDays } from './http.js';
 import type { DayFacts, Totals } from './module.js';
-import { achievements, dayJournal } from './schema.js';
+import { achievements, dayJournal, users } from './schema.js';
 import { budgets } from '../modules/budget/schema.js';
 import { userContext, type Norms } from './context.js';
 import { streakOf } from './streak.js';
@@ -415,7 +415,9 @@ export async function statsRoutes(app: FastifyInstance, { db }: { db: DB }) {
     const s = await awardsState(db, req.userId!);
     const near = s.list.filter(x => x.next).sort((a, b) => b.progress - a.progress).slice(0, 3);
     const recent = s.unlocked.slice().sort((a, b) => b.day.localeCompare(a.day) || b.tier - a.tier).slice(0, 6).map(u => ({ ...u, name: ACH.find(a => a.k === u.key)?.n ?? u.key }));
-    return { ...s, near, recent, level: Math.floor(s.total / 4) + 1, tiers: TIERS };
+    // уровень — как во «Внешнем виде»: по достижениям или выставленный вручную, наибольший
+    const [u] = await db.select({ o: users.levelOverride }).from(users).where(eq(users.id, req.userId!));
+    return { ...s, near, recent, level: Math.max(Math.floor(s.total / 4) + 1, u?.o ?? 0), tiers: TIERS };
   });
   // после записи: открылось ли что-то новое — для поздравления
   app.post('/api/awards/check', { preHandler: pre }, async req => ({ fresh: (await awardsState(db, req.userId!)).fresh.map(f => ({ ...f, tierName: TIERS[f.tier] })) }));

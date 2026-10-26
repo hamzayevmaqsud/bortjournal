@@ -14,6 +14,8 @@ import { DrinkForm, MealForm, NumberForm, TaskForm } from './components/Forms';
 import { FoodAi, FoodSearch } from './components/FoodPro';
 import { Icon } from './components/Icon';
 import { LighthouseToggle } from './components/ThemeToggle';
+import { LevelUp, Looks, type LookState } from './components/Looks';
+import { applyLook } from './lib/look';
 import { Paywall } from './components/Paywall';
 import { Sheet } from './components/Sheet';
 import { useToast } from './components/Toasts';
@@ -68,8 +70,8 @@ type SheetState =
   | { kind: 'none' } | { kind: 'add'; at?: string } | { kind: 'meal'; at?: string; meal?: Meal; day?: string } | { kind: 'drink'; at?: string; drink?: Drink; day?: string }
   | { kind: 'steps' } | { kind: 'weight' } | { kind: 'task'; day: string | null; task?: TaskFull }
   | { kind: 'paywall'; focus?: string } | { kind: 'settings' } | { kind: 'install' } | { kind: 'reminders' } | { kind: 'voice' } | { kind: 'aiConsent'; then?: SheetState } | { kind: 'feedback' } | { kind: 'whatsnew' }
-  | { kind: 'search'; at?: string; day?: string } | { kind: 'ai'; at?: string; mode: 'photo' | 'text'; day?: string } | { kind: 'draft'; id: string } | { kind: 'week'; end?: string };
-const TITLES: Record<string, string> = { whatsnew: 'Что нового', add: 'Записать', meal: 'Приём пищи', drink: 'Напиток', steps: 'Шаги за день', weight: 'Вес', task: 'Задача', paywall: '', settings: 'Профиль и нормы', install: 'На экран «Домой»', reminders: 'Напоминания', voice: 'Записать голосом', aiConsent: 'ИИ-помощник', feedback: 'Написать разработчику', search: 'Поиск еды', ai: 'Еда по фото или описанию', draft: 'Проверь приём пищи', week: 'Итог недели' };
+  | { kind: 'search'; at?: string; day?: string } | { kind: 'ai'; at?: string; mode: 'photo' | 'text'; day?: string } | { kind: 'draft'; id: string } | { kind: 'week'; end?: string } | { kind: 'looks' } | { kind: 'levelup'; state: LookState };
+const TITLES: Record<string, string> = { looks: 'Внешний вид', levelup: 'Новый уровень!', whatsnew: 'Что нового', add: 'Записать', meal: 'Приём пищи', drink: 'Напиток', steps: 'Шаги за день', weight: 'Вес', task: 'Задача', paywall: '', settings: 'Профиль и нормы', install: 'На экран «Домой»', reminders: 'Напоминания', voice: 'Записать голосом', aiConsent: 'ИИ-помощник', feedback: 'Написать разработчику', search: 'Поиск еды', ai: 'Еда по фото или описанию', draft: 'Проверь приём пищи', week: 'Итог недели' };
 
 export function App() {
   const toast = useToast(), wide = useWide();
@@ -155,6 +157,7 @@ export function App() {
     meAt.current = Date.now();
     try {
       const m = await api<Me>(ME); setOwner(m.username); setSex(m.profile?.sex); setMe(m);
+      if (!fromCache(m)) applyLook(m.profile?.settings?.look as Record<string, string> | undefined); // тема за уровень — общая для устройств
       // часовой пояс устройства сменился (перелёт) — отдельной записью, GET ничего не меняет.
       // Шлём, только когда пояс сменился у ЭТОГО устройства: два устройства в разных поясах не перетягивают «сегодня» по очереди
       const tz = -new Date().getTimezoneOffset(), key = `bj-tz-sent:${m.username}`;
@@ -203,7 +206,14 @@ export function App() {
       toast(`${fresh.length > 1 ? `Новые достижения: ${fresh.length}` : 'Новое достижение'} — ${top.name} · ${top.tierName}`, { undo: () => { setStatsTab('awards'); go('stats'); }, undoLabel: 'Смотреть' });
     } catch { /* поздравление не обязательно */ }
   };
-  const done = () => { close(); refresh(); setTimeout(checkAwards, 600); };
+  // новый уровень (из достижений) — поздравление и что открылось; не поверх уже открытого листа
+  const checkLevel = async () => {
+    try { const st = await api<LookState>('/api/look'); if (st.fresh.length && !sheetOpenRef.current) open({ kind: 'levelup', state: st }); } catch { /* не обязательно */ }
+  };
+  const checkLevelRef = useRef(checkLevel); checkLevelRef.current = checkLevel;
+  const done = () => { close(); refresh(); setTimeout(checkAwards, 600); setTimeout(() => void checkLevelRef.current(), 1400); };
+  // при открытии — не пришёл ли новый уровень, пока человека не было (демо и анкету не трогаем)
+  useEffect(() => { if (!ready || !me || me.demo) return; const t = setTimeout(() => void checkLevelRef.current(), 2500); return () => clearTimeout(t); }, [ready, me?.username]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // записал на телефоне — видно на компьютере: перечитываем, когда окно снова на виду, и раз в 15 секунд.
   // Пока висит отложенное удаление, не трогаем — иначе удалённое вернётся на экран до отправки.
@@ -469,7 +479,7 @@ export function App() {
       </section>
       <section className="screen" data-pos={pos('more')} aria-hidden={tab !== 'more'} inert={tab !== 'more'}>
         <Boundary name="more" onFeedback={() => open({ kind: 'feedback' })}>
-        <More me={me} wide={wide} desk={desk} onDesk={switchDesk} summary={moreSummary} onFeedback={() => open({ kind: 'feedback' })} onWhatsNew={() => open({ kind: 'whatsnew' })} onTour={() => { go('today'); startTour('today'); }} onAdmin={() => go('admin')} onPro={pro} onSaved={st => setMe(m => m && m.profile ? { ...m, profile: { ...m.profile, settings: st } } : m)} onPaywall={focus => open({ kind: 'paywall', focus })} onProfile={() => go('profile')} onSettings={() => go('settings')} onInstall={() => open({ kind: 'install' })}
+        <More me={me} wide={wide} desk={desk} onDesk={switchDesk} onLooks={() => open({ kind: 'looks' })} summary={moreSummary} onFeedback={() => open({ kind: 'feedback' })} onWhatsNew={() => open({ kind: 'whatsnew' })} onTour={() => { go('today'); startTour('today'); }} onAdmin={() => go('admin')} onPro={pro} onSaved={st => setMe(m => m && m.profile ? { ...m, profile: { ...m.profile, settings: st } } : m)} onPaywall={focus => open({ kind: 'paywall', focus })} onProfile={() => go('profile')} onSettings={() => go('settings')} onInstall={() => open({ kind: 'install' })}
           onLogout={logout} />
         </Boundary>
       </section>
@@ -539,6 +549,8 @@ export function App() {
       {sheet.kind === 'aiConsent' && <AiConsent onDone={async ok => { if (!ok) { close(); return; } try { const r = await api<{ settings: Record<string, unknown> }>('/api/profile/settings', { method: 'PUT', body: { aiConsent: true } }); setMe(m => m && m.profile ? { ...m, profile: { ...m.profile, settings: r.settings } } : m); if (sheet.then) open(sheet.then); else { close(); toast('ИИ-помощник включён — повтори действие'); } } catch (e) { fail(e); } }} />}
       {sheet.kind === 'feedback' && <FeedbackForm onDone={close} />}
       {sheet.kind === 'whatsnew' && <WhatsNew />}
+      {sheet.kind === 'looks' && <Looks onSaved={look => setMe(m => m && m.profile ? { ...m, profile: { ...m.profile, settings: { ...m.profile.settings, look } } } : m)} />}
+      {sheet.kind === 'levelup' && <LevelUp state={sheet.state} onDone={close} />}
       {sheet.kind === 'week' && <WeekRecap end={sheet.end} />}
       {sheet.kind === 'voice' && <VoiceCapture onDone={() => { setVersion(v => v + 1); if (day) loadDay(day); }} />}
       {sheet.kind === 'search' && day && <FoodSearch day={sheet.day ?? day} time={sheet.at} onDone={done} />}

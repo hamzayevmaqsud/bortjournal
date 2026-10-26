@@ -1,0 +1,1 @@
+ALTER TABLE "users" ADD COLUMN "level_override" smallint;

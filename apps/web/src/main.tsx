@@ -5,11 +5,14 @@ import { ToastProvider } from './components/Toasts';
 import './styles/tokens.css';
 import './styles/app.css';
 import './styles/color.css';
+import './styles/looks.css';
 import { applyTheme, savedTheme } from './lib/theme';
 import { mobileOnly } from './lib/wide';
 import { startSky } from './lib/sky';
+import { applyLook, savedLook } from './lib/look';
 
 applyTheme(savedTheme());
+applyLook(savedLook()); // тема за уровень — сразу, до ответа сервера
 startSky();
 // телефонный адрес ставится на экран «Домой» со своим началом — /m
 if (mobileOnly()) document.querySelector('link[rel="manifest"]')?.setAttribute('href', '/manifest-m.webmanifest');

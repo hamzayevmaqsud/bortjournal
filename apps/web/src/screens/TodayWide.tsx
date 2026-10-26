@@ -11,6 +11,7 @@ import { api, type Subscription, type Today as TodayData } from '../lib/api';
 import { fmt, fmt1, fmt2, MONG, plural, WDF } from '../lib/format';
 import { buzz, spring, useCountUp } from '../lib/motion';
 import { Icon } from '../components/Icon';
+import { useLook } from '../lib/look';
 import { HelpButton } from '../components/HelpButton';
 import { WeekStrip } from '../components/WeekStrip';
 import { Arc } from '../components/Ring';
@@ -52,6 +53,7 @@ export function TodayWide({ wide = true, data, day, today, sub, still, settings 
   onJournal?: () => void;
 }) {
   const toast = useToast(), [title, setTitle] = useState(''), [busy, setBusy] = useState(false);
+  const look = useLook(); // значок серии — за уровень
   const dt = parseDay(day), off = Math.round((dt.getTime() - parseDay(today).getTime()) / 864e5);
   const rel = off === 0 ? 'сегодня' : off === -1 ? 'вчера' : off === 1 ? 'завтра' : '';
   const P = data?.parts ?? {}, food = P.food, body = P.body, study = P.study, gym = P.gym, tasks = P.plans?.tasks ?? [];
@@ -136,7 +138,7 @@ export function TodayWide({ wide = true, data, day, today, sub, still, settings 
           {has('food') && <button onClick={onWeight}><i><Icon name="steps" />вес</i><b>{body?.weight ? fmt1(body.weight.kg) : '—'}<small>кг</small></b><span className={body?.weight?.today ? '' : 'go'}>{body?.weight?.today ? (data.isToday ? 'сегодня' : 'в этот день') : 'взвеситься →'}</span></button>}
           <button className="hot" onClick={() => onPro('Статистика')} title={fz ? FREEZE_HINT + (fz.frozen.length ? ` Заморожено: ${fz.frozen.map(d => d === addDays(data.now.day, -1) ? 'вчера' : `${+d.slice(8)} ${MON[+d.slice(5, 7) - 1]}`).join(', ')}.` : '') : undefined}
             aria-label={`Серия: ${data.streak} ${plural(data.streak, 'день', 'дня', 'дней')} подряд${fz ? `, заморозок в запасе: ${fz.left}${fz.usedYesterday ? ', вчера заморожен' : ''}` : ''}. Открыть статистику`}>
-            <i><Icon name="flame" />серия</i><b>{data.streak}<small>{plural(data.streak, 'день', 'дня', 'дней')}</small></b>
+            <i><Icon name={look.streak} />серия</i><b>{data.streak}<small>{plural(data.streak, 'день', 'дня', 'дней')}</small></b>
             <span>подряд{fz && <> · <em className="st-fz"><Icon name="snow" className="" />{fz.usedYesterday ? <>вчера<span className="fz-w"> заморожен</span></> : <><span className="fz-w">заморозок </span>{fz.left}</>}</em></>}</span></button>
         </div>}
       </div>
