@@ -26,15 +26,19 @@ export function ThemeToggle({ className = '', onSaved }: { className?: string; o
 }
 
 /**
- * Маяк — он же переключатель темы на входе: нажми — день ↔ ночь. В тёмной теме у маяка горит фонарь.
+ * Маяк — он же переключатель темы: на входе и в меню слева на компьютере. Нажми — день ↔ ночь, в тёмной теме у маяка горит фонарь.
  * После луча по LUMI в маяк прилетает огонёк (Login) — видно, что на него можно нажать.
+ * onSaved — вошедший: тема сохраняется в профиле (общая для устройств), как в «Настройках».
  */
-export function LighthouseToggle() {
+export function LighthouseToggle({ className = '', onSaved }: { className?: string; onSaved?: (s: Record<string, unknown>) => void } = {}) {
   const [t, setT] = useState<Theme>(savedTheme());
   useEffect(() => { const f = () => setT(savedTheme()); addEventListener('lumi-theme', f); return () => removeEventListener('lumi-theme', f); }, []);
   const dark = darkNow(t);
-  const flip = () => { const next: Theme = dark ? 'light' : 'dark'; setT(next); applyTheme(next); buzz(6); dispatchEvent(new Event('lumi-theme')); };
-  return <button type="button" className={`login-mark-btn ${dark ? 'night' : ''}`} onClick={flip} data-hint="Нажми — сменит тему"
+  const flip = async () => {
+    const next: Theme = dark ? 'light' : 'dark'; setT(next); applyTheme(next); buzz(6); dispatchEvent(new Event('lumi-theme'));
+    if (onSaved) { try { const r = await api<{ settings: Record<string, unknown> }>('/api/profile/settings', { method: 'PUT', body: { theme: next } }); onSaved(r.settings); } catch { /* тема уже применена на этом устройстве */ } }
+  };
+  return <button type="button" className={`login-mark-btn ${dark ? 'night' : ''} ${className}`} onClick={flip} data-hint="Нажми — сменит тему"
     aria-label={dark ? 'Маяк: включить светлую тему' : 'Маяк: включить тёмную тему'} title={dark ? 'Светлая тема' : 'Тёмная тема'}>
     <img className="login-mark" src="/favicon.svg" alt="" />
   </button>;

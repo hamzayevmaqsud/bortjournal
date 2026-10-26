@@ -13,6 +13,7 @@ import { buzz } from './lib/motion';
 import { DrinkForm, MealForm, NumberForm, TaskForm } from './components/Forms';
 import { FoodAi, FoodSearch } from './components/FoodPro';
 import { Icon } from './components/Icon';
+import { LighthouseToggle } from './components/ThemeToggle';
 import { Paywall } from './components/Paywall';
 import { Sheet } from './components/Sheet';
 import { useToast } from './components/Toasts';
@@ -115,6 +116,12 @@ export function App() {
   const [tab, setTab] = useState('today');
   // вид на компьютере: 'side' — меню слева (по умолчанию), 'old' — прежняя плавающая панель внизу; выбор в «Ещё»
   const [desk, setDesk] = useState<'side' | 'old'>(() => { try { return localStorage.getItem('lumi.desk') === 'old' ? 'old' : 'side'; } catch { return 'side'; } });
+  // меню слева: свёрнуто до иконок — по выбору (стрелка после LUMI), иначе само на экранах уже 1200 px
+  const [sidePref, setSidePref] = useState<'mini' | 'full' | null>(() => { try { const v = localStorage.getItem('lumi.side'); return v === 'mini' || v === 'full' ? v : null; } catch { return null; } });
+  const [narrow, setNarrow] = useState(() => typeof matchMedia !== 'undefined' && matchMedia('(max-width: 1199px)').matches);
+  useEffect(() => { const m = matchMedia('(max-width: 1199px)'), on = () => setNarrow(m.matches); m.addEventListener('change', on); return () => m.removeEventListener('change', on); }, []);
+  const sideMini = sidePref ? sidePref === 'mini' : narrow;
+  const toggleSide = () => { const v = sideMini ? 'full' : 'mini'; setSidePref(v); try { localStorage.setItem('lumi.side', v); } catch { /* приватный режим */ } };
   const switchDesk = (v: 'side' | 'old') => { setDesk(v); try { localStorage.setItem('lumi.desk', v); } catch { /* приватный режим */ } };
   const [day, setDay] = useState<string | null>(null), [today, setToday] = useState<string | null>(null);
   const [days, setDays] = useState<Record<string, TodayData>>({});
@@ -382,7 +389,7 @@ export function App() {
   const QUICK: Record<string, string> = { 'Зал': 'gym', 'Учёба': 'study', 'Трата': 'budget', 'Чтение': 'books' };
   const lockTile = (name: string, ic: string, c: string) => <button key={name} className="tile" onClick={() => { if (QUICK[name] && can(sub, name)) setQuick({ tab: QUICK[name]!, t: Date.now() }); pro(name, sheet.kind === 'add' ? sheet.at : undefined); }}><span className="chip-ic" style={{ ['--c' as string]: c }}><Icon name={ic} /></span>{name}{!can(sub, name) && <span className="lock">PRO</span>}</button>;
 
-  return <TourStart.Provider value={startTour}><div className={`app ${wide ? 'wide' : ''} ${wide && desk === 'side' ? 'desk-side' : ''} ${me.demo ? 'demo-on' : ''} ${queued > 0 || drafts.length > 0 ? 'bar-on' : ''}`}>
+  return <TourStart.Provider value={startTour}><div className={`app ${wide ? 'wide' : ''} ${wide && desk === 'side' ? `desk-side ${sideMini ? 'side-mini' : ''}` : ''} ${me.demo ? 'demo-on' : ''} ${queued > 0 || drafts.length > 0 ? 'bar-on' : ''}`}>
     {me.demo && <DemoBanner onTour={tourHere} onLogout={logout} onClaimed={async () => { await loadMe(); toast('Аккаунт сохранён — записи на месте'); }} />}
     {tab in SECTIONS && SECTIONS[tab] && sub.ended && !can(sub, SECTIONS[tab]!) && <button className="ro-bar" onClick={() => open({ kind: 'paywall', focus: SECTION_NAME[tab] })}><Icon name="file" />Только просмотр — Pro закончился. Продлить</button>}
     {queued === 0 && drafts.length > 0 && (() => {
@@ -474,7 +481,11 @@ export function App() {
       const item = ([name, icon, label]: [string, string, string]) => <button key={name} className="side-i" title={label} aria-label={label} aria-current={tab === name ? 'page' : undefined} onClick={() => go(name)}>
         <Icon name={icon} /><span>{label}</span>{SECTIONS[name] && !can(sub, SECTIONS[name]!) && <span className="lock">PRO</span>}</button>;
       return <nav className="side" aria-label="Разделы">
-        <div className="side-brand"><img src="/favicon.svg" alt="" /><b>Lumi</b></div>
+        <div className="side-brand">
+          <LighthouseToggle className="side-mark" onSaved={st => setMe(m => m && m.profile ? { ...m, profile: { ...m.profile, settings: st } } : m)} />
+          <b>Lumi</b>
+          <button type="button" className="side-fold" onClick={toggleSide} aria-label={sideMini ? 'Развернуть меню' : 'Свернуть меню'} title={sideMini ? 'Развернуть меню' : 'Свернуть меню'} aria-expanded={!sideMini}><Icon name={sideMini ? 'chev' : 'chevL'} /></button>
+        </div>
         <button className="side-add" title="Записать" aria-label="Записать" onClick={() => go('add')}><Icon name="plus" /><span>Записать</span></button>
         <div className="side-list">
           {item(['today', 'today', 'Сегодня'])}{item(['plans', 'plans', 'Планы'])}
