@@ -274,7 +274,8 @@ export function Login({ onDone }: { onDone: () => void }) {
       {/* подсказки — только пока поле в фокусе, чтобы форма не казалась длинной */}
       {up && focus === 'u' && <small className="field-hint" id="user-hint">{byMail ? 'Эта почта — и для входа, и для восстановления пароля' : 'Логин: 3–32 символа — латиница, цифры, . _ - · или сразу почта'}</small>}
       {up && !byMail && <><label className="sr-only" htmlFor="login-mail">Почта</label>
-        <input id="login-mail" ref={mailRef} name="email" type="email" autoComplete="email" autoCapitalize="none" spellCheck={false} placeholder="Почта — чтобы восстановить пароль" value={mail} onChange={e => { setMail(e.target.value); if (err) setErr(''); }} required {...on('m')} /></>}
+        <input id="login-mail" ref={mailRef} name="email" type="email" autoComplete="email" autoCapitalize="none" spellCheck={false} placeholder="Почта" value={mail} onChange={e => { setMail(e.target.value); if (err) setErr(''); }} required aria-describedby="mail-hint" {...on('m')} />
+        {focus === 'm' && <small className="field-hint" id="mail-hint">Пришлём ссылку, если забудешь пароль</small>}</>}
       <label className="sr-only" htmlFor="login-pass">Пароль</label>
       <PasswordInput ref={pass} show={show} onToggle={() => setShow(x => !x)} id="login-pass" name="password" autoComplete={up ? 'new-password' : 'current-password'} placeholder="Пароль" value={p} onChange={e => { setP(e.target.value); if (err) setErr(''); }} required minLength={up ? 8 : undefined} aria-describedby={err ? 'login-err' : up ? 'pw-hint' : undefined} aria-invalid={err ? true : undefined} {...on('p')}
         onKeyDown={e => setCaps(e.getModifierState('CapsLock'))} onKeyUp={e => setCaps(e.getModifierState('CapsLock'))} />
