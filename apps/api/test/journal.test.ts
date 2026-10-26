@@ -105,7 +105,8 @@ describe('как прошёл день', () => {
 
   it('итог недели и «неделя к неделе»: среднее настроение и лучший день', async () => {
     const r = as(await login('bob'));
-    const mon = addDays(today(), -((new Date(today() + 'T12:00:00Z').getUTCDay() + 6) % 7) - 7);
+    // неделя месяц назад: записи настроения из соседних тестов (2–3 дня назад) в неё не попадают в любой день недели
+    const mon = addDays(today(), -((new Date(today() + 'T12:00:00Z').getUTCDay() + 6) % 7) - 28);
     await r('PUT', '/api/journal', { day: mon, mood: 2 });
     await r('PUT', '/api/journal', { day: addDays(mon, 2), mood: 5 });
     const w = (await r('GET', `/api/insights/week?end=${addDays(mon, 6)}`)).json();
