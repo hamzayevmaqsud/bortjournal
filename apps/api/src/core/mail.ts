@@ -1,7 +1,8 @@
 /**
  * Отправка писем. Два способа — какой настроен в .env:
  *  - Gmail (или любой SMTP): SMTP_USER — адрес Gmail, SMTP_PASS — пароль приложения
- *    (Аккаунт Google → Безопасность → Двухэтапная проверка → Пароли приложений). SMTP_HOST/SMTP_PORT — если не Gmail;
+ *    (Аккаунт Google → Безопасность → Двухэтапная проверка → Пароли приложений). Порт по умолчанию 587 (STARTTLS);
+ *    SMTP_HOST/SMTP_PORT — если не Gmail;
  *  - Resend: RESEND_API_KEY и MAIL_FROM.
  * MAIL_FROM — от кого письмо; для Gmail по умолчанию «Lumi <SMTP_USER>».
  */
@@ -14,8 +15,9 @@ export const mailEnabled = () => smtpOn() || !!(env('RESEND_API_KEY') && env('MA
 let transport: nodemailer.Transporter | null = null;
 function smtp() {
   if (transport) return transport;
-  const port = Number(env('SMTP_PORT') || 465);
-  transport = nodemailer.createTransport({ host: env('SMTP_HOST') || 'smtp.gmail.com', port, secure: port === 465, auth: { user: env('SMTP_USER'), pass: env('SMTP_PASS') }, connectionTimeout: 15000, greetingTimeout: 15000, socketTimeout: 20000 });
+  // 587 + STARTTLS: многие хостинги (Hetzner в том числе) закрывают исходящие 25 и 465; шифрование обязательно и здесь
+  const port = Number(env('SMTP_PORT') || 587);
+  transport = nodemailer.createTransport({ host: env('SMTP_HOST') || 'smtp.gmail.com', port, secure: port === 465, requireTLS: port !== 465, auth: { user: env('SMTP_USER'), pass: env('SMTP_PASS').replace(/\s+/g, '') }, connectionTimeout: 15000, greetingTimeout: 15000, socketTimeout: 20000 });
   return transport;
 }
 
