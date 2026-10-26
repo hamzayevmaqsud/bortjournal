@@ -149,3 +149,15 @@ describe('статистика', () => {
     expect((await as('pro', 'POST', '/api/awards/check')).json().fresh).toEqual([]);
   });
 });
+
+describe('оценка сегодняшнего дня', () => {
+  it('днём недобор калорий — прогресс к норме, а не «0% в норме»; в прошлые дни — промах; перебор — промах всегда', async () => {
+    const { score } = await import('../src/core/stats.js');
+    const A = { food: true } as any, N = { kcal: 2000, protein: 0, fat: 0, carbs: 0, water: 2000, steps: 10000, study: 60 } as any;
+    const lunch = { meals: 2, kcal: 900 } as any, over = { meals: 4, kcal: 3000 } as any;
+    expect(score(lunch, A, N, true)).toBeCloseTo(0.5, 1);   // 900 из 2000 — половина пути
+    expect(score(lunch, A, N, false)).toBe(0);              // закончился с 900 — мимо нормы
+    expect(score(over, A, N, true)).toBe(0);                // перебор сегодня — тоже мимо
+    expect(score({ meals: 3, kcal: 1950 } as any, A, N, true)).toBe(1);
+  });
+});

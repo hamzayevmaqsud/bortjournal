@@ -53,10 +53,15 @@ export function tracked(F: Map<string, F>, today: string): Areas {
   return { food: has(x => (x.meals ?? 0) > 0), water: has(x => (x.waterMl ?? 0) > 0), steps: has(x => (x.steps ?? 0) > 0), study: has(x => (x.studyMin ?? 0) > 0), tasks: has(x => (x.tasks ?? 0) > 0), quiz: has(x => (x.quizAnswered ?? 0) > 0) };
 }
 export const AREA_NAMES: Record<string, string> = { food: 'еда в норме', protein: 'белок', water: 'вода', steps: 'шаги', study: 'учёба', tasks: 'задачи', quiz: 'вопросы', gym: 'зал', read: 'чтение' };
-function parts(f: F | undefined, A: Areas, N: Norms): Array<[string, number]> {
+/**
+ * live — сегодняшний день ещё идёт: недобор калорий — это прогресс к норме, а не промах
+ * (иначе в 16:00 «еда в норме — 0%»); снижает оценку только перебор
+ */
+function parts(f: F | undefined, A: Areas, N: Norms, live = false): Array<[string, number]> {
   const out: Array<[string, number]> = [], kcal = f?.kcal ?? 0, meals = f?.meals ?? 0;
   if (A.food) {
-    out.push(['food', meals ? Math.max(0, 1 - Math.max(0, Math.abs(kcal / N.kcal - 1) - 0.1) * 3) : 0]);
+    const r = N.kcal ? kcal / N.kcal : 0, fit = Math.max(0, 1 - Math.max(0, Math.abs(r - 1) - 0.1) * 3);
+    out.push(['food', !meals ? 0 : live && r < 1 ? Math.min(1, r / 0.9) : fit]);
     if (N.protein) out.push(['protein', meals ? Math.min(1, (f?.protein ?? 0) / (N.protein * 0.9)) : 0]);
   }
   if (A.water) out.push(['water', Math.min(1, (f?.waterMl ?? 0) / N.water)]);
@@ -66,11 +71,13 @@ function parts(f: F | undefined, A: Areas, N: Norms): Array<[string, number]> {
   if (A.quiz && f?.quizTotal) out.push(['quiz', (f.quizAnswered ?? 0) / f.quizTotal]);
   return out;
 }
-export function score(f: F | undefined, A: Areas, N: Norms) {
-  const ps = parts(f, A, N), bonus = ((f?.workouts ?? 0) ? 0.1 : 0) + ((f?.pages ?? 0) ? 0.1 : 0);
+export function score(f: F | undefined, A: Areas, N: Norms, live = false) {
+  const ps = parts(f, A, N, live), bonus = ((f?.workouts ?? 0) ? 0.1 : 0) + ((f?.pages ?? 0) ? 0.1 : 0);
   if (!ps.length) return bonus ? Math.min(1, bonus * 3) : 0;
   return Math.min(1, ps.reduce((a, [, v]) => a + v, 0) / ps.length + bonus);
 }
+/** сегодня еда — «калории за день» (прогресс), в прошлые дни — «еда в норме» */
+const partName = (a: string, live: boolean) => live && a === 'food' ? 'калории за день' : AREA_NAMES[a];
 /** калории дня — как в старом журнале: в норме, если от 70% до 103% */
 export const kcalLevel = (kcal: number, norm: number) => { const r = norm ? kcal / norm : 0; return !kcal ? 'none' : r > 1.1 ? 'bad' : r > 1.03 ? 'warn' : r < 0.7 ? 'low' : 'good'; };
 
@@ -78,7 +85,7 @@ async function world(db: Tx, userId: string, at?: number) {
   const c = await context(db, userId, at);
   const F = await collect(db, userId, addDays(c.today, -1095), c.today);
   const first = [...F.keys()].filter(d => hasAny(F.get(d))).sort()[0] ?? c.today;
-  const A = tracked(F, c.today), sc = (d: string) => score(F.get(d), A, c.norms);
+  const A = tracked(F, c.today), sc = (d: string) => score(F.get(d), A, c.norms, d === c.today);
   const hist: string[] = []; for (let d = first; d <= c.today; d = addDays(d, 1)) hist.push(d);
   return { ...c, F, A, sc, first, hist };
 }
@@ -149,7 +156,7 @@ function calendar(w: World, month: string, frozen: ReadonlySet<string> = new Set
     const d = `${month}-${String(k).padStart(2, '0')}`, fut = d > w.today, f = w.F.get(d), s = fut ? null : w.sc(d);
     if (!fut && d < w.today && hasAny(f)) scores.push([d, s!]);
     if (!fut && hasAny(f)) logged++;
-    cells.push({ day: d, score: s === null ? null : pct(s), any: hasAny(f), parts: fut ? [] : parts(f, w.A, w.norms).map(([a, v]) => ({ area: a, name: AREA_NAMES[a], v: pct(v) })), gym: !!f?.workouts, pages: f?.pages ?? 0, frozen: frozen.has(d) });
+    cells.push({ day: d, score: s === null ? null : pct(s), any: hasAny(f), parts: fut ? [] : parts(f, w.A, w.norms, d === w.today).map(([a, v]) => ({ area: a, name: partName(a, d === w.today), v: pct(v) })), gym: !!f?.workouts, pages: f?.pages ?? 0, frozen: frozen.has(d) });
   }
   const pm = new Date(Date.UTC(y, m - 2, 1)), pk = `${pm.getUTCFullYear()}-${String(pm.getUTCMonth() + 1).padStart(2, '0')}`, plen = new Date(Date.UTC(pm.getUTCFullYear(), pm.getUTCMonth() + 1, 0)).getUTCDate();
   const prev: number[] = []; for (let k = 1; k <= plen; k++) { const d = `${pk}-${String(k).padStart(2, '0')}`; if (d < w.today && hasAny(w.F.get(d))) prev.push(w.sc(d)); }
@@ -256,7 +263,7 @@ async function dayDetail(db: Tx, userId: string, day: string) {
   const [b] = await db.select({ currency: budgets.currency }).from(budgets).where(eq(budgets.userId, userId));
   return {
     day, today: w.today, isToday: day === w.today, future: fut, any: hasAny(f), score: fut ? null : pct(w.sc(day)),
-    parts: fut ? [] : parts(f, w.A, N).map(([a, v]) => ({ area: a, name: AREA_NAMES[a], v: pct(v) })),
+    parts: fut ? [] : parts(f, w.A, N, day === w.today).map(([a, v]) => ({ area: a, name: partName(a, day === w.today), v: pct(v) })),
     norms: { kcal: N.kcal, protein: N.protein, water: N.water, steps: N.steps, study: N.study },
     facts: {
       meals: f?.meals ?? 0, kcal: Math.round(f?.kcal ?? 0), protein: Math.round(f?.protein ?? 0), kcalLevel: f?.meals ? kcalLevel(f.kcal ?? 0, N.kcal) : 'none',
@@ -281,7 +288,7 @@ async function overview(db: Tx, userId: string, month?: string) {
   return {
     today: t, enough: w.hist.filter(d => hasAny(w.F.get(d))).length >= 2,
         // avg7 — средняя оценка завершённых дней с записями из последних 7 (days7 — сколько их); пустые дни не тянут вниз
-    score: { now: pct(w.sc(t)), parts: parts(w.F.get(t), w.A, w.norms).map(([a, v]) => ({ area: a, name: AREA_NAMES[a], v: pct(v) })), avg7: last7.length ? pct(avg(last7.map(w.sc))) : null, days7: last7.length },
+    score: { now: pct(w.sc(t)), parts: parts(w.F.get(t), w.A, w.norms, t === w.today).map(([a, v]) => ({ area: a, name: partName(a, t === w.today), v: pct(v) })), avg7: last7.length ? pct(avg(last7.map(w.sc))) : null, days7: last7.length },
     nums: { active365: yearDays.filter(d => hasAny(w.F.get(d))).length + (hasAny(w.F.get(t)) ? 1 : 0), perfect365: yearDays.filter(d => w.sc(d) >= 0.95).length, streak: st.now, bestStreak: st.best, tiers: aw.total, freezes: st.freezes },
     calendar: calendar(w, month && /^\d{4}-\d{2}$/.test(month) && month <= t.slice(0, 7) ? month : t.slice(0, 7), frozen),
     last30: pct(sAvg(days(30, addDays(t, -1)))), prev30: pct(sAvg(days(30, addDays(t, -31)))),
