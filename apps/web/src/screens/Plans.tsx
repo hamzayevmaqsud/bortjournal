@@ -13,6 +13,7 @@ import { Icon } from '../components/Icon';
 import { HelpButton } from '../components/HelpButton';
 import { Sheet } from '../components/Sheet';
 import { Tasks } from '../components/Tasks';
+import { Habits } from '../components/Habits';
 import { useToast } from '../components/Toasts';
 
 interface Note { id: string; text: string; source: string; done: boolean; createdAt: string }
@@ -64,6 +65,7 @@ export function Plans({ today, sub, version, onAdd, onOpen, onPro, onChanged }: 
   const [items, setItems] = useState<TaskFull[] | null>(null), [overdue, setOverdue] = useState<TaskFull[]>([]), [goals, setGoals] = useState<Goal[]>([]), [weekGoals, setWeekGoals] = useState<Goal[]>([]), [v, setV] = useState(0);
   const [sheet, setSheet] = useState<null | { g?: Goal; kind: PeriodKind; key: string }>(null), [formParents, setFormParents] = useState<Goal[]>([]);
   const [notes, setNotes] = useState<Note[]>([]), [noteText, setNoteText] = useState(''), [title, setTitle] = useState(''), [busy, setBusy] = useState(false);
+  const [series, setSeries] = useState<Array<{ id: string; title: string; time: string | null; text: string }>>([]);
   const mon = mondayOf(day), sun = addDays(mon, 6);
   const gKey = periodKey(kind, anchor), [gFrom, gTo] = periodRange(kind, gKey);
   // задачи: неделя выбранного дня + без даты; цели: видимый период (или неделя — для сводки на вкладке задач)
@@ -71,8 +73,9 @@ export function Plans({ today, sub, version, onAdd, onOpen, onPro, onChanged }: 
   const load = useCallback(async () => {
     try { setItems((await api<{ items: TaskFull[] }>(`/api/plans/tasks?from=${from}&to=${to}`)).items); } catch { setItems([]); }
     api<{ items: Note[] }>('/api/plans/notes').then(r => setNotes(r.items), () => {});
+    if (pro) api<{ items: Array<{ id: string; title: string; time: string | null; text: string }> }>('/api/plans/series').then(r => setSeries(r.items), () => setSeries([]));
     // просроченные: последние 60 дней, не сделаны, не из повтора (повторы не копятся)
-    api<{ items: TaskFull[] }>(`/api/plans/tasks?from=${addDays(today, -60)}&to=${addDays(today, -1)}`).then(r => setOverdue(r.items.filter(t => t.day && !t.done && !t.repeat)), () => {});
+    api<{ items: TaskFull[] }>(`/api/plans/tasks?from=${addDays(today, -60)}&to=${addDays(today, -1)}`).then(r => setOverdue(r.items.filter(t => t.day && !t.done && !t.repeat && !t.parentId)), () => {});
     if (pro) {
       api<{ items: Goal[] }>(`/api/plans/goals?from=${from}&to=${to}`).then(r => setGoals(r.items), () => setGoals([]));
       api<{ items: Goal[] }>(`/api/plans/goals?from=${mon}&to=${sun}`).then(r => setWeekGoals(r.items.filter(g => g.period === 'week')), () => {});
@@ -95,10 +98,25 @@ export function Plans({ today, sub, version, onAdd, onOpen, onPro, onChanged }: 
     // «Позвонить маме завтра в 19:00» → завтра, 19:00, «Позвонить маме»; только время — в выбранный день (или сегодня)
     const w = parseWhen(t, today), day = w.day ?? (w.time ? d ?? today : d);
     try {
+      // «Зарядка каждый день в 7» — повтор: задачи на 14 дней вперёд появятся сами
+      if (w.repeat) {
+        if (!pro) { onPro('Цели и повторы'); return; }
+        const r = await api<{ text: string; made: number }>('/api/plans/series', { method: 'POST', body: { title: w.title, time: w.time, rule: w.repeat, startOn: w.day ?? d ?? today } });
+        setTitle(''); buzz([8, 30, 8]); changed(); toast(`«${w.title}» — ${r.text}${w.time ? ` в ${w.time}` : ''}`); return;
+      }
       await api('/api/plans/tasks', { method: 'POST', body: { title: w.title, day, time: w.time } }); setTitle(''); buzz([8, 30, 8]); changed();
       if (day !== d) toast(day ? `«${w.title}» → ${dayTitle(day, today).toLowerCase()}${w.time ? `, ${w.time}` : ''}` : `«${w.title}» — без даты`);
     }
     catch (e) { toast(e instanceof ApiError ? e.message : 'Не получилось', { err: true }); } finally { setBusy(false); }
+  };
+  // подзадача: в день родителя, дерево раскрывается само
+  const addSub = async (parentId: string, title: string) => {
+    try { await api('/api/plans/tasks', { method: 'POST', body: { title, parentId } }); buzz(8); changed(); }
+    catch (e) { toast(e instanceof ApiError ? e.message : 'Не получилось добавить подзадачу', { err: true }); }
+  };
+  const stopSeries = async (id: string, name: string) => {
+    try { await api(`/api/plans/series/${id}`, { method: 'DELETE' }); toast(`«${name}» больше не повторяется`); changed(); }
+    catch (e) { toast(e instanceof ApiError ? e.message : 'Не получилось', { err: true }); }
   };
   // перетаскивание задачи на день недели или в «Без даты» (мышью, на компьютере)
   const [over, setOver] = useState<string | null>(null);
@@ -129,33 +147,44 @@ export function Plans({ today, sub, version, onAdd, onOpen, onPro, onChanged }: 
 
   /* ---------- задачи ---------- */
   const tasksView = () => {
-    const week = Array.from({ length: 7 }, (_, i) => addDays(mon, i)), list = ofDay(day), undated = ofDay(null), done = list.filter(t => t.done).length;
+    const week = Array.from({ length: 7 }, (_, i) => addDays(mon, i)), list = ofDay(day), undated = ofDay(null), top = list.filter(t => !t.parentId), done = top.filter(t => t.done).length, undatedTop = undated.filter(t => !t.parentId).length;
     const wgDone = weekGoals.filter(g => g.progress >= 100).length;
     return <>
       <div className="wk-bar" data-tour="plans-week">
         <button className="nav" onClick={() => setDay(addDays(day, -7))} aria-label="Прошлая неделя"><Icon name="chevL" /></button>
-        <div className="wk" role="tablist">{week.map((d, i) => { const n = ofDay(d), dn = n.filter(t => t.done).length; return <button key={d} role="tab" aria-selected={d === day} className={`wk-d ${d === day ? 'on' : ''} ${d === today ? 'today' : ''} ${over === d ? 'drop' : ''}`} onClick={() => setDay(d)} {...drop(d)}>
+        <div className="wk" role="tablist">{week.map((d, i) => { const n = ofDay(d).filter(t => !t.parentId), dn = n.filter(t => t.done).length; return <button key={d} role="tab" aria-selected={d === day} className={`wk-d ${d === day ? 'on' : ''} ${d === today ? 'today' : ''} ${over === d ? 'drop' : ''}`} onClick={() => setDay(d)} {...drop(d)}>
           <span>{d === today ? 'сег' : WD[i]}</span><b>{parseDay(d).getUTCDate()}</b><i className={n.length && dn === n.length ? 'all' : ''}>{n.length ? `${dn}/${n.length}` : '·'}</i></button>; })}</div>
         <button className="nav" onClick={() => setDay(addDays(day, 7))} aria-label="Следующая неделя"><Icon name="chev" /></button>
       </div>
       {day === today && overdue.length > 0 && <div className="overdue"><span><b>Просрочено {overdue.length}</b> · {overdue.slice(0, 2).map(t => t.title).join(', ')}{overdue.length > 2 ? '…' : ''}</span><button className="btn-accent" onClick={moveOverdue}>На сегодня</button></div>}
+      {/* на компьютере две колонки: слева день (задачи и привычки), справа цели недели, без даты, повторы и заметки */}
+      <div className="plans-cols"><div className="plans-left">
       <section className="panel day-panel" data-tour="plans-day">
-        <div className="panel-h"><h2 className="day-title">{dayTitle(day, today)}</h2><small>{list.length ? `${done} из ${list.length}` : ''}</small></div>
+        <div className="panel-h"><h2 className="day-title">{dayTitle(day, today)}</h2><small>{top.length ? `${done} из ${top.length}` : ''}</small></div>
         <form className="task-add" data-tour="plans-add" onSubmit={e => { e.preventDefault(); addTask(day); }}>
           <input className="in" value={title} onChange={e => setTitle(e.target.value)} placeholder="Новая задача…" aria-label="Новая задача" enterKeyHint="done" />
           <button type="button" className="more-btn" onClick={() => onAdd(day)} aria-label="Время, повтор, цель, заметка" title="Время, повтор, цель, заметка">•••</button>
           <button className="primary" disabled={!title.trim() || busy} aria-label="Добавить"><Icon name="plus" /></button>
         </form>
-        {items === null ? <div className="skel" style={{ height: 90 }} /> : <Tasks draggable tasks={list} onToggle={toggle} onOpen={id => { const t = list.find(x => x.id === id); if (t) onOpen(t); }} empty={day === today ? 'На сегодня задач нет — добавь первую выше.' : 'На этот день задач нет.'} />}
+        {items === null ? <div className="skel" style={{ height: 90 }} /> : <Tasks draggable tasks={list} onAddSub={addSub} onToggle={toggle} onOpen={id => { const t = list.find(x => x.id === id); if (t) onOpen(t); }} empty={day === today ? 'На сегодня задач нет — добавь первую выше.' : 'На этот день задач нет.'} />}
       </section>
+      <Habits day={day} today={today} isToday={day === today} />
+      </div><div className="plans-right">
       {pro && <button className="goal-sum" data-tour="plans-goals" onClick={() => openGoals('week', day)}>
         <span className="chip-ic" style={{ ['--c' as string]: 'var(--orange)' }}><Icon name="target" /></span>
         <span className="mid"><b>Цели недели</b><small>{weekGoals.length ? `${wgDone} из ${weekGoals.length} выполнено · ${weekGoals.slice(0, 2).map(g => g.title).join(', ')}` : 'поставь 1–3 цели на неделю'}</small></span><Icon name="chev" className="ic chev" /></button>}
       <section className={`panel ${over === 'none' ? 'drop' : ''}`} {...drop(null)}>
-        <div className="panel-h"><h2>Без даты</h2><small>{undated.length ? `${undated.length} ${plural(undated.length, 'задача', 'задачи', 'задач')}` : ''}</small></div>
-        <Tasks draggable tasks={undated} onToggle={toggle} onOpen={id => { const t = undated.find(x => x.id === id); if (t) onOpen(t); }} empty="То, что сделать когда-нибудь." />
+        <div className="panel-h"><h2>Без даты</h2><small>{undatedTop ? `${undatedTop} ${plural(undatedTop, 'задача', 'задачи', 'задач')}` : ''}</small></div>
+        <Tasks draggable tasks={undated} onAddSub={addSub} onToggle={toggle} onOpen={id => { const t = undated.find(x => x.id === id); if (t) onOpen(t); }} empty="То, что сделать когда-нибудь." />
         <button className="add-row" onClick={() => onAdd(null)}><Icon name="plus" />Задача без даты</button>
       </section>
+      {series.length > 0 && <section className="panel series-panel">
+        <div className="panel-h"><h2>Повторяются</h2><small>{series.length}</small></div>
+        <div className="series-l">{series.map(x => <div key={x.id} className="series-r">
+          <Icon name="repeat" className="ic" /><span className="mid"><b>{x.title}</b><small>{x.text}{x.time ? ` · ${x.time.slice(0, 5)}` : ''}</small></span>
+          <button className="ico" aria-label={`Перестать повторять «${x.title}»`} title="Перестать повторять" onClick={() => stopSeries(x.id, x.title)}><Icon name="trash" /></button></div>)}</div>
+        <p className="hint" style={{ textAlign: 'left', margin: '6px 2px 0' }}>Новый повтор — прямо в строке задачи: «Зарядка каждый день в 7», «Бассейн по вторникам и четвергам».</p>
+      </section>}
       <section className="panel">
         <div className="panel-h"><h2>Заметки</h2><small>{notes.filter(n => !n.done).length || ''}</small></div>
         {notes.length ? <div className="notes-l">{notes.map(n => <div key={n.id} className={`note-r ${n.done ? 'done' : ''}`}>
@@ -168,6 +197,7 @@ export function Plans({ today, sub, version, onAdd, onOpen, onPro, onChanged }: 
           <button className="primary" disabled={!noteText.trim()} aria-label="Добавить заметку"><Icon name="plus" /></button>
         </form>
       </section>
+      </div></div>
     </>;
   };
 

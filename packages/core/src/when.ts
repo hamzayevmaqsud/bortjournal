@@ -2,9 +2,11 @@
  * «Когда» из текста задачи на русском: «Позвонить маме завтра в 19:00» → день завтра, время 19:00, название «Позвонить маме».
  * Понимает: сегодня / завтра / послезавтра, «в пятницу», «через 3 дня», «через неделю», «25 октября», «25.10»;
  * время «в 19:00», «в 19.30», «в 19», «в 7 вечера», «в 9 утра», «в полдень», «19:30».
+ * Повтор: «каждый день», «по будням», «по выходным», «каждую пятницу», «по понедельникам и средам», «каждую неделю», «каждый месяц».
  * Без даты, но со временем — день остаётся тем, куда добавляют. Ничего не нашлось — текст как есть.
  */
 import { addDays } from './dates.js';
+import type { RepeatRule } from './periods.js';
 
 const DOW: Array<[RegExp, number]> = [
   [/понедельник\w*|пн/, 1], [/вторник\w*|вт/, 2], [/сред[уаы]|ср/, 3], [/четверг\w*|чт/, 4],
@@ -17,11 +19,29 @@ const dowOf = (day: string) => new Date(`${day}T12:00:00Z`).getUTCDay();
 const B = '(?<![\\p{L}\\d])', E = '(?![\\p{L}\\d])';
 const re = (src: string) => new RegExp(`${B}(?:${src})${E}`, 'iu');
 
-export interface When { title: string; day: string | null; time: string | null }
+export interface When { title: string; day: string | null; time: string | null; repeat?: RepeatRule }
+
+// дни недели во множественном («по средам») и винительном («каждую среду»): номер как у Date.getUTCDay
+const DOW_FORMS: Array<[string, number]> = [['понедельник', 1], ['вторник', 2], ['сред', 3], ['четверг', 4], ['пятниц', 5], ['суббот', 6], ['воскресень', 0]];
+const dowIn = (word: string) => DOW_FORMS.find(([stem]) => word.toLowerCase().startsWith(stem))?.[1];
 
 export function parseWhen(text: string, today: string): When {
-  let s = ` ${text} `, day: string | null = null, time: string | null = null;
+  let s = ` ${text} `, day: string | null = null, time: string | null = null, repeat: RepeatRule | undefined;
   const cut = (m: RegExpExecArray) => { s = s.slice(0, m.index) + ' ' + s.slice(m.index + m[0].length); };
+
+  // повтор — первым, чтобы «каждую пятницу» не читалось как «в пятницу»
+  let m0: RegExpExecArray | null;
+  const W = '(понедельник\\p{L}*|вторник\\p{L}*|сред\\p{L}*|четверг\\p{L}*|пятниц\\p{L}*|суббот\\p{L}*|воскресень\\p{L}*)';
+  if ((m0 = re('каждый\\s+день|ежедневно|каждодневно').exec(s))) { repeat = { kind: 'daily' }; cut(m0); }
+  else if ((m0 = re('по\\s+будням|в\\s+будни').exec(s))) { repeat = { kind: 'weekdays' }; cut(m0); }
+  else if ((m0 = re('по\\s+выходным|в\\s+выходные').exec(s))) { repeat = { kind: 'days', days: [6, 0] }; cut(m0); }
+  else if ((m0 = re('каждую\\s+неделю|еженедельно|раз\\s+в\\s+неделю').exec(s))) { repeat = { kind: 'weekly' }; cut(m0); }
+  else if ((m0 = re('каждый\\s+месяц|ежемесячно|раз\\s+в\\s+месяц').exec(s))) { repeat = { kind: 'monthly' }; cut(m0); }
+  else if ((m0 = re(`(?:каждый|каждую|каждое)\\s+${W}`).exec(s))) { repeat = { kind: 'days', days: [dowIn(m0[1]!)!] }; cut(m0); }
+  else if ((m0 = re(`по\\s+${W}(?:(?:\\s*,\\s*|\\s+и\\s+)${W})*`).exec(s))) {
+    const days = [...m0[0].matchAll(new RegExp(W, 'giu'))].map(x => dowIn(x[1]!)).filter((d): d is number => d !== undefined);
+    if (days.length) { repeat = { kind: 'days', days: [...new Set(days)] }; cut(m0); }
+  }
 
   // время: «в 7 вечера», «в 9:30 утра», «в 19:00», «в 19.30», «в 19 часов», «в полдень», «19:30»
   let m = re('(?:в|к)\\s+полдень').exec(s);
@@ -60,7 +80,7 @@ export function parseWhen(text: string, today: string): When {
   }
 
   const title = s.replace(/\s+/g, ' ').replace(/\s+([,.!?])/g, '$1').replace(/^[\s,.\-–—]+|[\s,\-–—]+$/g, '').trim();
-  return title && (day || time) ? { title, day, time } : { title: text.trim(), day: null, time: null };
+  return title && (day || time || repeat) ? { title, day, time, ...(repeat ? { repeat } : {}) } : { title: text.trim(), day: null, time: null };
 }
 
 /** ближайшая будущая (или сегодняшняя) дата с таким днём и месяцем; неверная дата — null */

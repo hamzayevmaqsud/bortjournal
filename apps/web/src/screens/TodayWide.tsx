@@ -43,6 +43,8 @@ function Big({ v, of, unit, dec, dec2 }: { v: number; of?: string; unit?: string
 /** «Оценка дня» на «Сегодня»: процент дня и что осталось — конкретно (ккал, литры, шаги, задачи); то же, что в статистике */
 interface DayDetail { isToday: boolean; future: boolean; score: number | null; parts: Array<{ area: string; name: string; v: number }>;
   norms: { kcal: number; protein: number; water: number; steps: number; study: number }; facts: { kcal: number; protein: number; meals: number; waterMl: number; steps: number; tasks: number; tasksDone: number; studyMin: number; quizTotal: number; quizAnswered: number } }
+/** цвет полоски — цвет раздела (как на шкале дня), чтобы оценка не сливалась с карточкой «Еда» */
+const PART_C: Record<string, string> = { food: 'var(--food)', protein: 'var(--c-prot)', water: 'var(--water)', steps: 'var(--steps)', study: 'var(--study)', tasks: 'var(--navy)', quiz: 'var(--quiz)' };
 function DayScore({ day, version }: { day: string; version: string }) {
   const [d, setD] = useState<DayDetail | null>(null);
   useEffect(() => { let live = true; api<DayDetail>(`/api/stats/day?day=${day}`).then(x => { if (live) setD(x); }, () => {}); return () => { live = false; }; }, [day, version]);
@@ -62,10 +64,10 @@ function DayScore({ day, version }: { day: string; version: string }) {
   return <section className="wc c-score span7">
     <div className="card-head"><h2>Оценка дня</h2><span className="count">{d.isToday ? 'день ещё идёт' : 'итог дня'}</span></div>
     <div className="ds-row">
-      <RingBox v={d.score} max={100} color="var(--orange)" />
+      <RingBox v={d.score} max={100} color="var(--good)" />
       <div className="ds-meta">
         <p className="ds-line">{line}</p>
-        <div className="ds-parts">{d.parts.map(p => <span key={p.area} className={p.v >= 99 ? 'ok' : ''} style={{ ['--w' as string]: `${Math.max(3, p.v)}%` }}><b>{p.v >= 99 ? '✓' : `${p.v}%`}</b>{p.name}</span>)}</div>
+        <div className="ds-parts">{d.parts.map(p => <span key={p.area} className={p.v >= 99 ? 'ok' : ''} style={{ ['--w' as string]: `${Math.max(3, p.v)}%`, ['--c' as string]: PART_C[p.area] ?? 'var(--good)' }}><b>{p.v >= 99 ? '✓' : `${p.v}%`}</b>{p.name}</span>)}</div>
       </div>
     </div>
   </section>;
@@ -148,6 +150,12 @@ export function TodayWide({ wide = true, data, day, today, sub, still, settings 
     // «завтра в 19:00», «в пятницу» — задача уходит в свой день и время; в этот день — сразу видна в списке
     const w = parseWhen(t, day), to = w.day ?? day;
     try {
+      // «Зарядка каждый день в 7» — повтор (Pro): задачи появятся на 14 дней вперёд
+      if (w.repeat) {
+        if (!can(sub, 'Цели и повторы')) { onPro('Цели и повторы'); return; }
+        const r = await api<{ text: string }>('/api/plans/series', { method: 'POST', body: { title: w.title, time: w.time, rule: w.repeat, startOn: w.day ?? day } });
+        setTitle(''); onTaskAdded(w.title); toast(`«${w.title}» — ${r.text}${w.time ? ` в ${w.time}` : ''}`); return;
+      }
       await api('/api/plans/tasks', { method: 'POST', body: { title: w.title, day: to, time: w.time } }); setTitle('');
       if (to === day) onTaskAdded(w.title); else toast(`«${w.title}» → ${to === addDays(day, 1) ? 'завтра' : to.slice(8, 10) + '.' + to.slice(5, 7)}${w.time ? `, ${w.time}` : ''}`);
     }

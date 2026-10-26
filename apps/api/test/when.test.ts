@@ -28,3 +28,21 @@ describe('parseWhen', () => {
     expect(parseWhen('Встреча 25:99', T)).toEqual({ title: 'Встреча 25:99', day: null, time: null });
   });
 });
+
+describe('parseWhen: повтор', () => {
+  it('каждый день, по будням, по выходным, каждую неделю и месяц', () => {
+    expect(parseWhen('Зарядка каждый день в 7 утра', T)).toEqual({ title: 'Зарядка', day: null, time: '07:00', repeat: { kind: 'daily' } });
+    expect(parseWhen('Планёрка по будням в 10:00', T)).toMatchObject({ title: 'Планёрка', time: '10:00', repeat: { kind: 'weekdays' } });
+    expect(parseWhen('Уборка по выходным', T).repeat).toEqual({ kind: 'days', days: [6, 0] });
+    expect(parseWhen('Оплатить интернет каждый месяц', T)).toMatchObject({ title: 'Оплатить интернет', repeat: { kind: 'monthly' } });
+    expect(parseWhen('Созвон еженедельно', T).repeat).toEqual({ kind: 'weekly' });
+  });
+  it('дни недели: каждую пятницу, по понедельникам и средам', () => {
+    expect(parseWhen('Бассейн каждую пятницу в 19', T)).toEqual({ title: 'Бассейн', day: null, time: '19:00', repeat: { kind: 'days', days: [5] } });
+    expect(parseWhen('Английский по понедельникам и средам', T)).toMatchObject({ title: 'Английский', repeat: { kind: 'days', days: [1, 3] } });
+    expect(parseWhen('Зал по вторникам, четвергам и субботам в 18:30', T)).toEqual({ title: 'Зал', day: null, time: '18:30', repeat: { kind: 'days', days: [2, 4, 6] } });
+  });
+  it('без повтора слова не трогает', () => {
+    expect(parseWhen('Купить подарок каждому', T)).toEqual({ title: 'Купить подарок каждому', day: null, time: null });
+  });
+});

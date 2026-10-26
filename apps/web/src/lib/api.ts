@@ -148,7 +148,7 @@ export interface Subscription { pro: boolean; source: 'trial' | 'web' | 'apple' 
 export interface Profile { sex: string | null; age: number | null; heightCm: number | null; goal: string | null; pace?: string | null; targetKg: number | null; startWeightKg: number | null; settings: Record<string, any> }
 export interface Me { admin?: boolean; /** демо без регистрации: удалится в demoUntil, пока не сохранено как аккаунт */ demo?: boolean; demoUntil?: string | null; username: string; tzOffset: number; modules: string[]; subscription: Subscription; profile: Profile | null }
 export interface PlanResult { kcal: number; protein: number; fat: number; carbs: number; weeklyKg: number; tdee: number; bmi: number; notes: string[]; weeks: number | null; water: number; steps: number }
-export interface TaskFull { id: string; title: string; day: string | null; time: string | null; done: boolean; prio: boolean; note: string | null; repeat: boolean; seriesId?: string | null; goalId?: string | null }
+export interface TaskFull { id: string; title: string; day: string | null; time: string | null; done: boolean; prio: boolean; note: string | null; repeat: boolean; seriesId?: string | null; goalId?: string | null; parentId?: string | null }
 export interface Goal { id: string; period: "week" | "month" | "quarter" | "year"; periodKey: string; title: string; note: string | null; done: boolean; parentId: string | null; progress: number; tasks: number; tasksDone: number; kids: number }
 export interface Meal { source?: string; id: string; day: string; time: string | null; slot: string | null; name: string; kcal: number; protein: number; fat: number; carbs: number }
 export interface Drink { id: string; day: string; time: string | null; type: string; ml: number; title: string; kcal: number; name: string | null; kcalPer100: number | null; sugarPer100: number | null }
@@ -156,7 +156,8 @@ export interface DayEvent { id: string | null; module: string; kind: string; tim
 /** своя привычка на выбранный день: last7 — [день−6 … день] */
 export interface Habit { id: string; title: string; icon: string | null; color: string | null; sort: number; done: boolean; streak: number; last7: boolean[] }
 export interface HabitsDay { day: string; today: string; limit: number; items: Habit[] }
-export interface Task { id: string; title: string; time: string | null; done: boolean; prio: boolean; repeat: boolean }
+/** parentId — подзадача (в «Планах» приходит всё дерево дня); sub — на «Сегодня»: сколько подзадач и сколько сделано */
+export interface Task { id: string; title: string; time: string | null; done: boolean; prio: boolean; repeat: boolean; parentId?: string | null; sub?: { n: number; done: number } | null }
 export interface CalEvent { id: string; title: string; time: string | null; minutes: number | null }
 export interface Today {
   day: string; now: { day: string; hm: string; minutes: number }; isToday: boolean; name: string | null;

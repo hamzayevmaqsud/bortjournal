@@ -1,6 +1,6 @@
 /** Планы: цели по периодам, задачи и правила повторов */
 import { sql } from 'drizzle-orm';
-import { boolean, date, index, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
+import { type AnyPgColumn, boolean, date, index, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 import { createdAt, hhmm, id, legacyId, owner, updatedAt } from '../../db/columns.js';
 
 export const goals = pgTable('plan_goals', {
@@ -43,11 +43,14 @@ export const tasks = pgTable('plan_tasks', {
   prio: boolean('prio').notNull().default(false),
   goalId: uuid('goal_id'),
   seriesId: uuid('series_id').references(() => taskSeries.id, { onDelete: 'set null' }),
+  /** подзадача: родительская задача (вложенность — в несколько уровней); день — как у родителя, удаляется вместе с ним */
+  parentId: uuid('parent_id').references((): AnyPgColumn => tasks.id, { onDelete: 'cascade' }),
   note: text('note'),
   createdOn: date('created_on', { mode: 'string' }),
   createdAt: createdAt(), updatedAt: updatedAt()
 }, t => [
   index('plan_tasks_user_day_idx').on(t.userId, t.day),
+  index('plan_tasks_parent_idx').on(t.parentId),
   uniqueIndex('plan_tasks_legacy_uq').on(t.userId, t.legacyId).where(sql`${t.legacyId} is not null`),
   /** один повтор серии в день — защита от дублей между устройствами */
   uniqueIndex('plan_tasks_series_day_uq').on(t.seriesId, t.day).where(sql`${t.seriesId} is not null`)

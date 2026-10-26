@@ -2271,9 +2271,49 @@ input::placeholder,textarea::placeholder{color:var(--text-3);font-style:italic;o
 .c-score .ds-line{margin:0;font-weight:600;font-size:var(--fs-base);color:var(--text);line-height:1.45}
 .c-score .ds-parts{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px 14px}
 .c-score .ds-parts span{display:flex;align-items:baseline;gap:6px;padding-bottom:7px;font-size:var(--fs-sm);color:var(--text-2);
-  background:linear-gradient(var(--orange),var(--orange)) 0 100%/var(--w) 3px no-repeat,linear-gradient(var(--track),var(--track)) 0 100%/100% 3px no-repeat}
+  background:linear-gradient(var(--c,var(--good)),var(--c,var(--good))) 0 100%/var(--w) 3px no-repeat,linear-gradient(var(--track),var(--track)) 0 100%/100% 3px no-repeat}
 .c-score .ds-parts span b{color:var(--text);font:700 var(--fs-sm) var(--display)}
-.c-score .ds-parts span.ok{background:linear-gradient(var(--good),var(--good)) 0 100%/100% 3px no-repeat}
+.c-score .ds-parts span.ok{background:linear-gradient(var(--c,var(--good)),var(--c,var(--good))) 0 100%/100% 3px no-repeat}
 .c-score .ds-parts span.ok b{color:var(--good)}
 .narrow .c-score{order:0}
 @media (max-width:600px){.c-score .ds-row{align-items:flex-start}}
+/* подзадачи: деревом под задачей, отступ по уровню; «2/4» раскрывает, «+» — добавить */
+.task-wrap{display:flex;flex-direction:column;gap:6px}
+.subs{display:flex;flex-direction:column;gap:6px}
+.task.sub{margin-left:calc(var(--d,1) * 26px);min-height:44px;background:color-mix(in srgb,var(--field) 70%,transparent)}
+.task.sub .tt{font-weight:500}
+.sub-n{display:inline-flex;align-items:center;gap:2px;flex:none;padding:2px 6px 2px 8px;border-radius:999px;background:var(--track);color:var(--text-2);font:700 12px var(--display)}
+.sub-n.all{background:color-mix(in srgb,var(--good) 18%,transparent);color:var(--good)}
+.sub-n .ic{width:14px;height:14px;transform:rotate(90deg);transition:transform .2s}
+.sub-n .ic.up{transform:rotate(-90deg)}
+.sub-add{flex:none;width:30px;height:30px;display:grid;place-items:center;border-radius:9px;color:var(--text-3);opacity:0;transition:opacity .15s,background .15s}
+.task:hover .sub-add,.sub-add:focus-visible{opacity:1}
+.sub-add:hover{background:var(--track);color:var(--text)}
+.sub-add .ic{width:16px;height:16px}
+@media (hover:none){.sub-add{opacity:.6}}
+.sub-form{display:flex;gap:8px;margin-left:calc(var(--d,1) * 26px)}
+.sub-form .in{flex:1;min-height:42px}
+.sub-form .primary{width:42px;min-height:42px;padding:0;display:grid;place-items:center}
+/* «Планы» → «Задачи»: на телефоне одна лента, на компьютере две колонки — день (задачи, привычки) и остальное */
+.plans-cols,.plans-left,.plans-right{display:contents}
+.app.wide .plans-page>.plans-cols{grid-column:1/-1;display:grid;grid-template-columns:1.25fr 1fr;gap:16px;align-items:start}
+.app.wide .plans-left,.app.wide .plans-right{display:flex;flex-direction:column;gap:16px;min-width:0}
+.app.wide .plans-left>.c-habits{width:100%}
+/* повторяющиеся задачи */
+.series-l{display:flex;flex-direction:column}
+.series-r{display:flex;align-items:center;gap:12px;min-height:52px;padding:6px 2px}
+.series-r+.series-r{border-top:1px solid var(--line)}
+.series-r>.ic{width:18px;height:18px;color:var(--orange);flex:none}
+.series-r .mid{display:flex;flex-direction:column;gap:2px;flex:1;min-width:0}
+.series-r .mid small{color:var(--text-3);font-size:var(--fs-xs)}
+/* «Оценка дня» отличается от «Еды»: зелёное кольцо, мягкая зелёная подложка */
+.c-score{background:color-mix(in srgb,var(--good) 7%,var(--card))}
+/* компьютер: без телефонного — экраны меняются мягко на месте, без сдвига вбок; плитки «Еды» без обрезанных подписей; «Начать тренировку» ровно */
+.app.wide .screen[data-pos="left"],.app.wide .screen[data-pos="right"]{transform:none}
+.app.wide .add-tile .mid b,.app.wide .add-tile .mid small{white-space:normal;overflow:hidden;text-overflow:clip}
+.app.wide .add-tile .mid small{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.app.wide .add-tile{align-items:flex-start;min-height:88px}
+.gym-start span{display:revert}
+.gym-start>span:not(.gi){display:flex;flex-direction:column;min-width:0}
+/* «Ещё» на компьютере: строки в две колонки */
+@media (min-width:1200px){.app.wide .more-page .rows{display:grid;grid-template-columns:1fr 1fr;column-gap:12px}}

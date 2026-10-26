@@ -333,6 +333,19 @@ export function App() {
     try { sessionStorage.setItem('bj-tab', name); } catch { /* без памяти */ }
   };
   goRef.current = go;
+  // компьютер: горячие клавиши — N «Записать», 1–7 разделы по порядку меню; не мешают набору текста и сочетаниям
+  useEffect(() => {
+    if (!wide) return;
+    const KEYS: Record<string, string> = { n: 'add', т: 'add', '1': 'today', '2': 'plans', '3': 'food', '4': 'study', '5': 'gym', '6': 'budget', '7': 'books' };
+    const on = (e: KeyboardEvent) => {
+      if (e.metaKey || e.ctrlKey || e.altKey || e.repeat || sheetOpenRef.current) return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
+      const to = KEYS[e.key.toLowerCase()]; if (!to) return;
+      e.preventDefault(); goRef.current(to);
+    };
+    addEventListener('keydown', on); return () => removeEventListener('keydown', on);
+  }, [wide]);
   useEffect(() => {
     const onPop = (e: PopStateEvent) => {
       if (sheetOpenRef.current) { sheetOpenRef.current = false; setSheetOpen(false); return; }
@@ -496,7 +509,7 @@ export function App() {
           <b>Lumi</b>
           <button type="button" className="side-fold" onClick={toggleSide} aria-label={sideMini ? 'Развернуть меню' : 'Свернуть меню'} title={sideMini ? 'Развернуть меню' : 'Свернуть меню'} aria-expanded={!sideMini}><Icon name={sideMini ? 'chev' : 'chevL'} /></button>
         </div>
-        <button className="side-add" title="Записать" aria-label="Записать" onClick={() => go('add')}><Icon name="plus" /><span>Записать</span></button>
+        <button className="side-add" title="Записать · клавиша N" aria-label="Записать" aria-keyshortcuts="N" onClick={() => go('add')}><Icon name="plus" /><span>Записать</span></button>
         <div className="side-list">
           {item(['today', 'today', 'Сегодня'])}{item(['plans', 'plans', 'Планы'])}
           {mine.map(item)}
@@ -505,6 +518,7 @@ export function App() {
           {rest.length > 0 && <><p className="side-h">Другие разделы</p>{rest.map(item)}</>}
         </div>
         <div className="side-foot">
+          {item(['settings', 'gear', 'Настройки'])}
           {item(['more', 'more', 'Ещё'])}
           <button className="side-i side-me" title="Профиль" aria-label="Профиль" aria-current={tab === 'profile' ? 'page' : undefined} onClick={() => go('profile')}><span className="side-ava">{(me.profile?.settings?.name || me.username).slice(0, 1).toUpperCase()}</span><span>{me.profile?.settings?.name || me.username}</span></button>
         </div>

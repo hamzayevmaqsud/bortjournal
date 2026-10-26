@@ -48,12 +48,12 @@ const IN_DOCK = new Set(['goal', 'gym', 'study', 'budget', 'books', 'stats']);
 export function More({ me, wide = false, desk, onDesk, onLooks, summary = {}, onPaywall, onPro, onProfile, onSettings, onInstall, onLogout, onFeedback, onWhatsNew, onAdmin, onTour }: { me: Me; wide?: boolean; desk?: 'side' | 'old'; onDesk?: (v: 'side' | 'old') => void; onLooks?: () => void; summary?: MoreSummary; onWhatsNew?: () => void; onTour?: () => void; onFeedback?: () => void; onAdmin?: () => void; onPaywall: (focus?: string) => void; onPro: (what: string) => void; onProfile: () => void; onSettings: () => void; onInstall: () => void; onLogout: () => void; onSaved?: (s: Record<string, unknown>) => void }) {
   const s = me.profile?.settings ?? {}, sub = me.subscription, [pw, setPw] = useState(false);
   return <div className="day more-page">
-    <header className="dayhead"><div className="daytitle"><span>ещё</span><b>{s.name || me.username}</b></div><HelpButton tour="more" /></header>
-    <button className="profile-card" data-tour="more-profile" onClick={onProfile} aria-label="Профиль">
+    <header className="dayhead"><div className="daytitle"><span>{wide ? 'настройки и помощь' : 'ещё'}</span><b>{wide ? 'Ещё' : s.name || me.username}</b></div><HelpButton tour="more" /></header>
+    {!wide && <button className="profile-card" data-tour="more-profile" onClick={onProfile} aria-label="Профиль">
       <span className="avatar">{(s.name || me.username).slice(0, 1).toUpperCase()}</span>
       <span className="mid"><b>{s.name || me.username}</b><small>{fmt(s.kcal ?? 2000)} ккал{s.protein ? ` · белок ${fmt(s.protein)} г` : ''} · {fmt1((s.water ?? 2000) / 1000)} л · {fmt(s.steps ?? 8000)} шагов</small></span>
       <Icon name="chev" className="ic chev" />
-    </button>
+    </button>}
     <button className="settings-card" data-tour="more-settings" onClick={onSettings}>
       <span className="chip-ic" style={{ ['--c' as string]: 'var(--text-2)' }}><Icon name="gear" /></span>
       <span className="mid"><b>Настройки</b><small>нормы на день, разделы, тема, напоминания, Google Календарь, Obsidian</small></span>
@@ -78,7 +78,7 @@ export function More({ me, wide = false, desk, onDesk, onLooks, summary = {}, on
       {onTour && <button className="row" data-tour="more-tour" onClick={onTour}><span className="chip-ic" style={{ ['--c' as string]: 'var(--steps)' }}><Icon name="quiz" /></span><span className="mid"><b>Как пользоваться Lumi</b><small>короткая экскурсия по главному — за минуту</small></span><Icon name="chev" className="ic chev" /></button>}
       {onFeedback && <button className="row" data-tour="more-feedback" onClick={onFeedback}><span className="chip-ic" style={{ ['--c' as string]: 'var(--orange)' }}><Icon name="edit" /></span><span className="mid"><b>Написать разработчику</b><small>что понравилось, что мешает, где ошибка</small></span><Icon name="chev" className="ic chev" /></button>}
       {me.admin && onAdmin && <button className="row" onClick={onAdmin}><span className="chip-ic" style={{ ['--c' as string]: 'var(--study)' }}><Icon name="stats" /></span><span className="mid"><b>Админка</b><small>пользователи, активность, ИИ, отзывы</small></span><Icon name="chev" className="ic chev" /></button>}
-      {!installed() && <button className="row" onClick={onInstall}><span className="chip-ic" style={{ ['--c' as string]: 'var(--water)' }}><Icon name="plus" /></span><span className="mid"><b>Установить на телефон</b><small>как приложение, с иконкой на экране</small></span><Icon name="chev" className="ic chev" /></button>}
+      {!wide && !installed() && <button className="row" onClick={onInstall}><span className="chip-ic" style={{ ['--c' as string]: 'var(--water)' }}><Icon name="plus" /></span><span className="mid"><b>Установить на телефон</b><small>как приложение, с иконкой на экране</small></span><Icon name="chev" className="ic chev" /></button>}
       <button className="row" onClick={() => setPw(true)}><span className="chip-ic" style={{ ['--c' as string]: 'var(--orange)' }}><Icon name="edit" /></span><span className="mid"><b>Сменить пароль</b><small>другие устройства выйдут из аккаунта</small></span><Icon name="chev" className="ic chev" /></button>
       <a className="row" href="/api/export" download><span className="chip-ic" style={{ ['--c' as string]: 'var(--steps)' }}><Icon name="file" /></span><span className="mid"><b>Выгрузить мои данные</b><small>всё, что записано, — одним файлом JSON</small></span><Icon name="chev" className="ic chev" /></a>
       <button className="row" onClick={onLogout}><span className="chip-ic" style={{ ['--c' as string]: 'var(--bad)' }}><Icon name="logout" /></span><span className="mid"><b>Выйти</b><small>{me.username}</small></span></button>

@@ -120,6 +120,11 @@ export async function goalRoutes(app: FastifyInstance, { db }: { db: DB }) {
     return { title, time: hmParam(b.time), prio: !!b.prio, note: String(b.note ?? '').trim().slice(0, 2000) || null, goalId: (await ownGoal(userId, b.goalId))?.id ?? null, rule: ruleOf(b.rule) };
   };
   const pubSeries = (s: typeof taskSeries.$inferSelect) => ({ id: s.id, title: s.title, time: s.time, prio: s.prio, note: s.note, goalId: s.goalId, rule: s.rule, startOn: s.startOn, text: repeatText(s) });
+  // все повторы — для списка «Повторяются» в «Планах» (закончившиеся — нет)
+  app.get('/series', { preHandler }, async req => {
+    const rows = await db.select().from(taskSeries).where(and(eq(taskSeries.userId, uid(req)), sql`(${taskSeries.endOn} is null or ${taskSeries.endOn} >= current_date)`)).orderBy(sql`${taskSeries.time} nulls last`, taskSeries.title);
+    return { items: rows.map(pubSeries) };
+  });
   app.get('/series/:id', { preHandler }, async (req, reply) => {
     const [s] = await db.select().from(taskSeries).where(and(eq(taskSeries.userId, uid(req)), eq(taskSeries.id, idParam((req.params as any).id))));
     return s ? pubSeries(s) : notFound(reply);
