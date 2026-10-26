@@ -203,7 +203,7 @@ function SessionForm({ s, today, cats, onDone }: { s?: any; today: string; cats:
   }}>
     <label className="fld"><span>Тема</span><input className="in" required autoComplete="off" placeholder="Делегаты и события в C#" value={v.topic} onChange={e => setV({ ...v, topic: e.target.value })} /></label>
     <div className="fld"><span>Направление</span><div className="chips">{cats.slice(0, 12).map(c => <button type="button" key={c} className={`chip ${v.category === c ? 'on' : ''}`} onClick={() => setV({ ...v, category: v.category === c ? '' : c })}>{c}</button>)}</div></div>
-    <div className="grid4f"><label className="fld"><span>Минут</span><input className="in" inputMode="numeric" placeholder="45" value={v.minutes} onChange={e => setV({ ...v, minutes: e.target.value })} /></label>
+    <div className="grid4f"><label className="fld"><span>Минут</span><input className="in" inputMode="numeric" placeholder="напр. 45" value={v.minutes} onChange={e => setV({ ...v, minutes: e.target.value })} /></label>
       <label className="fld"><span>Время</span><input className="in" type="time" value={v.time ?? ''} onChange={e => setV({ ...v, time: e.target.value })} /></label>
       <label className="fld" style={{ gridColumn: 'span 2' }}><span>Дата</span><input className="in" type="date" value={v.day} onChange={e => setV({ ...v, day: e.target.value })} /></label></div>
     <label className="fld"><span>Заметки — что понял</span><textarea className="in" rows={4} placeholder={'Каждая строка — отдельная мысль'} value={v.theses} onChange={e => setV({ ...v, theses: e.target.value })} /></label>

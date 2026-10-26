@@ -90,8 +90,10 @@ export async function foodRoutes(app: FastifyInstance, { db }: { db: DB }) {
     const mime = String(b.mime ?? ''), image = typeof b.image === 'string' ? b.image : '';
     if (!/^image\/(jpeg|png|webp)$/.test(mime)) throw bad('Нужна картинка JPEG, PNG или WebP.');
     if (image.length < 100 || image.length > 11e6) throw bad('Фото пустое или слишком большое.');
+    // сначала проверка всего ввода, потом списание ИИ-лимита: запрос с ошибкой попытку не тратит
+    const day = dayParam(b.day), time = hmParam(b.time);
     await takeAi(db, uid(req), 'food');
-    const draft = await createDraft(db, uid(req), { day: dayParam(b.day), time: hmParam(b.time), slot: SLOTS.has(String(b.slot)) ? String(b.slot) : null,
+    const draft = await createDraft(db, uid(req), { day, time, slot: SLOTS.has(String(b.slot)) ? String(b.slot) : null,
       image, mime, note: String(b.note ?? '').trim().slice(0, 300), scale: String(b.scale ?? '').slice(0, 20) });
     return reply.code(201).send(draft);
   });

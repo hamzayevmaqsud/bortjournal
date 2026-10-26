@@ -44,24 +44,26 @@ describe('адрес посетителя за прокси', () => {
     expect(proxyTrust('')('10.0.0.1', 0)).toBe(false);
   });
 
+  // порог по адресу целиком — 50 неудачных входов за 15 минут (core/auth.ts, LIMIT)
+  const IP_LIMIT = 50;
   it('подмена левого края X-Forwarded-For не обходит лимит входа', async () => {
     const a = await behind('1');
     try {
-      for (let i = 0; i < 10; i++) expect((await badLogin(a, i, '172.18.0.2', { 'x-forwarded-for': `1.1.1.${i}, 203.0.113.7` })).statusCode).toBe(401);
+      for (let i = 0; i < IP_LIMIT; i++) expect((await badLogin(a, i, '172.18.0.2', { 'x-forwarded-for': `1.1.1.${i}, 203.0.113.7` })).statusCode).toBe(401);
       expect((await badLogin(a, 99, '172.18.0.2', { 'x-forwarded-for': '9.9.9.9, 203.0.113.7' })).statusCode).toBe(429);
       // другой настоящий адрес — свой счётчик
-      expect((await badLogin(a, 100, '172.18.0.2', { 'x-forwarded-for': '203.0.113.8' })).statusCode).toBe(401);
+      expect((await badLogin(a, 150, '172.18.0.2', { 'x-forwarded-for': '203.0.113.8' })).statusCode).toBe(401);
     } finally { await a.close(); }
   });
 
   it('CF-Connecting-IP — только от своего прокси', async () => {
     const a = await behind('loopback,uniquelocal');
     try {
-      for (let i = 0; i < 10; i++) expect((await badLogin(a, 200 + i, '172.18.0.5', { 'cf-connecting-ip': '198.51.100.9', 'x-forwarded-for': `5.5.5.${i}` })).statusCode).toBe(401);
-      expect((await badLogin(a, 210, '172.18.0.5', { 'cf-connecting-ip': '198.51.100.9' })).statusCode).toBe(429);
-      expect((await badLogin(a, 211, '172.18.0.5', { 'cf-connecting-ip': '198.51.100.10' })).statusCode).toBe(401);
+      for (let i = 0; i < IP_LIMIT; i++) expect((await badLogin(a, 200 + i, '172.18.0.5', { 'cf-connecting-ip': '198.51.100.9', 'x-forwarded-for': `5.5.5.${i}` })).statusCode).toBe(401);
+      expect((await badLogin(a, 300, '172.18.0.5', { 'cf-connecting-ip': '198.51.100.9' })).statusCode).toBe(429);
+      expect((await badLogin(a, 301, '172.18.0.5', { 'cf-connecting-ip': '198.51.100.10' })).statusCode).toBe(401);
       // напрямую, без прокси: заголовок от посетителя не считается — лимит по его собственному адресу
-      expect((await badLogin(a, 212, '203.0.113.50', { 'cf-connecting-ip': '198.51.100.11' })).statusCode).toBe(401);
+      expect((await badLogin(a, 302, '203.0.113.50', { 'cf-connecting-ip': '198.51.100.11' })).statusCode).toBe(401);
     } finally { await a.close(); }
   });
 });

@@ -144,7 +144,11 @@ export function FoodAi({ day, time, mode: start, draftId, onDone }: { day: strin
   // черновик не готов: ещё разбирается или не удался
   if (draft && draft.state !== 'ready' && stage !== 'loading') return <div className="form">
     {draftPending(draft) ? <p className="ai-comment">Фото ещё разбирается. Можно закрыть — сообщу, когда будет готово.</p>
-      : <p className="form-err">{draft.error || 'Разобрать фото не получилось.'}</p>}
+      : <><p className="form-err">{draft.error || 'Разобрать фото не получилось.'}</p>
+        {/* что делать дальше: не еда — переснять; сбой ИИ — повторить или записать иначе */}
+        <p className="card-note">{draft.isFood === false
+          ? 'Сними тарелку сверху при хорошем свете, чтобы еда занимала большую часть кадра. Или запиши текстом: «Описать текстом» — например, «плов 300 г».'
+          : 'Обычно со второго раза получается — нажми «Повторить». Если нет — запиши через «Описать текстом» или «Вручную».'}</p></>}
     {err && <p className="form-err">{err}</p>}
     <div className="ob-nav"><button type="button" className="ghost" disabled={busy} onClick={dropDraft}>Удалить</button>
       {draft.state === 'failed' ? <button className="primary" disabled={busy} onClick={retryDraft}>Повторить</button> : <button className="primary" onClick={onDone}>Закрыть</button>}</div>

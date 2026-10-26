@@ -90,6 +90,10 @@ describe('регистрация, пробная неделя и подписк�
     expect(no.statusCode).toBe(400); expect(no.json().error).toMatch(/почт/i);
     expect((await reg({ username: 'twice', password: 'secret123', password2: 'secret124', email: 't@example.com' })).json().error).toBe('Пароли не совпадают.');
     expect((await reg({ username: 'bad@', password: 'secret123' })).statusCode).toBe(400);
+    // слабые пароли: подряд цифры, одна цифра повтором, из частых
+    for (const pw of ['12345678', '11111111', 'password', 'QWERTY123', '987654321'])
+      expect((await reg({ username: 'weakpw', password: pw, email: 'weak@example.com' })).json().error, pw).toMatch(/простой|цифр/);
+    expect((await reg({ username: 'weakpw', password: '4826193057', email: 'weak@example.com' })).statusCode).toBe(201); // 10 случайных цифр — можно
     const r = await reg({ username: 'Ali.Valiyev@Example.com', password: 'secret123', password2: 'secret123', email: 'other@example.com' });
     expect(r.statusCode).toBe(201);
     expect(r.json().username).toBe('ali.valiyev');

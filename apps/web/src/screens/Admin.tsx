@@ -40,6 +40,13 @@ export function Admin({ wide, onBack }: { wide: boolean; onBack: () => void }) {
       <div className="kpi"><span>ИИ за 7 дней</span><b>{fmt(d.totals.ai7)}</b><small>обращений</small></div>
       <div className="kpi"><span>Отзывы</span><b>{d.totals.feedbackNew}</b><small>не разобрано</small></div>
     </div>
+    <section className="panel"><div className="panel-h"><h2>Воронка</h2><small>все, кроме демо · «вернулись» — среди тех, кто с нами не меньше этого срока</small></div>
+      <div className="ad-funnel">{(d.funnel ?? []).map((f: { key: string; name: string; n: number; of: number }) => { const p = f.of ? Math.round(f.n / f.of * 100) : 0; return <div key={f.key} className="ad-fn">
+        <span className="ad-fn-name">{f.name}</span>
+        <span className="ad-fn-bar"><i style={{ width: `${f.of ? Math.max(2, p) : 0}%` }} /></span>
+        <b>{fmt(f.n)}</b><small>{f.of ? `${p}% из ${fmt(f.of)}` : 'пока некого считать'}</small>
+      </div>; })}</div>
+    </section>
     <section className="panel"><div className="panel-h"><h2>Заходили по дням</h2><small>открыли приложение</small></div><Bars rows={series(d.visits ?? [])} color="var(--navy)" every={2} /></section>
     <section className="panel"><div className="panel-h"><h2>Активные по дням</h2><small>сделали хоть одну запись</small></div><Bars rows={series(d.active)} color="var(--good)" every={2} /></section>
     <section className="panel"><div className="panel-h"><h2>Регистрации</h2></div><Bars rows={series(d.signups)} color="var(--orange)" every={2} /></section>

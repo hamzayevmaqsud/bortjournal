@@ -4,7 +4,7 @@
  * календарь месяца, повторяющиеся задачи (их ставят в форме задачи).
  */
 import { useCallback, useEffect, useState } from 'react';
-import { addDays, mondayOf, parseDay, PERIOD_ACC, PERIOD_KINDS, PERIOD_NAMES, PERIOD_PARENT, periodKey, periodLabel, periodRange, shiftPeriod, type PeriodKind } from '@bortjournal/core';
+import { addDays, mondayOf, parseDay, parseWhen, PERIOD_ACC, PERIOD_KINDS, PERIOD_NAMES, PERIOD_PARENT, periodKey, periodLabel, periodRange, shiftPeriod, type PeriodKind } from '@bortjournal/core';
 import { api, ApiError, type Goal, type Subscription, type TaskFull } from '../lib/api';
 import { can } from '../lib/features';
 import { MONG, plural } from '../lib/format';
@@ -92,7 +92,12 @@ export function Plans({ today, sub, version, onAdd, onOpen, onPro, onChanged }: 
   const noteDel = async (n: Note) => { setNotes(ns => ns.filter(x => x.id !== n.id)); await api(`/api/plans/notes/${n.id}`, { method: 'DELETE' }).catch(() => {}); };
   const addTask = async (d: string | null) => {
     const t = title.trim(); if (!t || busy) return; setBusy(true);
-    try { await api('/api/plans/tasks', { method: 'POST', body: { title: t, day: d } }); setTitle(''); buzz([8, 30, 8]); changed(); }
+    // «Позвонить маме завтра в 19:00» → завтра, 19:00, «Позвонить маме»; только время — в выбранный день (или сегодня)
+    const w = parseWhen(t, today), day = w.day ?? (w.time ? d ?? today : d);
+    try {
+      await api('/api/plans/tasks', { method: 'POST', body: { title: w.title, day, time: w.time } }); setTitle(''); buzz([8, 30, 8]); changed();
+      if (day !== d) toast(day ? `«${w.title}» → ${dayTitle(day, today).toLowerCase()}${w.time ? `, ${w.time}` : ''}` : `«${w.title}» — без даты`);
+    }
     catch (e) { toast(e instanceof ApiError ? e.message : 'Не получилось', { err: true }); } finally { setBusy(false); }
   };
   // перетаскивание задачи на день недели или в «Без даты» (мышью, на компьютере)

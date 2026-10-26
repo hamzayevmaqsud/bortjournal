@@ -39,7 +39,10 @@ export async function verifyPassword(pw: string, stored: string | null | undefin
 /* подбор пароля: 10 неудач за 15 минут по IP и по логину */
 const fails = new Map<string, { n: number; until: number }>();
 // по логину отдельно от адреса — порог высокий: иначе любой мог бы закрыть вход в чужой аккаунт десятком неверных паролей
-const tooMany = (...keys: string[]) => keys.some(k => { const f = fails.get(k); return !!f && f.until > Date.now() && f.n >= (k.startsWith('u:') ? 100 : 10); });
+// пороги за 15 минут: логин с этого адреса — 10, логин отовсюду — 100, весь адрес — 50
+// (адрес общий у офиса или мобильного оператора: подбор одного аккаунта не должен закрывать вход остальным)
+const LIMIT = (k: string) => k.startsWith('u:') ? 100 : k.startsWith('ip:') ? 50 : 10;
+const tooMany = (...keys: string[]) => keys.some(k => { const f = fails.get(k); return !!f && f.until > Date.now() && f.n >= LIMIT(k); });
 sweepEvery(fails, (f, now) => f.until <= now);
 const fail = (...keys: string[]) => keys.forEach(k => { const f = fails.get(k); fails.set(k, f && f.until > Date.now() ? { n: f.n + 1, until: f.until } : { n: 1, until: Date.now() + 15 * 60e3 }); });
 
@@ -75,6 +78,17 @@ export function sessionHook(db: DB) {
 /** логины demo-… — только для демо без регистрации: ни войти, ни занять их нельзя */
 export const isDemoName = (username: string) => /^demo-/i.test(username);
 
+/** слабый пароль: короче 8, только одна цифра или буква повтором, подряд идущие цифры, из списка самых частых */
+const COMMON = new Set(['password', 'password1', 'qwertyui', 'qwerty123', 'qwertyuiop', '1q2w3e4r', '1qaz2wsx', 'iloveyou', 'abcd1234', 'aa123456', 'zaq12wsx', 'parol123', 'baku1234', 'azerbaijan']);
+export function passwordProblem(p: string): string | null {
+  if (p.length < 8 || p.length > 512) return 'Пароль — не короче 8 символов.';
+  const low = p.toLowerCase();
+  if (/^(.)\1+$/.test(p) || /^\d+$/.test(p) && ('01234567890123456789'.includes(p) || '98765432109876543210'.includes(p)) || COMMON.has(low))
+    return 'Пароль слишком простой — его подберут за секунды. Добавь буквы или сделай длиннее.';
+  if (/^\d+$/.test(p) && p.length < 10) return 'Только из цифр — нужно хотя бы 10 цифр или добавь буквы.';
+  return null;
+}
+
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
 /**
@@ -89,7 +103,7 @@ export async function newAccount(db: Tx, body: Record<string, unknown>, except?:
   const email = (byMail ? login : String(body.email ?? '')).trim().toLowerCase();
   if (byMail ? !EMAIL_RE.test(email) : !/^[A-Za-z0-9._-]{3,32}$/.test(login)) return { status: 400, error: byMail ? 'Почта выглядит неверно.' : 'Логин: 3–32 символа — латиница, цифры, точка, дефис или подчёркивание. Или напиши почту.' };
   if (!byMail && isDemoName(login)) return { status: 400, error: 'Логины на «demo-» заняты под демо — выбери другой.' };
-  if (password.length < 8 || password.length > 512) return { status: 400, error: 'Пароль — не короче 8 символов.' };
+  const weak = passwordProblem(password); if (weak) return { status: 400, error: weak };
   if (body.password2 !== undefined && String(body.password2) !== password) return { status: 400, error: 'Пароли не совпадают.' };
   if (!email) return { status: 400, error: 'Укажи почту — по ней восстановим пароль, если забудешь.' };
   if (!EMAIL_RE.test(email) || email.length > 200) return { status: 400, error: 'Почта выглядит неверно.' };
@@ -179,7 +193,7 @@ export async function authRoutes(app: FastifyInstance, { db }: { db: DB }) {
     if (u?.demo) return reply.code(400).send({ error: 'Это демо — сначала сохрани его как аккаунт.' });
     // вошёл через Google или Apple и пароля ещё нет — задаёт первый, текущий не нужен
     if (u?.hash && !(await verifyPassword(current, u.hash))) { fail(`pw:${req.userId}`); return reply.code(400).send({ error: 'Текущий пароль неверный.' }); }
-    if (next.length < 8 || next.length > 512) return reply.code(400).send({ error: 'Новый пароль — не короче 8 символов.' });
+    const weak = passwordProblem(next); if (weak) return reply.code(400).send({ error: `Новый пароль: ${weak[0]!.toLowerCase()}${weak.slice(1)}` });
     if (u?.hash && next === current) return reply.code(400).send({ error: 'Новый пароль совпадает с текущим.' });
     await db.update(users).set({ passwordHash: await hashPassword(next) }).where(eq(users.id, req.userId));
     const t = tokenOf(req);

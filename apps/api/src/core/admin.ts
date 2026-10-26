@@ -92,6 +92,31 @@ export async function adminRoutes(app: FastifyInstance, { db }: { db: DB }) {
       mrr: round(live.reduce((a, r) => a + (r.plan === 'year' ? priceOf(r) / 12 : priceOf(r)), 0)),
       boughtTotal: round(paid.reduce((a, r) => a + priceOf(r), 0))
     };
+    // воронка беты: зарегистрировался → записал еду → распознавание ИИ → включил уведомления → вернулся через 1, 3, 7 дней.
+    // «Вернулся через N дней» — заходил на N-й день после регистрации или позже (по своему местному дню); считаем только тех, кто с нами не меньше N дней
+    const [fu] = (await db.execute<Record<string, number>>(sql`
+      with u as (select id, (created_at + make_interval(mins => tz_offset))::date as d0 from users where demo_until is null),
+      cur as (select (now() + make_interval(mins => 240))::date as today)
+      select count(*)::int as registered,
+        count(*) filter (where exists (select 1 from food_meals m where m.user_id = u.id))::int as food,
+        count(*) filter (where exists (select 1 from ai_usage a where a.user_id = u.id and a.kind = 'food' and a.count > 0))::int as ai,
+        count(*) filter (where exists (select 1 from push_subscriptions p where p.user_id = u.id))::int as push,
+        count(*) filter (where u.d0 <= (select today from cur) - 1)::int as e1,
+        count(*) filter (where u.d0 <= (select today from cur) - 1 and exists (select 1 from user_visits v where v.user_id = u.id and v.day >= u.d0 + 1))::int as r1,
+        count(*) filter (where u.d0 <= (select today from cur) - 3)::int as e3,
+        count(*) filter (where u.d0 <= (select today from cur) - 3 and exists (select 1 from user_visits v where v.user_id = u.id and v.day >= u.d0 + 3))::int as r3,
+        count(*) filter (where u.d0 <= (select today from cur) - 7)::int as e7,
+        count(*) filter (where u.d0 <= (select today from cur) - 7 and exists (select 1 from user_visits v where v.user_id = u.id and v.day >= u.d0 + 7))::int as r7
+      from u`)).rows;
+    const funnel = [
+      { key: 'registered', name: 'Зарегистрировались', n: fu?.registered ?? 0, of: fu?.registered ?? 0 },
+      { key: 'food', name: 'Записали еду', n: fu?.food ?? 0, of: fu?.registered ?? 0 },
+      { key: 'ai', name: 'Распознали еду ИИ', n: fu?.ai ?? 0, of: fu?.registered ?? 0 },
+      { key: 'push', name: 'Включили уведомления', n: fu?.push ?? 0, of: fu?.registered ?? 0 },
+      { key: 'r1', name: 'Вернулись на следующий день', n: fu?.r1 ?? 0, of: fu?.e1 ?? 0 },
+      { key: 'r3', name: 'Вернулись через 3 дня', n: fu?.r3 ?? 0, of: fu?.e3 ?? 0 },
+      { key: 'r7', name: 'Вернулись через неделю', n: fu?.r7 ?? 0, of: fu?.e7 ?? 0 }
+    ];
     // как входят: пароль, Google, Apple (у человека может быть несколько способов)
     const [logins] = (await db.execute<{ password: number; google: number; apple: number }>(sql`
       select count(*) filter (where u.password_hash is not null)::int as password,
@@ -116,7 +141,7 @@ export async function adminRoutes(app: FastifyInstance, { db }: { db: DB }) {
     return {
       totals: { users: people.length, online: seenAfter(nowAgo), active1: seenAfter(dayAgo), active7: seenAfter(weekAgo), active30: seenAfter(monthAgo), demo1: demo?.n ?? 0,
         onboarded: people.filter(p => p.onboarded).length, ai7: people.reduce((a, p) => a + (p.ai7 ?? 0), 0), feedbackNew: fb.filter(f => !f.done).length },
-      retention: { cohort: old.length, back }, billing, purchases, logins, devices, sections,
+      retention: { cohort: old.length, back }, funnel, billing, purchases, logins, devices, sections,
       people, signups, active, visits, ai, feedback: fb
     };
   });

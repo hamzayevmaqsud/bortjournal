@@ -57,6 +57,10 @@ describe('отзывы и админка', () => {
     expect(o.devices['другое']).toBe(2);
     expect(o.sections.tasks).toBeGreaterThanOrEqual(1);
     expect(o.retention).toMatchObject({ cohort: 0, back: 0 });
+    // воронка: все шаги на месте; «вернулись» считаются только среди тех, кто с нами нужное число дней
+    expect(o.funnel.map((f: any) => f.key)).toEqual(['registered', 'food', 'ai', 'push', 'r1', 'r3', 'r7']);
+    expect(o.funnel[0]).toMatchObject({ n: 2, of: 2 });
+    expect(o.funnel.find((f: any) => f.key === 'r7')).toMatchObject({ n: 0, of: 0 });
     await conn.db.update(s.users).set({ isAdmin: false }).where(eq(s.users.username, 'tester'));
   });
   it('заходы: человек считается один раз за день; онлайн и 30 дней', async () => {

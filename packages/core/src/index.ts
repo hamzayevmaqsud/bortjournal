@@ -30,3 +30,4 @@ export * from './gym.js';
 export * from './periods.js';
 export * from './words.js';
 export * from './aims.js';
+export * from './when.js';

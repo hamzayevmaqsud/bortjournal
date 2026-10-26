@@ -56,7 +56,34 @@ export function Sheet({ open, onClose, title, children, tall = false }: { open: 
     return () => { el.removeEventListener('pointerdown', down); el.removeEventListener('pointermove', move); el.removeEventListener('pointerup', up); el.removeEventListener('pointercancel', up); };
   }, [onClose]);
 
-  useEffect(() => { if (!open) return; const k = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); }; addEventListener('keydown', k); return () => removeEventListener('keydown', k); }, [open, onClose]);
+  // фокус: при открытии — в лист (первое поле или сам лист), Tab не уходит за его край, после закрытия — туда, откуда открыли
+  const back = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    if (!open) return;
+    back.current = document.activeElement as HTMLElement | null;
+    const el = sheet.current!;
+    const focusables = () => [...el.querySelectorAll<HTMLElement>('a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])')].filter(x => x.offsetParent !== null || x === document.activeElement);
+    const t = setTimeout(() => {
+      if (el.contains(document.activeElement)) return; // поле с autoFocus уже в фокусе
+      // на телефоне — на заголовок: фокус в поле вызвал бы клавиатуру при каждом открытии листа
+      const first = (modal.current ? focusables().find(x => x.matches('input,select,textarea')) : undefined) ?? el.querySelector<HTMLElement>('h2') ?? el;
+      if (first === el || first.tagName === 'H2') { first.setAttribute('tabindex', '-1'); }
+      first.focus({ preventScroll: true });
+    }, 60);
+    const k = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { onClose(); return; }
+      if (e.key !== 'Tab') return;
+      const list = focusables(); if (!list.length) return;
+      const a = list[0]!, z = list[list.length - 1]!;
+      if (e.shiftKey && (document.activeElement === a || !el.contains(document.activeElement))) { e.preventDefault(); z.focus(); }
+      else if (!e.shiftKey && (document.activeElement === z || !el.contains(document.activeElement))) { e.preventDefault(); a.focus(); }
+    };
+    addEventListener('keydown', k);
+    return () => {
+      clearTimeout(t); removeEventListener('keydown', k);
+      const to = back.current; if (to && document.contains(to) && !to.closest('[inert]')) to.focus({ preventScroll: true });
+    };
+  }, [open, onClose]);
 
   // поверх всего приложения: лист из прокручиваемого экрана иначе оказался бы внизу прокрутки
   const host = typeof document !== 'undefined' ? document.querySelector('.app') ?? document.body : null;

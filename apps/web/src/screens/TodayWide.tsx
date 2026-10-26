@@ -6,7 +6,7 @@
 import { can } from '../lib/features';
 import { g } from '../lib/gender';
 import { useEffect, useRef, useState } from 'react';
-import { addDays, diffDays, parseDay } from '@bortjournal/core';
+import { addDays, diffDays, parseDay, parseWhen } from '@bortjournal/core';
 import { api, type Subscription, type Today as TodayData } from '../lib/api';
 import { fmt, fmt1, fmt2, MONG, plural, WDF } from '../lib/format';
 import { buzz, spring, useCountUp } from '../lib/motion';
@@ -110,7 +110,12 @@ export function TodayWide({ wide = true, data, day, today, sub, still, settings 
   const addTask = async () => {
     const t = title.trim(); if (!t || busy) return;
     setBusy(true);
-    try { await api('/api/plans/tasks', { method: 'POST', body: { title: t, day } }); setTitle(''); onTaskAdded(t); }
+    // «завтра в 19:00», «в пятницу» — задача уходит в свой день и время; в этот день — сразу видна в списке
+    const w = parseWhen(t, day), to = w.day ?? day;
+    try {
+      await api('/api/plans/tasks', { method: 'POST', body: { title: w.title, day: to, time: w.time } }); setTitle('');
+      if (to === day) onTaskAdded(w.title); else toast(`«${w.title}» → ${to === addDays(day, 1) ? 'завтра' : to.slice(8, 10) + '.' + to.slice(5, 7)}${w.time ? `, ${w.time}` : ''}`);
+    }
     catch (e) { toast(e instanceof Error ? e.message : 'Не получилось', { err: true }); } finally { setBusy(false); }
   };
   const proBtn = (what: string, label: string, ic: string, tour?: string) => <button className="btn-accent" data-tour={tour} onClick={() => onPro(what)}><Icon name={ic} />{label}{!can(sub, what) && <span className="lock">PRO</span>}</button>;

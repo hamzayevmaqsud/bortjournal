@@ -9,7 +9,7 @@ import { and, eq, gt, isNull, sql } from 'drizzle-orm';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type { DB } from '../db/index.js';
 import { isAdmin } from './admin.js';
-import { hashPassword, startSession } from './auth.js';
+import { hashPassword, passwordProblem, startSession } from './auth.js';
 import { clientIp, sweepEvery } from './client-ip.js';
 import { bad, idParam, notFound } from './http.js';
 import { mailEnabled, sendMail } from './mail.js';
@@ -46,7 +46,7 @@ export async function resetRoutes(app: FastifyInstance, { db }: { db: DB }) {
 
   app.post('/api/auth/reset', async (req, reply: FastifyReply) => {
     const b = (req.body ?? {}) as { token?: unknown; password?: unknown }, raw = String(b.token ?? ''), password = String(b.password ?? '');
-    if (password.length < 8 || password.length > 512) return reply.code(400).send({ error: 'Пароль — не короче 8 символов.' });
+    const weak = passwordProblem(password); if (weak) return reply.code(400).send({ error: weak });
     const [r] = await db.select().from(passwordResets).where(and(eq(passwordResets.tokenHash, sha(raw)), isNull(passwordResets.usedAt), gt(passwordResets.expiresAt, sql`now()`)));
     if (!r) return reply.code(400).send({ error: 'Ссылка устарела или уже использована. Попроси новую.' });
     await db.transaction(async tx => {

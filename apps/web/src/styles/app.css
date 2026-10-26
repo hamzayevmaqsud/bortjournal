@@ -2187,3 +2187,23 @@ input:-webkit-autofill,input:-webkit-autofill:hover,input:-webkit-autofill:focus
 /* движение: три скорости */
 .add-tile,.btn-accent,.chip,.seg-tabs button{transition-duration:var(--t)}
 .add-tile:active,.btn-accent:active,.chip:active{transition-duration:var(--t-fast)}
+
+/* плашка «Фото разбирается / Без сети» — над экраном, а не поверх его заголовка: экран сдвигается вниз, пока она видна */
+.app.bar-on:not(.demo-on) .screens{top:calc(48px + env(safe-area-inset-top,0px))}
+.app.bar-on:not(.demo-on) .screen{padding-top:12px}
+.app.demo-on.bar-on .screens{top:calc(var(--demo-h) + 48px)}
+.app.wide.bar-on .screen{padding-top:20px}
+/* длинные слова без пробелов (ссылки, хэштеги) переносятся, а не растягивают экран */
+.task .tt,.note,.notes p,.plan-note,.fb p,.tl-allday span,.day-panel{overflow-wrap:anywhere;word-break:break-word}
+.day-panel,.plans-page>*{min-width:0}
+/* подсказка в пустом поле — заметно бледнее и курсивом, чтобы «1500» не читалось как уже введённое число */
+input::placeholder,textarea::placeholder{color:var(--text-3);font-style:italic;opacity:.75}
+/* админка: воронка — шаг, полоса доли, число и процент */
+.ad-funnel{display:flex;flex-direction:column;gap:10px}
+.ad-fn{display:grid;grid-template-columns:minmax(150px,1.2fr) 2fr auto minmax(110px,auto);align-items:center;gap:10px;font-size:13.5px}
+.ad-fn-name{color:var(--text)}
+.ad-fn-bar{height:10px;border-radius:999px;background:color-mix(in srgb,var(--text) 8%,transparent);overflow:hidden}
+.ad-fn-bar i{display:block;height:100%;border-radius:inherit;background:var(--good,#3C5B38)}
+.ad-fn b{font:800 15px var(--display);text-align:right}
+.ad-fn small{color:var(--text-2)}
+@media (max-width:600px){.ad-fn{grid-template-columns:1fr auto;row-gap:4px}.ad-fn-bar{grid-column:1/-1;order:3}.ad-fn small{grid-column:1/-1;order:4}}

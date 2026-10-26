@@ -27,7 +27,7 @@ function Setup({ s, onDone }: { s?: { amount: number; startDay: number; savings:
     catch (x) { toast(x instanceof ApiError ? x.message : 'Не получилось', { err: true }); }
   }}>
     <div className="grid2">
-      <label className="fld"><span>Сумма на месяц, {v.currency}</span><input className="in big" inputMode="decimal" required placeholder="1500" value={v.amount} onChange={e => setV({ ...v, amount: e.target.value })} /></label>
+      <label className="fld"><span>Сумма на месяц, {v.currency}</span><input className="in big" inputMode="decimal" required placeholder="например, 1500" value={v.amount} onChange={e => setV({ ...v, amount: e.target.value })} /></label>
       <label className="fld"><span>Отложить в копилку</span><input className="in big" inputMode="decimal" placeholder="0" value={v.savings} onChange={e => setV({ ...v, savings: e.target.value })} /></label>
     </div>
     <div className="fld"><span>Месяц начинается</span><div className="chips">{[1, 5, 10, 15, 20, 25].map(d => <button type="button" key={d} className={`chip ${v.startDay === d ? 'on' : ''}`} onClick={() => setV({ ...v, startDay: d })}>{d}-го</button>)}

@@ -74,16 +74,17 @@ export function App() {
   const toast = useToast(), wide = useWide();
   // телефон: панель разделов уезжает вниз вместе с прокруткой (на столько же пикселей), листаешь вверх — так же выезжает;
   // когда прокрутка остановилась, панель плавно доезжает до ближайшего положения. Стиль пишем прямо в элемент — без перерисовки React
-  const tabsRef = useRef<HTMLElement>(null), shift = useRef(0), goRef = useRef<(name: string) => void>(() => {}), openRef = useRef<(s: SheetState) => void>(() => {});
+  const tabsRef = useRef<HTMLElement>(null), shift = useRef(0), goRef = useRef<(name: string, fromHistory?: boolean) => void>(() => {}), openRef = useRef<(s: SheetState) => void>(() => {});
   // ссылка на черновик открывает «Еду» и проверку фото
   // возврат со страницы Google после подключения календаря: #settings?gcal=connected|denied|failed
   const openGcalBack = (h: string) => { const g = /^(?:profile|settings)\?gcal=(\w+)$/.exec(h)?.[1]; if (!g) return false; goRef.current('settings'); const m = GCAL_BACK[g]; if (m) toast(m[0], m[1] ? { err: true } : undefined); history.replaceState(null, '', location.pathname); return true; };
   const openDraftLink = (h: string) => { const id = draftLink(h); if (!id) return false; goRef.current('food'); openRef.current({ kind: 'draft', id }); history.replaceState(null, '', location.pathname); return true; };
   // уведомление ведёт в раздел: «/#plans» при открытии или сообщение от service worker, если окно уже открыто
   useEffect(() => {
-    const nav = (h: string) => { if (openGcalBack(h) || openDraftLink(h)) return; if (h === 'voice' || h === 'week') { openRef.current({ kind: h }); history.replaceState(null, '', location.pathname); return; } if (ORDER.includes(h)) { goRef.current(h); history.replaceState(null, '', location.pathname); } };
+    const nav = (h: string) => { if (openGcalBack(h) || openDraftLink(h)) return; if (h === 'voice' || h === 'week') { openRef.current({ kind: h }); history.replaceState(null, '', location.pathname); return; } if (ORDER.includes(h)) { goRef.current(h, true); history.replaceState({ lumi: 'tab', tab: h }, '', location.pathname + location.search + (h === 'today' ? '' : `#${h}`)); } };
     const onMsg = (e: MessageEvent) => { if (typeof e.data?.nav === 'string') nav(e.data.nav); };
-    const onHash = () => nav(location.hash.slice(1));
+    // свои шаги истории (экран, лист) помечены state.lumi — их обрабатывает popstate, а не разбор ссылки
+    const onHash = () => { if ((history.state as { lumi?: string } | null)?.lumi) return; nav(location.hash.slice(1)); };
     navigator.serviceWorker?.addEventListener('message', onMsg); addEventListener('hashchange', onHash);
     return () => { navigator.serviceWorker?.removeEventListener('message', onMsg); removeEventListener('hashchange', onHash); };
   }, []);
@@ -108,7 +109,7 @@ export function App() {
   const ready = !!me?.profile?.heightCm;
   // ссылка для нового пароля: /#reset=…
   const [resetToken, setResetToken] = useState(() => /^#reset=([\w-]{20,})$/.exec(location.hash)?.[1] ?? '');
-  useEffect(() => { const h = location.hash.slice(1); if (!ready) return; if (openGcalBack(h)) { /* вернулись от Google */ } else if (openDraftLink(h)) { /* открыт черновик */ } else if (h === 'voice' || h === 'week') { openRef.current({ kind: h }); history.replaceState(null, '', location.pathname); } else if (ORDER.includes(h)) { goRef.current(h); history.replaceState(null, '', location.pathname); } }, [ready]);
+  useEffect(() => { const h = location.hash.slice(1); if (!ready) return; if (openGcalBack(h)) { /* вернулись от Google */ } else if (openDraftLink(h)) { /* открыт черновик */ } else if (h === 'voice' || h === 'week') { openRef.current({ kind: h }); history.replaceState(null, '', location.pathname); } else if (ORDER.includes(h)) { goRef.current(h, true); history.replaceState({ lumi: 'tab', tab: h }, '', location.pathname + location.search + (h === 'today' ? '' : `#${h}`)); } }, [ready]);
   // вернулись после привязки Google или Apple из профиля — сказать, что вышло, и открыть профиль
   useEffect(() => { if (!ready) return; const r = takeAuthResult(); if (!r) return; toast(r.error ?? r.ok!, r.error ? { err: true } : undefined); goRef.current('profile'); }, [ready]); // eslint-disable-line react-hooks/exhaustive-deps
   const [tab, setTab] = useState('today');
@@ -119,9 +120,18 @@ export function App() {
   const [still, setStill] = useState(false);
   const sub: Subscription = me?.subscription ?? { pro: false, source: null, expiresAt: null, daysLeft: null, plan: null, autoRenew: false };
 
-  const open = (s: SheetState) => { setSheet(s); setSheetOpen(true); };
+  // «Назад» в браузере и жест на телефоне: сначала закрывает лист, потом возвращает на прошлый экран.
+  // Открытый лист — шаг истории (state.lumi = 'sheet'); второй лист поверх первого шаг не добавляет
+  const sheetOpenRef = useRef(false); sheetOpenRef.current = sheetOpen;
+  const open = (s: SheetState) => {
+    if (!sheetOpenRef.current) history.pushState({ lumi: 'sheet' }, '', location.href);
+    sheetOpenRef.current = true; setSheet(s); setSheetOpen(true);
+  };
   openRef.current = open;
-  const close = useCallback(() => setSheetOpen(false), []);
+  const close = useCallback(() => {
+    if ((history.state as { lumi?: string } | null)?.lumi === 'sheet') history.back(); // popstate закроет лист
+    else setSheetOpen(false);
+  }, []);
   const fail = useCallback((e: unknown) => {
     if (e instanceof ApiError && e.status === 401) { setMe(null); return; }
     // без сети экран просто остаётся с последними данными — об этом говорит плашка и тост очереди
@@ -135,9 +145,11 @@ export function App() {
     meAt.current = Date.now();
     try {
       const m = await api<Me>(ME); setOwner(m.username); setSex(m.profile?.sex); setMe(m);
-      // часовой пояс устройства сменился (перелёт) — отдельной записью, GET ничего не меняет
-      const tz = -new Date().getTimezoneOffset();
-      if (!fromCache(m) && m.tzOffset !== tz) void api('/api/me/tz', { method: 'PUT', body: { tz } }).then(() => setMe(x => x && { ...x, tzOffset: tz })).catch(() => {});
+      // часовой пояс устройства сменился (перелёт) — отдельной записью, GET ничего не меняет.
+      // Шлём, только когда пояс сменился у ЭТОГО устройства: два устройства в разных поясах не перетягивают «сегодня» по очереди
+      const tz = -new Date().getTimezoneOffset(), key = `bj-tz-sent:${m.username}`;
+      let sent: string | null = null; try { sent = localStorage.getItem(key); } catch { /* приватный режим */ }
+      if (!fromCache(m) && m.tzOffset !== tz && sent !== String(tz)) void api('/api/me/tz', { method: 'PUT', body: { tz } }).then(() => { try { localStorage.setItem(key, String(tz)); } catch { /* приватный режим */ } setMe(x => x && { ...x, tzOffset: tz }); }).catch(() => {});
     } catch (e) { if (e instanceof ApiError && e.status === 0) setTimeout(() => loadMeRef.current(), 5000); else setMe(null); }
   }, []);
   const loadMeRef = useRef(loadMe); loadMeRef.current = loadMe;
@@ -288,17 +300,29 @@ export function App() {
   const pro = (what: string, at?: string, inDay?: string) => { if (!can(sub, what)) { open({ kind: 'paywall', focus: what }); return; } if (PRO_OPEN[what]) { const next = PRO_OPEN[what]!(at, inDay); if ((next.kind === 'ai') && !me?.profile?.settings?.aiConsent) { open({ kind: 'aiConsent', then: next }); return; } open(next); return; } if (PRO_TABS[what]) { close(); const [t, st] = PRO_TABS[what]!.split(':'); if (t === 'study') setStudyTab(st as 'study' | 'quiz'); else setStatsTab(st as StatsTab | undefined); go(t!); return; } close(); toast(`«${what}» скоро появится`); };
   const setSub = (s: Subscription) => { setMe(m => m ? { ...m, subscription: s } : m); setDays({}); if (day) loadDay(day); };
   const [quick, setQuick] = useState<{ tab: string; t: number } | null>(null), [back, setBack] = useState('today'), [statsTab, setStatsTab] = useState<StatsTab | undefined>(), [studyTab, setStudyTab] = useState<'study' | 'quiz' | undefined>();
-  const go = (name: string) => {
+  const go = (name: string, fromHistory = false) => {
     if (name === 'add') { open({ kind: 'add' }); return; }
     // подписка кончилась — свои записи смотреть можно; не было подписки — сначала тарифы
     if (SECTIONS[name] && !can(sub, SECTIONS[name]!) && !sub.ended) { open({ kind: 'paywall', focus: SECTION_NAME[name] }); return; }
     if ((name === 'goal' || name === 'stats') && !can(sub, name)) { open({ kind: 'paywall', focus: name === 'goal' ? 'Цель и прогноз' : 'Статистика' }); return; }
     if (name in SECTIONS) setBack(tab in SECTIONS ? back : tab);
     if (name === 'profile' || name === 'settings' || name === 'admin') setBack(tab === name ? back : tab);
+    // свой адрес у экрана: «Назад» возвращает сюда, обновление страницы открывает его же
+    if (!fromHistory && name !== tab) history.pushState({ lumi: 'tab', tab: name }, '', location.pathname + location.search + (name === 'today' ? '' : `#${name}`));
     setTab(name); showTabs(); buzz(6);
     try { sessionStorage.setItem('bj-tab', name); } catch { /* без памяти */ }
   };
   goRef.current = go;
+  useEffect(() => {
+    const onPop = (e: PopStateEvent) => {
+      if (sheetOpenRef.current) { sheetOpenRef.current = false; setSheetOpen(false); return; }
+      const st = e.state as { lumi?: string; tab?: string } | null, h = location.hash.slice(1);
+      const name = st?.lumi === 'tab' && st.tab ? st.tab : ORDER.includes(h) ? h : 'today';
+      goRef.current(name, true);
+    };
+    addEventListener('popstate', onPop);
+    return () => removeEventListener('popstate', onPop);
+  }, []);
   // после обновления — один раз «Что нового» (тем, кто уже пользовался; не новичку и не демо)
   useEffect(() => {
     if (me && shouldShowWhatsNew(!me.demo && me.profile?.settings?.onboarded === true)) open({ kind: 'whatsnew' });
@@ -355,7 +379,7 @@ export function App() {
   const QUICK: Record<string, string> = { 'Зал': 'gym', 'Учёба': 'study', 'Трата': 'budget', 'Чтение': 'books' };
   const lockTile = (name: string, ic: string, c: string) => <button key={name} className="tile" onClick={() => { if (QUICK[name] && can(sub, name)) setQuick({ tab: QUICK[name]!, t: Date.now() }); pro(name, sheet.kind === 'add' ? sheet.at : undefined); }}><span className="chip-ic" style={{ ['--c' as string]: c }}><Icon name={ic} /></span>{name}{!can(sub, name) && <span className="lock">PRO</span>}</button>;
 
-  return <TourStart.Provider value={startTour}><div className={`app ${wide ? 'wide' : ''} ${me.demo ? 'demo-on' : ''}`}>
+  return <TourStart.Provider value={startTour}><div className={`app ${wide ? 'wide' : ''} ${me.demo ? 'demo-on' : ''} ${queued > 0 || drafts.length > 0 ? 'bar-on' : ''}`}>
     {me.demo && <DemoBanner onTour={tourHere} onLogout={logout} onClaimed={async () => { await loadMe(); toast('Аккаунт сохранён — записи на месте'); }} />}
     {tab in SECTIONS && SECTIONS[tab] && sub.ended && !can(sub, SECTIONS[tab]!) && <button className="ro-bar" onClick={() => open({ kind: 'paywall', focus: SECTION_NAME[tab] })}><Icon name="file" />Только просмотр — Pro закончился. Продлить</button>}
     {queued === 0 && drafts.length > 0 && (() => {
@@ -366,74 +390,74 @@ export function App() {
     })()}
     {queued > 0 && <button className="outbox-bar" onClick={() => void flushOutbox()}><Icon name="repeat" />Без сети: {queued} {queued % 10 === 1 && queued % 100 !== 11 ? 'запись ждёт' : 'записей ждут'} отправки — нажми, чтобы отправить сейчас</button>}
     <main className="screens">
-      <section className="screen" data-pos={pos('today')} aria-hidden={tab !== 'today'}>
+      <section className="screen" data-pos={pos('today')} aria-hidden={tab !== 'today'} inert={tab !== 'today'}>
         <Boundary name="today" onFeedback={() => open({ kind: 'feedback' })}>
         {day && today && <TodayWide wide={wide} data={data} day={day} today={today} still={still} sub={sub} settings={me.profile?.settings ?? {}} onReminders={() => open({ kind: 'reminders' })} onSettingsSaved={st => setMe(m => m && m.profile ? { ...m, profile: { ...m.profile, settings: st } } : m)} onDay={goDay} onAdd={at => open({ kind: 'add', at })} onDelete={deleteMark} onEdit={editMark} onToggleTask={toggleTask} onGo={go}
           onPro={pro} onPaywall={() => open({ kind: 'paywall' })} onSteps={() => open({ kind: 'steps' })} onWeight={() => open({ kind: 'weight' })} onWater={() => open({ kind: 'drink' })}
           onMeal={() => open({ kind: 'meal' })} onWeek={() => open({ kind: 'week' })} onAddWater={ml => addWater(ml)} onTaskAdded={title => { patch(t => { if (t.parts.plans && !t.parts.plans.tasks.some(x => x.title === title && !x.done)) t.parts.plans.tasks.push({ id: `tmp-${Date.now()}`, title, time: null, done: false, prio: false, repeat: false }); return t; }); toast('Задача добавлена'); refresh(); }} onTaskOpen={() => open({ kind: 'task', day })} onJournal={refresh} />}
         </Boundary>
       </section>
-      <section className="screen" data-pos={pos('plans')} aria-hidden={tab !== 'plans'}>
+      <section className="screen" data-pos={pos('plans')} aria-hidden={tab !== 'plans'} inert={tab !== 'plans'}>
         <Boundary name="plans" onFeedback={() => open({ kind: 'feedback' })}>
         {today && <Plans today={today} sub={sub} version={version} onAdd={d => open({ kind: 'task', day: d })} onOpen={t => open({ kind: 'task', day: t.day, task: t })} onPro={pro} onChanged={() => { if (day) loadDay(day); }} />}
         </Boundary>
       </section>
-      <section className="screen" data-pos={pos('food')} aria-hidden={tab !== 'food'}>
+      <section className="screen" data-pos={pos('food')} aria-hidden={tab !== 'food'} inert={tab !== 'food'}>
         <Boundary name="food" onFeedback={() => open({ kind: 'feedback' })}>
         {today && tab === 'food' && <Food today={today} sub={sub} version={version} wide={wide} onChanged={() => { setStill(true); if (day) loadDay(day); }}
           onAddMeal={d => open({ kind: 'meal', day: d })} onAddDrink={d => open({ kind: 'drink', day: d })} onMeal={meal => open({ kind: 'meal', meal })} onDrink={drink => open({ kind: 'drink', drink })} onPro={(w, d) => pro(w, undefined, d)} />}
         </Boundary>
       </section>
-      <section className="screen" data-pos={pos('study')} aria-hidden={tab !== 'study'}>
+      <section className="screen" data-pos={pos('study')} aria-hidden={tab !== 'study'} inert={tab !== 'study'}>
         <Boundary name="study" onFeedback={() => open({ kind: 'feedback' })}>
         {tab === 'study' && <Study wide={wide} version={version} tab={studyTab} quick={quick?.tab === 'study' ? quick.t : undefined} onBack={() => setTab(back)} onChanged={() => { setStill(true); if (day) loadDay(day); setTimeout(checkAwards, 600); }} />}
         </Boundary>
       </section>
-      <section className="screen" data-pos={pos('gym')} aria-hidden={tab !== 'gym'}>
+      <section className="screen" data-pos={pos('gym')} aria-hidden={tab !== 'gym'} inert={tab !== 'gym'}>
         <Boundary name="gym" onFeedback={() => open({ kind: 'feedback' })}>
         {tab === 'gym' && <Gym wide={wide} version={version} quick={quick?.tab === 'gym' ? quick.t : undefined} restSec={Number(me.profile?.settings?.rest) || 90} onBack={() => setTab(back)} onChanged={() => { setStill(true); if (day) loadDay(day); setTimeout(checkAwards, 600); }} />}
         </Boundary>
       </section>
-      <section className="screen" data-pos={pos('budget')} aria-hidden={tab !== 'budget'}>
+      <section className="screen" data-pos={pos('budget')} aria-hidden={tab !== 'budget'} inert={tab !== 'budget'}>
         <Boundary name="budget" onFeedback={() => open({ kind: 'feedback' })}>
         {tab === 'budget' && <Budget wide={wide} version={version} quick={quick?.tab === 'budget' ? quick.t : undefined} onBack={() => setTab(back)} onChanged={() => { setStill(true); if (day) loadDay(day); }} />}
         </Boundary>
       </section>
-      <section className="screen" data-pos={pos('books')} aria-hidden={tab !== 'books'}>
+      <section className="screen" data-pos={pos('books')} aria-hidden={tab !== 'books'} inert={tab !== 'books'}>
         <Boundary name="books" onFeedback={() => open({ kind: 'feedback' })}>
         {tab === 'books' && <Books wide={wide} version={version} quick={quick?.tab === 'books' ? quick.t : undefined} onBack={() => setTab(back)} onChanged={() => { setStill(true); if (day) loadDay(day); setTimeout(checkAwards, 600); }} />}
         </Boundary>
       </section>
-      <section className="screen" data-pos={pos('goal')} aria-hidden={tab !== 'goal'}>
+      <section className="screen" data-pos={pos('goal')} aria-hidden={tab !== 'goal'} inert={tab !== 'goal'}>
         <Boundary name="goal" onFeedback={() => open({ kind: 'feedback' })}>
         {tab === 'goal' && <Goal wide={wide} onBack={() => setTab(back)} onWeigh={() => open({ kind: 'weight' })} onRedo={() => setRedo(true)} onChanged={() => { setDays({}); if (day) loadDay(day); }} />}
         </Boundary>
       </section>
-      <section className="screen" data-pos={pos('stats')} aria-hidden={tab !== 'stats'}>
+      <section className="screen" data-pos={pos('stats')} aria-hidden={tab !== 'stats'} inert={tab !== 'stats'}>
         <Boundary name="stats" onFeedback={() => open({ kind: 'feedback' })}>
         {tab === 'stats' && <Stats wide={wide} tab={statsTab} has={f => can(sub, f)} onBack={() => setTab(back)} onOpenDay={d => { setStill(false); setDay(today && d > today ? today : d); go('today'); }} />}
         </Boundary>
       </section>
-      <section className="screen" data-pos={pos('profile')} aria-hidden={tab !== 'profile'}>
+      <section className="screen" data-pos={pos('profile')} aria-hidden={tab !== 'profile'} inert={tab !== 'profile'}>
         <Boundary name="profile" onFeedback={() => open({ kind: 'feedback' })}>
         {tab === 'profile' && <Profile me={me} wide={wide} onBack={() => setTab(back)} onSaved={st => { setMe(m => m && m.profile ? { ...m, profile: { ...m.profile, settings: st } } : m); setDays({}); if (day) loadDay(day); }}
           onRedo={() => setRedo(true)} onFeedback={() => open({ kind: 'feedback' })} onReminders={() => open({ kind: 'reminders' })} onPaywall={() => open({ kind: 'paywall' })} onLogout={logout}
           onDeleted={() => { toast('Аккаунт удалён'); setMe(null); setDays({}); setDay(null); setToday(null); setTab('today'); }} />}
         </Boundary>
       </section>
-      <section className="screen" data-pos={pos('settings')} aria-hidden={tab !== 'settings'}>
+      <section className="screen" data-pos={pos('settings')} aria-hidden={tab !== 'settings'} inert={tab !== 'settings'}>
         <Boundary name="settings" onFeedback={() => open({ kind: 'feedback' })}>
         {tab === 'settings' && <Profile part="settings" me={me} wide={wide} onBack={() => setTab(back)} onSaved={st => { setMe(m => m && m.profile ? { ...m, profile: { ...m.profile, settings: st } } : m); setDays({}); if (day) loadDay(day); }}
           onRedo={() => setRedo(true)} onFeedback={() => open({ kind: 'feedback' })} onReminders={() => open({ kind: 'reminders' })} onPaywall={() => open({ kind: 'paywall' })} onLogout={logout}
           onDeleted={() => { toast('Аккаунт удалён'); setMe(null); setDays({}); setDay(null); setToday(null); setTab('today'); }} />}
         </Boundary>
       </section>
-      <section className="screen" data-pos={pos('admin')} aria-hidden={tab !== 'admin'}>
+      <section className="screen" data-pos={pos('admin')} aria-hidden={tab !== 'admin'} inert={tab !== 'admin'}>
         <Boundary name="admin" onFeedback={() => open({ kind: 'feedback' })}>
         {tab === 'admin' && me.admin && <Admin wide={wide} onBack={() => setTab(back)} />}
         </Boundary>
       </section>
-      <section className="screen" data-pos={pos('more')} aria-hidden={tab !== 'more'}>
+      <section className="screen" data-pos={pos('more')} aria-hidden={tab !== 'more'} inert={tab !== 'more'}>
         <Boundary name="more" onFeedback={() => open({ kind: 'feedback' })}>
         <More me={me} wide={wide} summary={moreSummary} onFeedback={() => open({ kind: 'feedback' })} onWhatsNew={() => open({ kind: 'whatsnew' })} onTour={() => { go('today'); startTour('today'); }} onAdmin={() => go('admin')} onPro={pro} onSaved={st => setMe(m => m && m.profile ? { ...m, profile: { ...m.profile, settings: st } } : m)} onPaywall={focus => open({ kind: 'paywall', focus })} onProfile={() => go('profile')} onSettings={() => go('settings')} onInstall={() => open({ kind: 'install' })}
           onLogout={logout} />

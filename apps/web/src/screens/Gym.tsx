@@ -112,7 +112,7 @@ function LiveView({ live, setLive, custom, onFinish, onCancel, onInfo, restSec =
     {live.past && <div className="gl-past">
       <label className="fld"><span>Дата</span><input className="in" type="date" value={live.day} onChange={e => upd(l => { l.day = e.target.value; })} /></label>
       <label className="fld"><span>Начало</span><input className="in" type="time" value={live.time} onChange={e => upd(l => { l.time = e.target.value; })} /></label>
-      <label className="fld"><span>Длилась, мин</span><input className="in" inputMode="numeric" placeholder="60" value={live.minutes} onChange={e => upd(l => { l.minutes = e.target.value; })} /></label>
+      <label className="fld"><span>Длилась, мин</span><input className="in" inputMode="numeric" placeholder="напр. 60" value={live.minutes} onChange={e => upd(l => { l.minutes = e.target.value; })} /></label>
     </div>}
     <div className="gl-sum"><span><b>{live.ex.length}</b> {plural(live.ex.length, 'упражнение', 'упражнения', 'упражнений')}</span><span><b>{done}</b> из {all} подходов</span>{vol > 0 && <span><b>{fmt(vol)}</b> кг объём</span>}</div>
     {live.ex.map((x, i) => { const h = hint[x.key], prev = h?.prev, cols = COLS[x.kind]; return <article className="gx" key={`${x.key}${i}`} style={{ ['--gc' as string]: GYM_GROUPS[x.group]?.[1] }}>

@@ -5,7 +5,7 @@
  */
 import { and, eq, gte, isNotNull, lte } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
-import { addDays, parseDay } from '@bortjournal/core';
+import { nWord, addDays, parseDay } from '@bortjournal/core';
 import type { DB, Tx } from '../db/index.js';
 import { topMeals } from '../modules/food/index.js';
 import { MODULES_LIST } from '../modules/index.js';
@@ -154,7 +154,9 @@ function calendar(w: World, month: string, frozen: ReadonlySet<string> = new Set
   const pm = new Date(Date.UTC(y, m - 2, 1)), pk = `${pm.getUTCFullYear()}-${String(pm.getUTCMonth() + 1).padStart(2, '0')}`, plen = new Date(Date.UTC(pm.getUTCFullYear(), pm.getUTCMonth() + 1, 0)).getUTCDate();
   const prev: number[] = []; for (let k = 1; k <= plen; k++) { const d = `${pk}-${String(k).padStart(2, '0')}`; if (d < w.today && hasAny(w.F.get(d))) prev.push(w.sc(d)); }
   const a = avg(scores.map(x => x[1])), pa = avg(prev), best = scores.slice().sort((p, q) => q[1] - p[1])[0] ?? null;
+  // на 1–4 днях оценка месяца случайна («93%, сильный месяц» после двух дней) — до пяти дней только честный счёт
   const line = !scores.length ? 'В этом месяце пока нет завершённых дней — всё впереди.'
+    : scores.length < 5 ? `Пока ${nWord(scores.length, 'завершённый день', 'завершённых дня', 'завершённых дней')} с записями — итог месяца подведём, когда их будет хотя бы пять.`
     : a >= 0.8 ? 'Сильный месяц. Так держать.' : pa && a > pa + 0.03 ? `Лучше, чем в прошлом месяце, на ${pct(a - pa)} п.` : pa && a < pa - 0.03 ? `Чуть ниже прошлого месяца — ${pct(pa)}% против ${pct(a)}%. Есть куда расти.` : 'Ровный месяц. Один сильный день — и среднее поползёт вверх.';
   return { month, title: `${MN[m - 1]![0]!.toUpperCase()}${MN[m - 1]!.slice(1)} ${y}`, name: MN[m - 1], lead: wdIdx(`${month}-01`), cells, avg: scores.length ? pct(a) : null, prevAvg: prev.length ? pct(pa) : null,
     // days — дни с записями, включая сегодня (как серия); avg — по завершённым дням с записями (avgDays), сегодня ещё идёт
