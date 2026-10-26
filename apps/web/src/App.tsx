@@ -113,6 +113,9 @@ export function App() {
   // вернулись после привязки Google или Apple из профиля — сказать, что вышло, и открыть профиль
   useEffect(() => { if (!ready) return; const r = takeAuthResult(); if (!r) return; toast(r.error ?? r.ok!, r.error ? { err: true } : undefined); goRef.current('profile'); }, [ready]); // eslint-disable-line react-hooks/exhaustive-deps
   const [tab, setTab] = useState('today');
+  // вид на компьютере: 'side' — меню слева (по умолчанию), 'old' — прежняя плавающая панель внизу; выбор в «Ещё»
+  const [desk, setDesk] = useState<'side' | 'old'>(() => { try { return localStorage.getItem('lumi.desk') === 'old' ? 'old' : 'side'; } catch { return 'side'; } });
+  const switchDesk = (v: 'side' | 'old') => { setDesk(v); try { localStorage.setItem('lumi.desk', v); } catch { /* приватный режим */ } };
   const [day, setDay] = useState<string | null>(null), [today, setToday] = useState<string | null>(null);
   const [days, setDays] = useState<Record<string, TodayData>>({});
   const [version, setVersion] = useState(0);
@@ -379,7 +382,7 @@ export function App() {
   const QUICK: Record<string, string> = { 'Зал': 'gym', 'Учёба': 'study', 'Трата': 'budget', 'Чтение': 'books' };
   const lockTile = (name: string, ic: string, c: string) => <button key={name} className="tile" onClick={() => { if (QUICK[name] && can(sub, name)) setQuick({ tab: QUICK[name]!, t: Date.now() }); pro(name, sheet.kind === 'add' ? sheet.at : undefined); }}><span className="chip-ic" style={{ ['--c' as string]: c }}><Icon name={ic} /></span>{name}{!can(sub, name) && <span className="lock">PRO</span>}</button>;
 
-  return <TourStart.Provider value={startTour}><div className={`app ${wide ? 'wide' : ''} ${me.demo ? 'demo-on' : ''} ${queued > 0 || drafts.length > 0 ? 'bar-on' : ''}`}>
+  return <TourStart.Provider value={startTour}><div className={`app ${wide ? 'wide' : ''} ${wide && desk === 'side' ? 'desk-side' : ''} ${me.demo ? 'demo-on' : ''} ${queued > 0 || drafts.length > 0 ? 'bar-on' : ''}`}>
     {me.demo && <DemoBanner onTour={tourHere} onLogout={logout} onClaimed={async () => { await loadMe(); toast('Аккаунт сохранён — записи на месте'); }} />}
     {tab in SECTIONS && SECTIONS[tab] && sub.ended && !can(sub, SECTIONS[tab]!) && <button className="ro-bar" onClick={() => open({ kind: 'paywall', focus: SECTION_NAME[tab] })}><Icon name="file" />Только просмотр — Pro закончился. Продлить</button>}
     {queued === 0 && drafts.length > 0 && (() => {
@@ -459,12 +462,34 @@ export function App() {
       </section>
       <section className="screen" data-pos={pos('more')} aria-hidden={tab !== 'more'} inert={tab !== 'more'}>
         <Boundary name="more" onFeedback={() => open({ kind: 'feedback' })}>
-        <More me={me} wide={wide} summary={moreSummary} onFeedback={() => open({ kind: 'feedback' })} onWhatsNew={() => open({ kind: 'whatsnew' })} onTour={() => { go('today'); startTour('today'); }} onAdmin={() => go('admin')} onPro={pro} onSaved={st => setMe(m => m && m.profile ? { ...m, profile: { ...m.profile, settings: st } } : m)} onPaywall={focus => open({ kind: 'paywall', focus })} onProfile={() => go('profile')} onSettings={() => go('settings')} onInstall={() => open({ kind: 'install' })}
+        <More me={me} wide={wide} desk={desk} onDesk={switchDesk} summary={moreSummary} onFeedback={() => open({ kind: 'feedback' })} onWhatsNew={() => open({ kind: 'whatsnew' })} onTour={() => { go('today'); startTour('today'); }} onAdmin={() => go('admin')} onPro={pro} onSaved={st => setMe(m => m && m.profile ? { ...m, profile: { ...m.profile, settings: st } } : m)} onPaywall={focus => open({ kind: 'paywall', focus })} onProfile={() => go('profile')} onSettings={() => go('settings')} onInstall={() => open({ kind: 'install' })}
           onLogout={logout} />
         </Boundary>
       </section>
     </main>
-    <nav ref={tabsRef} className="tabs" aria-label="Разделы">
+    {wide && desk === 'side' && (() => {
+      // разделы: сначала выбранные в анкете, остальные — ниже, в «Других»
+      const SEC: Array<[string, string, string]> = [['food', 'food', 'Еда'], ['study', 'study', 'Учёба'], ['gym', 'gym', 'Зал'], ['budget', 'money', 'Бюджет'], ['books', 'books', 'Книги']];
+      const mine = SEC.filter(x => !chosen || chosen.includes(x[0])), rest = SEC.filter(x => chosen && !chosen.includes(x[0]));
+      const item = ([name, icon, label]: [string, string, string]) => <button key={name} className="side-i" title={label} aria-label={label} aria-current={tab === name ? 'page' : undefined} onClick={() => go(name)}>
+        <Icon name={icon} /><span>{label}</span>{SECTIONS[name] && !can(sub, SECTIONS[name]!) && <span className="lock">PRO</span>}</button>;
+      return <nav className="side" aria-label="Разделы">
+        <div className="side-brand"><img src="/favicon.svg" alt="" /><b>Lumi</b></div>
+        <button className="side-add" title="Записать" aria-label="Записать" onClick={() => go('add')}><Icon name="plus" /><span>Записать</span></button>
+        <div className="side-list">
+          {item(['today', 'today', 'Сегодня'])}{item(['plans', 'plans', 'Планы'])}
+          {mine.map(item)}
+          <p className="side-h">Обзор</p>
+          {item(['goal', 'target', 'Цель и вес'])}{item(['stats', 'stats', 'Статистика'])}
+          {rest.length > 0 && <><p className="side-h">Другие разделы</p>{rest.map(item)}</>}
+        </div>
+        <div className="side-foot">
+          {item(['more', 'more', 'Ещё'])}
+          <button className="side-i side-me" title="Профиль" aria-label="Профиль" aria-current={tab === 'profile' ? 'page' : undefined} onClick={() => go('profile')}><span className="side-ava">{(me.profile?.settings?.name || me.username).slice(0, 1).toUpperCase()}</span><span>{me.profile?.settings?.name || me.username}</span></button>
+        </div>
+      </nav>;
+    })()}
+    <nav ref={tabsRef} className="tabs" aria-label="Разделы" hidden={wide && desk === 'side'}>
       {(wide ? WIDE_TABS : phoneTabs).map(([name, icon, label]) => <button key={name} data-tab={name} className={`tab ${name === 'add' ? 'add' : ''}`} aria-current={tab === name ? 'page' : undefined} onClick={() => go(name)} aria-label={label}>
         <span className="pill"><Icon name={icon} /></span>{label}{SECTIONS[name] && !can(sub, SECTIONS[name]!) && <span className="lock dock-lock">PRO</span>}</button>)}
     </nav>

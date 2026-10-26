@@ -45,7 +45,7 @@ export function ThemePick({ me, onSaved }: { me: Me; onSaved: (s: Record<string,
 export type MoreSummary = Partial<Record<string, string>>;
 // разделы, которые на компьютере уже есть в нижней панели — в «Ещё» их не дублируем
 const IN_DOCK = new Set(['goal', 'gym', 'study', 'budget', 'books', 'stats']);
-export function More({ me, wide = false, summary = {}, onPaywall, onPro, onProfile, onSettings, onInstall, onLogout, onFeedback, onWhatsNew, onAdmin, onTour }: { me: Me; wide?: boolean; summary?: MoreSummary; onWhatsNew?: () => void; onTour?: () => void; onFeedback?: () => void; onAdmin?: () => void; onPaywall: (focus?: string) => void; onPro: (what: string) => void; onProfile: () => void; onSettings: () => void; onInstall: () => void; onLogout: () => void; onSaved?: (s: Record<string, unknown>) => void }) {
+export function More({ me, wide = false, desk, onDesk, summary = {}, onPaywall, onPro, onProfile, onSettings, onInstall, onLogout, onFeedback, onWhatsNew, onAdmin, onTour }: { me: Me; wide?: boolean; desk?: 'side' | 'old'; onDesk?: (v: 'side' | 'old') => void; summary?: MoreSummary; onWhatsNew?: () => void; onTour?: () => void; onFeedback?: () => void; onAdmin?: () => void; onPaywall: (focus?: string) => void; onPro: (what: string) => void; onProfile: () => void; onSettings: () => void; onInstall: () => void; onLogout: () => void; onSaved?: (s: Record<string, unknown>) => void }) {
   const s = me.profile?.settings ?? {}, sub = me.subscription, [pw, setPw] = useState(false);
   return <div className="day more-page">
     <header className="dayhead"><div className="daytitle"><span>ещё</span><b>{s.name || me.username}</b></div><HelpButton tour="more" /></header>
@@ -72,6 +72,7 @@ export function More({ me, wide = false, summary = {}, onPaywall, onPro, onProfi
       </button>; })}
     </div>
     <div className="rows">
+      {wide && onDesk && <button className="row" onClick={() => onDesk(desk === 'old' ? 'side' : 'old')}><span className="chip-ic" style={{ ['--c' as string]: 'var(--steps)' }}><Icon name="today" /></span><span className="mid"><b>{desk === 'old' ? 'Новый вид для компьютера' : 'Старый вид для компьютера'}</b><small>{desk === 'old' ? 'меню разделов слева, больше места для записей' : 'плавающая панель внизу, как было раньше'}</small></span><Icon name="chev" className="ic chev" /></button>}
       {onWhatsNew && <button className="row" onClick={onWhatsNew}><span className="chip-ic" style={{ ['--c' as string]: 'var(--study)' }}><Icon name="flame" /></span><span className="mid"><b>Что нового</b><small>версия {APP_VERSION}</small></span><Icon name="chev" className="ic chev" /></button>}
       {onTour && <button className="row" data-tour="more-tour" onClick={onTour}><span className="chip-ic" style={{ ['--c' as string]: 'var(--steps)' }}><Icon name="quiz" /></span><span className="mid"><b>Как пользоваться Lumi</b><small>короткая экскурсия по главному — за минуту</small></span><Icon name="chev" className="ic chev" /></button>}
       {onFeedback && <button className="row" data-tour="more-feedback" onClick={onFeedback}><span className="chip-ic" style={{ ['--c' as string]: 'var(--orange)' }}><Icon name="edit" /></span><span className="mid"><b>Написать разработчику</b><small>что понравилось, что мешает, где ошибка</small></span><Icon name="chev" className="ic chev" /></button>}
